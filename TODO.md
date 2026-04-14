@@ -110,6 +110,7 @@ Done when:
 
 Status:
 - [ ] create a script that creates the virtual environment, installs Python dependencies, copies the config template if needed, and optionally installs the `systemd` service
+- [x] add a small Pi update script for pulling changes, refreshing dependencies, and restarting the service
 
 Done when:
 - run one command on a fresh Pi clone

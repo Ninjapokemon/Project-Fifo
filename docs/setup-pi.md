@@ -115,6 +115,29 @@ sudo systemctl restart project-fifo.service
 sudo journalctl -u project-fifo.service -n 50 --no-pager
 ```
 
+## 8. Update the Pi later
+
+Autostart does not update the repo by itself. It only starts whatever code is already on disk.
+
+To make updates easier, there is a helper script at `scripts/update-pi.sh`.
+
+From the repo root on the Pi:
+
+```bash
+chmod +x scripts/update-pi.sh
+sudo ./scripts/update-pi.sh
+```
+
+What the update script does:
+
+1. runs `git pull --ff-only`
+2. installs Python requirements into the repo virtual environment
+3. reloads `systemd`
+4. restarts `project-fifo.service`
+5. shows the final service status
+
+Use this after pushing new changes to the repo.
+
 Done check for autostart:
 
 - reboot the Pi
@@ -125,7 +148,7 @@ Done check for autostart:
 
 If your repo path or username differs from the defaults in the template, that is fine. The installer script rewrites those values automatically.
 
-## 8. Find the Pi's address
+## 9. Find the Pi's address
 
 To connect from your PC, you need the Pi hostname or IP address.
 
@@ -147,7 +170,7 @@ Otherwise use the IP from `hostname -I`, for example:
 ws://192.168.1.50:8765
 ```
 
-## 9. Test from the desktop app
+## 10. Test from the desktop app
 
 Start the browser editor on your PC, connect to the Pi endpoint, and try:
 
@@ -237,4 +260,15 @@ If the paths are wrong, rerun:
 
 ```bash
 sudo ./scripts/install-pi-service.sh
+```
+
+### The service runs on boot, but the Pi is still on old code
+
+What it usually means:
+The service is working correctly, but the repo on the Pi has not been updated and restarted yet.
+
+Fix:
+
+```bash
+sudo ./scripts/update-pi.sh
 ```
