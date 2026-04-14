@@ -69,7 +69,19 @@ The desktop app and Pi config must agree on width and height.
 - `Clear` resets the frame.
 - `Fill` turns everything on.
 - `Checker` sends an alternating pattern that is useful for alignment tests.
+- `Panel Index Test` walks through each `8x8` block so you can verify panel ordering.
 - `Send Now` pushes the current frame immediately.
+
+## 7. Tune layout from the desktop app
+
+Use the `Layout + Orientation` section to adjust:
+
+- `Rotate` for whole-display quarter turns
+- `Block Orientation` for panel-level rotation
+- `Reverse Panel Order` when the chain starts from the opposite side
+- `Layout Preset` as a quick starting point for common horizontal arrangements
+
+Click `Read From Pi` after connecting to pull the current layout, then use `Save To Pi` once the LEDs look correct so the settings survive reboot.
 
 ## Troubleshooting
 

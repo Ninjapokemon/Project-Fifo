@@ -16,6 +16,7 @@ The near-term editor workflow should still live on the desktop:
 - build named animations
 - preview playback
 - save and load project files
+- optionally push temporary test frames or simple saved drawings during bring-up
 
 The long-term runtime should live on the Pi:
 
@@ -23,6 +24,7 @@ The long-term runtime should live on the Pi:
 - play animations locally without the browser connected
 - switch face states based on runtime rules
 - respond to inputs such as buttons and microphone activity
+- keep track of which state is live temporarily versus what is persisted for reboot
 
 That means the future high-level flow will look more like:
 
@@ -79,6 +81,7 @@ For the next phase, simple full-frame messages are still a good transport primit
 - named animations made of multiple frames
 - project files with one shared `width` and `height`
 - runtime commands like play, stop, load project, and request state
+- project lifecycle commands like upload, list, delete, and choose the boot/default project
 - Pi-owned playback timing instead of browser-only streaming
 - future input-triggered state changes
 
@@ -100,6 +103,7 @@ That suggests a future runtime with these responsibilities:
 - playback engine: advance animation frames over time
 - project store: load and validate saved face projects
 - state manager: decide which animation or state is active
+- persistence manager: decide what survives reconnects, restarts, and full reboot
 - input manager: turn button presses or microphone activity into events
 - rule layer: map those events to state changes or one-shot animations
 

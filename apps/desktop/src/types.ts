@@ -17,6 +17,27 @@ export type BrightnessMessage = {
   value: number;
 };
 
+export type GetLayoutMessage = {
+  type: "get_layout";
+  version: 1;
+};
+
+export type LayoutMessage = {
+  type: "layout";
+  version: 1;
+  rotate: number;
+  block_orientation: number;
+  reverse_order: boolean;
+};
+
+export type SaveLayoutMessage = {
+  type: "save_layout";
+  version: 1;
+  rotate: number;
+  block_orientation: number;
+  reverse_order: boolean;
+};
+
 export type SavedDrawing = FrameMessage & {
   name: string;
 };
@@ -41,6 +62,9 @@ export type ClientMessage =
   | FrameMessage
   | ClearMessage
   | BrightnessMessage
+  | GetLayoutMessage
+  | LayoutMessage
+  | SaveLayoutMessage
   | SaveDrawingMessage
   | LoadDrawingMessage
   | ListDrawingsMessage;

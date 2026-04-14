@@ -19,6 +19,38 @@ const PIXEL_COLOR_STORAGE_KEY = "project-fifo.pixel-color";
 const DEFAULT_ENDPOINT_NAME = "Workshop Pi";
 const DEFAULT_PIXEL_COLOR = "#7CF7D4";
 const PIXEL_CELL_SIZE = 28;
+const DEFAULT_LAYOUT = {
+  rotate: 0,
+  blockOrientation: 90,
+  reverseOrder: false,
+};
+const LAYOUT_PRESETS = {
+  custom: null,
+  "horizontal-ltr": {
+    label: "Horizontal L to R",
+    rotate: 0,
+    blockOrientation: 90,
+    reverseOrder: false,
+  },
+  "horizontal-rtl": {
+    label: "Horizontal R to L",
+    rotate: 0,
+    blockOrientation: 90,
+    reverseOrder: true,
+  },
+  "horizontal-ltr-flipped": {
+    label: "Horizontal L to R Flipped",
+    rotate: 2,
+    blockOrientation: -90,
+    reverseOrder: false,
+  },
+  "horizontal-rtl-flipped": {
+    label: "Horizontal R to L Flipped",
+    rotate: 2,
+    blockOrientation: -90,
+    reverseOrder: true,
+  },
+};
 
 const state = {
   width: DEFAULT_WIDTH,
@@ -29,6 +61,7 @@ const state = {
   piDrawings: [],
   savedEndpoints: [],
   brightness: DEFAULT_BRIGHTNESS,
+  layout: { ...DEFAULT_LAYOUT },
   pixelColor: DEFAULT_PIXEL_COLOR,
   drawValue: 1,
   socket: null,
@@ -62,6 +95,13 @@ const elements = {
   drawingName: document.querySelector("#drawingName"),
   brightnessRange: document.querySelector("#brightnessRange"),
   brightnessValue: document.querySelector("#brightnessValue"),
+  layoutPreset: document.querySelector("#layoutPreset"),
+  applyLayoutPresetButton: document.querySelector("#applyLayoutPresetButton"),
+  refreshLayoutButton: document.querySelector("#refreshLayoutButton"),
+  saveLayoutButton: document.querySelector("#saveLayoutButton"),
+  rotateSelect: document.querySelector("#rotateSelect"),
+  blockOrientationSelect: document.querySelector("#blockOrientationSelect"),
+  reverseOrderInput: document.querySelector("#reverseOrderInput"),
   pixelColor: document.querySelector("#pixelColor"),
   pixelColorValue: document.querySelector("#pixelColorValue"),
   paintModeButton: document.querySelector("#paintModeButton"),
@@ -247,6 +287,33 @@ function buildBrightnessMessage() {
   };
 }
 
+function buildGetLayoutMessage() {
+  return {
+    type: "get_layout",
+    version: 1,
+  };
+}
+
+function buildLayoutMessage() {
+  return {
+    type: "layout",
+    version: 1,
+    rotate: state.layout.rotate,
+    block_orientation: state.layout.blockOrientation,
+    reverse_order: state.layout.reverseOrder,
+  };
+}
+
+function buildSaveLayoutMessage() {
+  return {
+    type: "save_layout",
+    version: 1,
+    rotate: state.layout.rotate,
+    block_orientation: state.layout.blockOrientation,
+    reverse_order: state.layout.reverseOrder,
+  };
+}
+
 function buildSaveDrawingMessage() {
   return {
     type: "save_drawing",
@@ -283,6 +350,18 @@ function clampNumber(value, minimum, maximum, fallback) {
 
 function clampBrightness(value) {
   return clampNumber(value, MIN_BRIGHTNESS, MAX_BRIGHTNESS, DEFAULT_BRIGHTNESS);
+}
+
+function clampRotate(value) {
+  return clampNumber(value, 0, 3, DEFAULT_LAYOUT.rotate);
+}
+
+function normalizeBlockOrientation(value) {
+  const normalized = Number(value);
+  if ([0, 90, -90, 180].includes(normalized)) {
+    return normalized;
+  }
+  return DEFAULT_LAYOUT.blockOrientation;
 }
 
 function clampMovingDotSpeed(value) {
@@ -819,6 +898,31 @@ function syncBrightnessInputs() {
   elements.brightnessValue.value = String(state.brightness);
 }
 
+function findMatchingLayoutPreset(layout = state.layout) {
+  return Object.entries(LAYOUT_PRESETS).find(([, preset]) => (
+    preset
+    && preset.rotate === layout.rotate
+    && preset.blockOrientation === layout.blockOrientation
+    && preset.reverseOrder === layout.reverseOrder
+  ))?.[0] || "custom";
+}
+
+function syncLayoutInputs() {
+  elements.rotateSelect.value = String(state.layout.rotate);
+  elements.blockOrientationSelect.value = String(state.layout.blockOrientation);
+  elements.reverseOrderInput.checked = state.layout.reverseOrder;
+  elements.layoutPreset.value = findMatchingLayoutPreset();
+}
+
+function applyLayoutState(layout) {
+  state.layout = {
+    rotate: clampRotate(layout.rotate),
+    blockOrientation: normalizeBlockOrientation(layout.blockOrientation),
+    reverseOrder: Boolean(layout.reverseOrder),
+  };
+  syncLayoutInputs();
+}
+
 function syncMovingDotInputs() {
   elements.movingDotSpeed.value = String(state.movingDotSpeed);
   elements.movingDotFps.value = String(state.movingDotFps);
@@ -859,6 +963,73 @@ function setBrightness(value, reason) {
   }
 
   log(`Brightness set to ${brightness} locally. Connect to send it to the Pi.`);
+}
+
+function requestLayoutState(reason) {
+  const sent = sendMessage(buildGetLayoutMessage());
+  if (sent) {
+    log(`Requested Pi layout after ${reason}.`);
+    return true;
+  }
+
+  log("Not connected. Could not request Pi layout.");
+  return false;
+}
+
+function setLayout(reason) {
+  const nextLayout = {
+    rotate: clampRotate(Number(elements.rotateSelect.value)),
+    blockOrientation: normalizeBlockOrientation(elements.blockOrientationSelect.value),
+    reverseOrder: elements.reverseOrderInput.checked,
+  };
+  const changed = state.layout.rotate !== nextLayout.rotate
+    || state.layout.blockOrientation !== nextLayout.blockOrientation
+    || state.layout.reverseOrder !== nextLayout.reverseOrder;
+
+  applyLayoutState(nextLayout);
+
+  if (!changed) {
+    return;
+  }
+
+  const sent = sendMessage(buildLayoutMessage());
+  if (sent) {
+    log(
+      `Applied layout after ${reason}: rotate ${state.layout.rotate * 90} degrees, `
+      + `block orientation ${state.layout.blockOrientation} degrees, `
+      + `reverse order ${state.layout.reverseOrder ? "on" : "off"}.`,
+    );
+    return;
+  }
+
+  log("Layout updated locally. Connect to send it to the Pi.");
+}
+
+function applyLayoutPreset() {
+  const presetKey = elements.layoutPreset.value;
+  const preset = LAYOUT_PRESETS[presetKey];
+  if (!preset) {
+    log("Pick a layout preset first.");
+    return;
+  }
+
+  applyLayoutState(preset);
+  const sent = sendMessage(buildLayoutMessage());
+  if (sent) {
+    log(`Applied "${preset.label}" preset to the Pi.`);
+  } else {
+    log(`Applied "${preset.label}" preset locally. Connect to send it to the Pi.`);
+  }
+}
+
+function saveLayoutToPi() {
+  const sent = sendMessage(buildSaveLayoutMessage());
+  if (sent) {
+    log("Sent current layout to the Pi config for persistence.");
+    return;
+  }
+
+  log("Not connected. Could not save layout on the Pi.");
 }
 
 function triggerDownload(filename, content) {
@@ -1018,6 +1189,25 @@ function handleServerMessage(message) {
     return;
   }
 
+  if (
+    (message.type === "layout_state" || message.type === "layout_saved")
+    && Number.isInteger(message.rotate)
+    && Number.isInteger(message.block_orientation)
+    && typeof message.reverse_order === "boolean"
+  ) {
+    applyLayoutState({
+      rotate: message.rotate,
+      blockOrientation: message.block_orientation,
+      reverseOrder: message.reverse_order,
+    });
+    log(
+      message.type === "layout_saved"
+        ? "Pi layout was saved to config."
+        : "Pi layout is now in sync with the desktop controls.",
+    );
+    return;
+  }
+
   if (message.type === "drawings_list" && Array.isArray(message.drawings)) {
     state.piDrawings = message.drawings
       .filter((value) => typeof value === "string")
@@ -1084,6 +1274,7 @@ function connect() {
     log("Sent initial frame after connect.");
     sendMessage(buildBrightnessMessage());
     log(`Sent brightness ${state.brightness} after connect.`);
+    requestLayoutState("connect");
     requestPiDrawingList("connect");
   });
 
@@ -1166,6 +1357,20 @@ function bindEvents() {
   });
   elements.brightnessValue.addEventListener("change", () => {
     setBrightness(Number(elements.brightnessValue.value), "number change");
+  });
+  elements.applyLayoutPresetButton.addEventListener("click", applyLayoutPreset);
+  elements.refreshLayoutButton.addEventListener("click", () => {
+    requestLayoutState("manual refresh");
+  });
+  elements.saveLayoutButton.addEventListener("click", saveLayoutToPi);
+  elements.rotateSelect.addEventListener("change", () => {
+    setLayout("rotate change");
+  });
+  elements.blockOrientationSelect.addEventListener("change", () => {
+    setLayout("block orientation change");
+  });
+  elements.reverseOrderInput.addEventListener("change", () => {
+    setLayout("reverse order change");
   });
   elements.pixelColor.addEventListener("input", () => {
     state.pixelColor = normalizeHexColor(elements.pixelColor.value);
@@ -1311,6 +1516,7 @@ function init() {
     state.endpointName = state.savedEndpoints[0].name;
   }
   syncBrightnessInputs();
+  syncLayoutInputs();
   applyPixelColor();
   syncMovingDotInputs();
   syncPiDrawingOptions();

@@ -100,6 +100,60 @@
           <details class="control-group" open>
             <summary>
               <div>
+                <p class="section-label">Display</p>
+                <h2>Layout + Orientation</h2>
+              </div>
+              <span class="summary-meta">Live Pi mapping</span>
+            </summary>
+            <div class="control-body">
+              <label class="field">
+                <span>Layout Preset</span>
+                <select id="layoutPreset">
+                  <option value="custom">Custom</option>
+                  <option value="horizontal-ltr">Horizontal L to R</option>
+                  <option value="horizontal-rtl">Horizontal R to L</option>
+                  <option value="horizontal-ltr-flipped">Horizontal L to R Flipped</option>
+                  <option value="horizontal-rtl-flipped">Horizontal R to L Flipped</option>
+                </select>
+              </label>
+              <div class="button-row wrap">
+                <button id="applyLayoutPresetButton" type="button" class="secondary">Apply Preset</button>
+                <button id="refreshLayoutButton" type="button" class="secondary">Read From Pi</button>
+                <button id="saveLayoutButton" type="button" class="secondary">Save To Pi</button>
+              </div>
+              <div class="stacked-fields two-up">
+                <label class="field">
+                  <span>Rotate</span>
+                  <select id="rotateSelect">
+                    <option value="0">0 degrees</option>
+                    <option value="1">90 degrees</option>
+                    <option value="2">180 degrees</option>
+                    <option value="3">270 degrees</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Block Orientation</span>
+                  <select id="blockOrientationSelect">
+                    <option value="90">90 degrees</option>
+                    <option value="-90">-90 degrees</option>
+                    <option value="0">0 degrees</option>
+                    <option value="180">180 degrees</option>
+                  </select>
+                </label>
+              </div>
+              <label class="toggle-field" for="reverseOrderInput">
+                <div>
+                  <span>Reverse Panel Order</span>
+                  <p>Flip the matrix chain direction when the first module starts on the opposite side.</p>
+                </div>
+                <input id="reverseOrderInput" type="checkbox" />
+              </label>
+            </div>
+          </details>
+
+          <details class="control-group" open>
+            <summary>
+              <div>
                 <p class="section-label">Tools</p>
                 <h2>Draw + Manage</h2>
               </div>

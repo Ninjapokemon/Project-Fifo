@@ -185,7 +185,7 @@ There are two main places to adjust things:
 1. `apps/pi-controller/config.json`
 2. `apps/pi-controller/src/mapping.py`
 
-Start with `rotate`, `block_orientation`, and `reverse_order`. If the image is still scrambled after that, `mapping.py` is where the custom fixes belong.
+Start with `rotate`, `block_orientation`, and `reverse_order`. You can now tune those live from the desktop app and save them back to the Pi config once they look right. If the image is still scrambled after that, `mapping.py` is where the custom fixes belong.
 
 ## Common Issues And Fixes
 

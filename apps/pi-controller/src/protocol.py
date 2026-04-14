@@ -7,8 +7,36 @@ class ProtocolError(ValueError):
     pass
 
 
+ALLOWED_ROTATE_VALUES = {0, 1, 2, 3}
+ALLOWED_BLOCK_ORIENTATION_VALUES = {-90, 0, 90, 180}
+
+
 def clamp_brightness_value(value: int) -> int:
     return max(0, min(15, value))
+
+
+def validate_layout_message(message: dict[str, Any], expected_type: str) -> dict[str, Any]:
+    if message.get("type") != expected_type:
+        raise ProtocolError("Unsupported message type")
+
+    rotate = message.get("rotate")
+    block_orientation = message.get("block_orientation")
+    reverse_order = message.get("reverse_order")
+
+    if rotate not in ALLOWED_ROTATE_VALUES:
+        raise ProtocolError("rotate must be one of 0, 1, 2, or 3")
+    if block_orientation not in ALLOWED_BLOCK_ORIENTATION_VALUES:
+        raise ProtocolError("block_orientation must be one of -90, 0, 90, or 180")
+    if not isinstance(reverse_order, bool):
+        raise ProtocolError("reverse_order must be a boolean")
+
+    return {
+        "type": expected_type,
+        "version": 1,
+        "rotate": rotate,
+        "block_orientation": block_orientation,
+        "reverse_order": reverse_order,
+    }
 
 
 def validate_frame_message(message: dict[str, Any]) -> dict[str, Any]:

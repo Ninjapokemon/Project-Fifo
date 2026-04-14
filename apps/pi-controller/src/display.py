@@ -10,19 +10,51 @@ from protocol import clamp_brightness_value
 
 class MatrixDisplay:
     def __init__(self, config: dict):
-        total_matrices = config["matrices_wide"] * config["matrices_high"]
-        serial = spi(port=0, device=0, gpio=noop())
+        self.config = dict(config)
+        self.total_matrices = config["matrices_wide"] * config["matrices_high"]
+        self.serial = spi(port=0, device=0, gpio=noop())
         self.width = config["matrices_wide"] * 8
         self.height = config["matrices_high"] * 8
-        self.device = max7219(
-            serial,
-            cascaded=total_matrices,
-            rotate=config.get("rotate", 0),
-            block_orientation=config.get("block_orientation", 90),
-            reverse_order=config.get("reverse_order", False),
-        )
+        self.device = None
         self.brightness = 0
+        self._rebuild_device()
         self.set_brightness(config.get("brightness", 3))
+
+    def _rebuild_device(self) -> None:
+        if self.device is not None:
+            self.clear()
+            hide = getattr(self.device, "hide", None)
+            if callable(hide):
+                hide()
+
+        self.device = max7219(
+            self.serial,
+            cascaded=self.total_matrices,
+            rotate=self.config.get("rotate", 0),
+            block_orientation=self.config.get("block_orientation", 90),
+            reverse_order=self.config.get("reverse_order", False),
+        )
+
+    def get_layout(self) -> dict[str, int | bool]:
+        return {
+            "rotate": self.config.get("rotate", 0),
+            "block_orientation": self.config.get("block_orientation", 90),
+            "reverse_order": self.config.get("reverse_order", False),
+        }
+
+    def set_layout(self, rotate: int, block_orientation: int, reverse_order: bool) -> dict[str, int | bool]:
+        next_layout = {
+            "rotate": rotate,
+            "block_orientation": block_orientation,
+            "reverse_order": reverse_order,
+        }
+        if self.get_layout() == next_layout:
+            return next_layout
+
+        self.config.update(next_layout)
+        self._rebuild_device()
+        self.set_brightness(self.brightness)
+        return next_layout
 
     def set_brightness(self, value: int) -> int:
         self.brightness = clamp_brightness_value(value)
@@ -48,6 +80,8 @@ class MatrixDisplay:
 
     def shutdown(self) -> None:
         # Leave the panels in a known off state before the process exits.
+        if self.device is None:
+            return
         self.clear()
         hide = getattr(self.device, "hide", None)
         if callable(hide):

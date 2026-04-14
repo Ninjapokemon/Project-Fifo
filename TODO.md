@@ -9,6 +9,7 @@ This is the running list of what would make the project nicer to use and easier 
 - [x] Save and load drawings in the desktop app using browser JSON files
 - [x] Save and load drawings on the Pi over WebSocket
 - [x] Change brightness from the desktop app and apply it on the Pi
+- [x] Add display orientation and panel layout controls in the desktop app
 - [x] Make Pi shutdown cleaner for `Ctrl+C` and service stops
 - [x] Start the Pi server automatically on boot with `systemd`
 
@@ -19,7 +20,7 @@ This is the running list of what would make the project nicer to use and easier 
 - [ ] Add browser autosave
 - [ ] Add named Pi endpoints in the desktop app
 - [ ] Add a protocol state message
-- [ ] Add display orientation and panel layout controls in the desktop app
+- [ ] Add Pi project storage and boot project management
 - [ ] Add a Pi install script
 - [ ] Add unit tests for protocol and mapping
 - [ ] Add animation and face-runtime groundwork
@@ -79,6 +80,8 @@ Done when:
 
 Status:
 - [ ] add request and response messages for `brightness`, `width`, `height`, and `connection status`
+- [ ] include runtime-facing fields such as current layout, active project, active animation or state, and whether settings are persisted
+- [ ] decide how the Pi reports live temporary state versus reboot-persisted state
 - [ ] use that information to keep the desktop UI in sync
 
 Done when:
@@ -86,15 +89,19 @@ Done when:
 - request state
 - show the current Pi settings in the UI
 
+Notes:
+- this should grow into runtime state, not stay limited to transport connection details
+- once the Pi can run on its own, the desktop app will need to know whether it is controlling a temporary live session or a persisted runtime setup
+
 ### 6. Add display orientation and panel layout controls in the desktop app
 
 Status:
-- [ ] add controls in the desktop app for `rotate`, `block_orientation`, and `reverse_order`
-- [ ] add a few layout presets for common arrangements
-- [ ] send those settings to the Pi over the protocol
-- [ ] let the Pi apply those settings without needing a restart
-- [ ] add a way to save the current settings on the Pi so they survive reboot
-- [ ] optionally write those saved settings back to the Pi config file later
+- [x] add controls in the desktop app for `rotate`, `block_orientation`, and `reverse_order`
+- [x] add a few layout presets for common arrangements
+- [x] send those settings to the Pi over the protocol
+- [x] let the Pi apply those settings without needing a restart
+- [x] add a way to save the current settings on the Pi so they survive reboot
+- [x] write those saved settings back to the Pi config file
 
 Notes:
 - this probably fits naturally with brightness control and the future Pi state message
@@ -116,7 +123,22 @@ Done when:
 - run one command on a fresh Pi clone
 - finish with a ready-to-run controller setup
 
-### 8. Add unit tests for protocol and mapping
+### 8. Add Pi project storage and boot project management
+
+Status:
+- [ ] define a Pi-side project storage format that is separate from the temporary single-drawing library
+- [ ] add protocol messages to upload, list, load, delete, and validate projects on the Pi
+- [ ] add a way to set the default boot project on the Pi
+- [ ] add a way to ask which project is currently active and which one will load on boot
+- [ ] decide whether brightness and other runtime settings belong in project data, global Pi config, or both
+
+Done when:
+- upload a face project to the Pi
+- select it as the boot project
+- reboot the Pi
+- confirm the project loads without the browser connected
+
+### 9. Add unit tests for protocol and mapping
 
 Status:
 - [ ] test frame validation success and failure cases
@@ -127,7 +149,7 @@ Done when:
 - test suite runs locally
 - expected failures are covered for bad messages and edge coordinates
 
-### 9. Add animation and face-runtime groundwork
+### 10. Add animation and face-runtime groundwork
 
 Status:
 - [ ] add multi-frame editing in the desktop UI
@@ -136,6 +158,7 @@ Status:
 - [ ] support named animations for future face states such as `idle`, `blink`, and `talk`
 - [ ] keep early playback available in the desktop app for iteration speed
 - [ ] design toward Pi-driven playback as the real long-term runtime
+- [ ] separate temporary live streaming from Pi-owned playback of saved projects
 
 Done when:
 - create at least two frames in the editor
@@ -146,6 +169,7 @@ Notes:
 - this is for a protogen face, so the final model should be state-oriented and not only a generic animation timeline
 - the Pi should eventually load a primary project on boot and run without the browser connected
 - the Pi runtime will eventually need a playback engine, project loader, input manager, and state/rule layer
+- the current Pi drawing library is useful for bring-up, but it should not become the final deployed runtime format
 - microphone or button input should be able to trigger animation or state changes later
 - desktop-driven playback is a stepping stone, not the final architecture
 
@@ -163,6 +187,7 @@ Status:
 Notes:
 - [x] use the existing frame message shape to keep the format simple
 - [x] Pi-side storage would be useful for keeping a small library of drawings with the hardware
+- [x] treat this as a simple drawing library for iteration, not the final standalone project deployment path
 - [x] reject files whose width and height do not match the current data shape unless the app resizes automatically
 
 ### Brightness control
@@ -175,7 +200,7 @@ Status:
 
 Notes:
 - [x] clamp brightness values on the Pi for safety
-- [ ] decide whether the brightness setting should persist across reconnects or reboot
+- [ ] decide whether the brightness setting should persist across reconnects, reboot, project load, or all three
 
 ### Cleaner Pi shutdown
 
@@ -201,6 +226,7 @@ Status:
 4. Named Pi endpoints
 5. Protocol state message
 6. Display orientation and layout controls
-7. Pi install script
-8. Unit tests
-9. Animation and face-runtime groundwork
+7. Pi project storage and boot project management
+8. Pi install script
+9. Unit tests
+10. Animation and face-runtime groundwork

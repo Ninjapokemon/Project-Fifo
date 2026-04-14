@@ -44,10 +44,12 @@ The current version is enough to:
 1. run the editor locally
 2. connect to the Pi over WebSocket
 3. draw live on the matrix display
-4. save drawings locally or on the Pi
+4. save single drawings locally or on the Pi for authoring and testing
 5. tune panel order and rotation in config
 
-There is still more to build, especially around brightness, saving drawings, and boot-time startup on the Pi.
+That Pi-side drawing storage is useful right now, but it is not the final standalone deployment model. The long-term runtime will need Pi-owned project storage, boot selection, and runtime state beyond individual saved frames.
+
+There is still more to build, especially around persistence rules, project deployment, and boot-time runtime behavior on the Pi.
 
 ## Future Direction
 
@@ -63,6 +65,7 @@ That means the current single-frame architecture is a starting point, not the fi
 
 - desktop support for named multi-frame animations and preview playback
 - a shared project format that can represent drawings, animations, boot defaults, and future input mappings
+- a clear split between temporary live control, saved Pi settings, and deployed Pi runtime projects
 - Pi-side playback and state management so animation timing does not depend on the browser
 - Pi-side input handling for things like buttons and microphone-driven reactions
 - protocol support for runtime state, project loading, and animation control

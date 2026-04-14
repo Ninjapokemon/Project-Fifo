@@ -6,22 +6,38 @@ import signal
 
 import websockets
 
-from config import load_config
+from config import load_config, save_config
 from display import MatrixDisplay
 from protocol import (
     ProtocolError,
     validate_brightness_message,
     validate_drawing_name_message,
     validate_frame_message,
+    validate_layout_message,
     validate_named_drawing,
 )
 from storage import DrawingStore
 
 
-async def handle_connection(websocket, display: MatrixDisplay, drawing_store: DrawingStore) -> None:
+def build_layout_state_message(display: MatrixDisplay, message_type: str = "layout_state") -> dict[str, int | bool | str]:
+    return {
+        "type": message_type,
+        **display.get_layout(),
+    }
+
+
+async def handle_connection(
+    websocket,
+    display: MatrixDisplay,
+    drawing_store: DrawingStore,
+    config: dict,
+) -> None:
     async for raw_message in websocket:
         try:
             message = json.loads(raw_message)
+            if message.get("type") == "get_layout":
+                await websocket.send(json.dumps(build_layout_state_message(display)))
+                continue
             if message.get("type") == "clear":
                 display.clear()
                 continue
@@ -83,6 +99,40 @@ async def handle_connection(websocket, display: MatrixDisplay, drawing_store: Dr
                     )
                 )
                 continue
+            if message.get("type") == "layout":
+                layout = validate_layout_message(message, "layout")
+                applied_layout = display.set_layout(
+                    layout["rotate"],
+                    layout["block_orientation"],
+                    layout["reverse_order"],
+                )
+                await websocket.send(
+                    json.dumps(
+                        {
+                            "type": "layout_state",
+                            **applied_layout,
+                        }
+                    )
+                )
+                continue
+            if message.get("type") == "save_layout":
+                layout = validate_layout_message(message, "save_layout")
+                applied_layout = display.set_layout(
+                    layout["rotate"],
+                    layout["block_orientation"],
+                    layout["reverse_order"],
+                )
+                config.update(applied_layout)
+                save_config(config)
+                await websocket.send(
+                    json.dumps(
+                        {
+                            "type": "layout_saved",
+                            **applied_layout,
+                        }
+                    )
+                )
+                continue
 
             frame = validate_frame_message(message)
             display.render_frame(frame["pixels"], frame["width"], frame["height"])
@@ -126,7 +176,7 @@ async def main() -> None:
 
     try:
         async with websockets.serve(
-            lambda websocket: handle_connection(websocket, display, drawing_store),
+            lambda websocket: handle_connection(websocket, display, drawing_store, config),
             config["host"],
             config["port"],
         ):
