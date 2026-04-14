@@ -18,6 +18,25 @@
           </p>
         </div>
         <div class="connection-card">
+          <div class="tool-settings endpoint-settings">
+            <label class="field grow">
+              <span>Saved Pi Endpoints</span>
+              <select id="savedEndpointSelect">
+                <option value="">No saved endpoints</option>
+              </select>
+            </label>
+            <div class="button-row">
+              <button id="applySavedEndpointButton" type="button" class="secondary">Use Saved</button>
+              <button id="deleteSavedEndpointButton" type="button" class="secondary">Delete Saved</button>
+            </div>
+          </div>
+          <div class="tool-settings endpoint-settings">
+            <label class="field compact">
+              <span>Endpoint Name</span>
+              <input id="endpointName" type="text" value="Workshop Pi" maxlength="80" />
+            </label>
+            <button id="saveEndpointButton" type="button" class="secondary">Save Endpoint</button>
+          </div>
           <label class="field">
             <span>Pi Endpoint</span>
             <input id="endpoint" type="text" value="ws://raspberrypi.local:8765" />
@@ -63,6 +82,8 @@
         <div class="button-row wrap">
           <button id="paintModeButton" type="button">Paint Mode</button>
           <button id="eraseModeButton" type="button" class="secondary">Erase Mode</button>
+          <button id="undoButton" type="button" class="secondary">Undo</button>
+          <button id="redoButton" type="button" class="secondary">Redo</button>
           <button id="clearButton" type="button" class="secondary">Clear</button>
           <button id="fillButton" type="button" class="secondary">Fill</button>
           <button id="checkerButton" type="button" class="secondary">Checker</button>
@@ -105,6 +126,7 @@
         <p class="hint">
           Left click paints. Right click erases. Drag to draw continuously. The test-pattern buttons are handy during mapping bring-up, and connected Pi storage can keep a drawing library on the device.
         </p>
+        <p id="autosaveStatus" class="hint autosave-status">Autosave ready.</p>
         <input id="loadInput" type="file" accept="application/json,.json" hidden />
       </section>
 

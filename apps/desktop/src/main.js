@@ -12,26 +12,42 @@ const MIN_MOVING_DOT_FPS = 1;
 const MAX_MOVING_DOT_FPS = 60;
 const PANEL_SIZE = 8;
 const PANEL_INDEX_TEST_FPS = 2;
+const HISTORY_LIMIT = 48;
+const AUTOSAVE_STORAGE_KEY = "project-fifo.autosave";
+const PI_ENDPOINTS_STORAGE_KEY = "project-fifo.pi-endpoints";
+const DEFAULT_ENDPOINT_NAME = "Workshop Pi";
 
 const state = {
   width: DEFAULT_WIDTH,
   height: DEFAULT_HEIGHT,
   pixels: Array(DEFAULT_WIDTH * DEFAULT_HEIGHT).fill(0),
   drawingName: "fifo-drawing",
+  endpointName: DEFAULT_ENDPOINT_NAME,
   piDrawings: [],
+  savedEndpoints: [],
   brightness: DEFAULT_BRIGHTNESS,
   drawValue: 1,
   socket: null,
   sendTimer: null,
   isPointerDown: false,
+  strokeHasChanges: false,
   movingDotSpeed: DEFAULT_MOVING_DOT_SPEED,
   movingDotFps: DEFAULT_MOVING_DOT_FPS,
   activePattern: null,
   patternTimer: null,
   patternFrame: 0,
+  history: {
+    entries: [],
+    index: -1,
+  },
 };
 
 const elements = {
+  savedEndpointSelect: document.querySelector("#savedEndpointSelect"),
+  applySavedEndpointButton: document.querySelector("#applySavedEndpointButton"),
+  deleteSavedEndpointButton: document.querySelector("#deleteSavedEndpointButton"),
+  endpointName: document.querySelector("#endpointName"),
+  saveEndpointButton: document.querySelector("#saveEndpointButton"),
   endpoint: document.querySelector("#endpoint"),
   connectButton: document.querySelector("#connectButton"),
   disconnectButton: document.querySelector("#disconnectButton"),
@@ -44,6 +60,8 @@ const elements = {
   brightnessValue: document.querySelector("#brightnessValue"),
   paintModeButton: document.querySelector("#paintModeButton"),
   eraseModeButton: document.querySelector("#eraseModeButton"),
+  undoButton: document.querySelector("#undoButton"),
+  redoButton: document.querySelector("#redoButton"),
   clearButton: document.querySelector("#clearButton"),
   fillButton: document.querySelector("#fillButton"),
   checkerButton: document.querySelector("#checkerButton"),
@@ -67,6 +85,7 @@ const elements = {
   gridMeta: document.querySelector("#gridMeta"),
   logOutput: document.querySelector("#logOutput"),
   clearLogButton: document.querySelector("#clearLogButton"),
+  autosaveStatus: document.querySelector("#autosaveStatus"),
 };
 
 function log(message) {
@@ -83,6 +102,15 @@ function updateModeButtons() {
   const paintActive = state.drawValue === 1;
   elements.paintModeButton.disabled = paintActive;
   elements.eraseModeButton.disabled = !paintActive;
+}
+
+function updateHistoryButtons() {
+  elements.undoButton.disabled = state.history.index <= 0;
+  elements.redoButton.disabled = state.history.index >= state.history.entries.length - 1;
+}
+
+function setAutosaveStatus(message) {
+  elements.autosaveStatus.textContent = message;
 }
 
 function updateGridMeta() {
@@ -228,6 +256,277 @@ function sanitizeDrawingName(value) {
   return trimmed || "fifo-drawing";
 }
 
+function sanitizeEndpointName(value) {
+  const trimmed = value.trim();
+  return trimmed || DEFAULT_ENDPOINT_NAME;
+}
+
+function createEditorSnapshot() {
+  return {
+    width: state.width,
+    height: state.height,
+    pixels: [...state.pixels],
+    drawingName: state.drawingName,
+  };
+}
+
+function restoreSnapshot(snapshot, reason, options = {}) {
+  stopPatternPlayback(`for ${reason}`);
+  state.width = snapshot.width;
+  state.height = snapshot.height;
+  state.pixels = [...snapshot.pixels];
+  state.drawingName = sanitizeDrawingName(snapshot.drawingName);
+  elements.gridWidth.value = String(state.width);
+  elements.gridHeight.value = String(state.height);
+  elements.drawingName.value = state.drawingName;
+  renderGrid();
+  saveAutosave();
+  scheduleFrameSend(reason, options);
+}
+
+function snapshotsMatch(left, right) {
+  if (!left || !right) {
+    return false;
+  }
+
+  if (left.width !== right.width || left.height !== right.height || left.drawingName !== right.drawingName) {
+    return false;
+  }
+
+  if (left.pixels.length !== right.pixels.length) {
+    return false;
+  }
+
+  return left.pixels.every((value, index) => value === right.pixels[index]);
+}
+
+function pushHistorySnapshot(reason) {
+  const snapshot = createEditorSnapshot();
+  const current = state.history.entries[state.history.index];
+  if (snapshotsMatch(current, snapshot)) {
+    updateHistoryButtons();
+    return;
+  }
+
+  const nextEntries = state.history.entries.slice(0, state.history.index + 1);
+  nextEntries.push(snapshot);
+  if (nextEntries.length > HISTORY_LIMIT) {
+    nextEntries.shift();
+  }
+
+  state.history.entries = nextEntries;
+  state.history.index = nextEntries.length - 1;
+  updateHistoryButtons();
+  saveAutosave();
+
+  if (reason) {
+    setAutosaveStatus(`Autosaved after ${reason}.`);
+  }
+}
+
+function undoHistory() {
+  if (state.history.index <= 0) {
+    log("Nothing to undo.");
+    return;
+  }
+
+  state.history.index -= 1;
+  restoreSnapshot(state.history.entries[state.history.index], "undo", { immediate: true });
+  updateHistoryButtons();
+  log("Undid the last edit.");
+  setAutosaveStatus("Autosaved after undo.");
+}
+
+function redoHistory() {
+  if (state.history.index >= state.history.entries.length - 1) {
+    log("Nothing to redo.");
+    return;
+  }
+
+  state.history.index += 1;
+  restoreSnapshot(state.history.entries[state.history.index], "redo", { immediate: true });
+  updateHistoryButtons();
+  log("Redid the last edit.");
+  setAutosaveStatus("Autosaved after redo.");
+}
+
+function saveAutosave() {
+  const autosave = {
+    width: state.width,
+    height: state.height,
+    pixels: state.pixels,
+    drawingName: state.drawingName,
+    savedAt: new Date().toISOString(),
+  };
+
+  window.localStorage.setItem(AUTOSAVE_STORAGE_KEY, JSON.stringify(autosave));
+}
+
+function loadAutosave() {
+  const rawValue = window.localStorage.getItem(AUTOSAVE_STORAGE_KEY);
+  if (!rawValue) {
+    setAutosaveStatus("Autosave ready.");
+    return;
+  }
+
+  try {
+    const parsedAutosave = JSON.parse(rawValue);
+    const autosave = validateLoadedDrawing(parsedAutosave);
+    const dimensionsMatch = autosave.width === state.width && autosave.height === state.height;
+    if (!dimensionsMatch) {
+      setAutosaveStatus(`Skipped autosave restore because it was ${autosave.width}x${autosave.height}.`);
+      return;
+    }
+
+    state.drawingName = autosave.name;
+    elements.drawingName.value = autosave.name;
+    restoreSnapshot({
+      width: autosave.width,
+      height: autosave.height,
+      pixels: autosave.pixels,
+      drawingName: autosave.name,
+    }, "autosave restore", { immediate: true });
+    pushHistorySnapshot("autosave restore");
+    log(`Restored autosaved drawing "${autosave.name}".`);
+    setAutosaveStatus(`Restored autosave from ${new Date(parsedAutosave.savedAt || Date.now()).toLocaleString()}.`);
+  } catch (error) {
+    window.localStorage.removeItem(AUTOSAVE_STORAGE_KEY);
+    setAutosaveStatus("Autosave data was invalid and has been cleared.");
+    log("Cleared invalid autosave data.");
+  }
+}
+
+function inferEndpointName(endpoint) {
+  try {
+    const url = new URL(endpoint);
+    return url.hostname || url.host || DEFAULT_ENDPOINT_NAME;
+  } catch (error) {
+    return DEFAULT_ENDPOINT_NAME;
+  }
+}
+
+function loadSavedEndpoints() {
+  const rawValue = window.localStorage.getItem(PI_ENDPOINTS_STORAGE_KEY);
+  if (!rawValue) {
+    return;
+  }
+
+  try {
+    const savedEndpoints = JSON.parse(rawValue);
+    if (!Array.isArray(savedEndpoints)) {
+      return;
+    }
+
+    state.savedEndpoints = savedEndpoints
+      .filter((entry) => entry && typeof entry === "object")
+      .map((entry) => ({
+        name: sanitizeEndpointName(typeof entry.name === "string" ? entry.name : ""),
+        url: typeof entry.url === "string" ? entry.url.trim() : "",
+      }))
+      .filter((entry) => entry.url);
+  } catch (error) {
+    state.savedEndpoints = [];
+  }
+}
+
+function saveSavedEndpoints() {
+  window.localStorage.setItem(PI_ENDPOINTS_STORAGE_KEY, JSON.stringify(state.savedEndpoints));
+}
+
+function syncSavedEndpointOptions(selectedUrl = elements.endpoint.value.trim()) {
+  elements.savedEndpointSelect.innerHTML = "";
+
+  if (state.savedEndpoints.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No saved endpoints";
+    elements.savedEndpointSelect.appendChild(option);
+    elements.savedEndpointSelect.value = "";
+    return;
+  }
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select a saved endpoint";
+  elements.savedEndpointSelect.appendChild(placeholder);
+
+  state.savedEndpoints.forEach((entry) => {
+    const option = document.createElement("option");
+    option.value = entry.url;
+    option.textContent = `${entry.name} - ${entry.url}`;
+    elements.savedEndpointSelect.appendChild(option);
+  });
+
+  const matchingEntry = state.savedEndpoints.find((entry) => entry.url === selectedUrl);
+  elements.savedEndpointSelect.value = matchingEntry ? matchingEntry.url : "";
+}
+
+function upsertSavedEndpoint(reason) {
+  const url = elements.endpoint.value.trim();
+  if (!url) {
+    log("Enter a Pi endpoint before saving it.");
+    return false;
+  }
+
+  state.endpointName = sanitizeEndpointName(elements.endpointName.value || inferEndpointName(url));
+  elements.endpointName.value = state.endpointName;
+
+  const existingIndex = state.savedEndpoints.findIndex((entry) => entry.url === url || entry.name === state.endpointName);
+  const nextEntry = {
+    name: state.endpointName,
+    url,
+  };
+
+  if (existingIndex >= 0) {
+    state.savedEndpoints[existingIndex] = nextEntry;
+  } else {
+    state.savedEndpoints = [nextEntry, ...state.savedEndpoints];
+  }
+
+  state.savedEndpoints = state.savedEndpoints
+    .filter((entry, index, entries) => entries.findIndex((candidate) => candidate.url === entry.url) === index)
+    .slice(0, 8);
+  saveSavedEndpoints();
+  syncSavedEndpointOptions(url);
+  log(`Saved Pi endpoint "${state.endpointName}" after ${reason}.`);
+  return true;
+}
+
+function applySavedEndpoint() {
+  const url = elements.savedEndpointSelect.value;
+  if (!url) {
+    log("Pick a saved endpoint first.");
+    return;
+  }
+
+  const savedEndpoint = state.savedEndpoints.find((entry) => entry.url === url);
+  if (!savedEndpoint) {
+    log("That saved endpoint is no longer available.");
+    syncSavedEndpointOptions();
+    return;
+  }
+
+  elements.endpoint.value = savedEndpoint.url;
+  state.endpointName = savedEndpoint.name;
+  elements.endpointName.value = savedEndpoint.name;
+  syncSavedEndpointOptions(savedEndpoint.url);
+  log(`Loaded saved endpoint "${savedEndpoint.name}".`);
+}
+
+function deleteSavedEndpoint() {
+  const url = elements.savedEndpointSelect.value || elements.endpoint.value.trim();
+  const existingIndex = state.savedEndpoints.findIndex((entry) => entry.url === url);
+  if (existingIndex < 0) {
+    log("No saved endpoint is selected.");
+    return;
+  }
+
+  const [removedEntry] = state.savedEndpoints.splice(existingIndex, 1);
+  saveSavedEndpoints();
+  syncSavedEndpointOptions();
+  log(`Deleted saved endpoint "${removedEntry.name}".`);
+}
+
 function sendMessage(message) {
   if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
     return false;
@@ -278,6 +577,7 @@ function stopPatternPlayback(logReason) {
 function applyPixels(pixels, reason, options) {
   state.pixels = pixels;
   syncGridDom();
+  saveAutosave();
   scheduleFrameSend(reason, options);
 }
 
@@ -289,10 +589,12 @@ function applyCellValue(x, y, value) {
   }
 
   state.pixels[index] = value;
+  state.strokeHasChanges = true;
   const target = elements.grid.querySelector(`[data-x="${x}"][data-y="${y}"]`);
   if (target) {
     target.classList.toggle("on", value === 1);
   }
+  saveAutosave();
   scheduleFrameSend("draw");
 }
 
@@ -310,6 +612,7 @@ function resizeGrid() {
   state.height = height;
   state.pixels = Array(width * height).fill(0);
   renderGrid();
+  pushHistorySnapshot("grid resize");
   scheduleFrameSend("resize");
   log(`Resized grid to ${width}x${height}.`);
 }
@@ -322,6 +625,7 @@ function applyDrawing(frame, reason) {
   elements.gridWidth.value = String(frame.width);
   elements.gridHeight.value = String(frame.height);
   renderGrid();
+  pushHistorySnapshot(reason);
   scheduleFrameSend(reason);
 }
 
@@ -530,6 +834,7 @@ function triggerDownload(filename, content) {
 function saveDrawing() {
   state.drawingName = sanitizeDrawingName(elements.drawingName.value);
   elements.drawingName.value = state.drawingName;
+  saveAutosave();
 
   const drawing = {
     name: state.drawingName,
@@ -720,6 +1025,10 @@ function connect() {
     return;
   }
 
+  state.endpointName = sanitizeEndpointName(elements.endpointName.value || inferEndpointName(endpoint));
+  elements.endpointName.value = state.endpointName;
+  upsertSavedEndpoint("connect");
+
   setStatus("Connecting", "connecting");
   log(`Connecting to ${endpoint} ...`);
 
@@ -769,6 +1078,7 @@ function disconnect() {
 
 function clearGrid() {
   setAllPixels(0);
+  pushHistorySnapshot("clear");
   sendMessage({ type: "clear", version: 1 });
   log("Cleared local grid.");
 }
@@ -783,12 +1093,31 @@ function sendCurrentFrame() {
 }
 
 function bindEvents() {
+  elements.applySavedEndpointButton.addEventListener("click", applySavedEndpoint);
+  elements.deleteSavedEndpointButton.addEventListener("click", deleteSavedEndpoint);
+  elements.saveEndpointButton.addEventListener("click", () => {
+    upsertSavedEndpoint("manual save");
+  });
+  elements.savedEndpointSelect.addEventListener("change", () => {
+    const selectedUrl = elements.savedEndpointSelect.value;
+    if (!selectedUrl) {
+      return;
+    }
+
+    const savedEndpoint = state.savedEndpoints.find((entry) => entry.url === selectedUrl);
+    if (!savedEndpoint) {
+      return;
+    }
+
+    elements.endpointName.value = savedEndpoint.name;
+  });
   elements.connectButton.addEventListener("click", connect);
   elements.disconnectButton.addEventListener("click", disconnect);
   elements.resizeButton.addEventListener("click", resizeGrid);
   elements.drawingName.addEventListener("change", () => {
     state.drawingName = sanitizeDrawingName(elements.drawingName.value);
     elements.drawingName.value = state.drawingName;
+    pushHistorySnapshot("drawing rename");
   });
   elements.brightnessRange.addEventListener("input", () => {
     setBrightness(Number(elements.brightnessRange.value), "slider change");
@@ -804,25 +1133,32 @@ function bindEvents() {
     state.drawValue = 0;
     updateModeButtons();
   });
+  elements.undoButton.addEventListener("click", undoHistory);
+  elements.redoButton.addEventListener("click", redoHistory);
   elements.clearButton.addEventListener("click", clearGrid);
   elements.fillButton.addEventListener("click", () => {
     setAllPixels(1);
+    pushHistorySnapshot("fill");
     log("Filled the grid.");
   });
   elements.checkerButton.addEventListener("click", () => {
     applyCheckerPattern();
+    pushHistorySnapshot("checker pattern");
     log("Applied checker pattern.");
   });
   elements.borderButton.addEventListener("click", () => {
     applyBorderPattern();
+    pushHistorySnapshot("border pattern");
     log("Applied border pattern.");
   });
   elements.horizontalLineButton.addEventListener("click", () => {
     applyHorizontalLinePattern();
+    pushHistorySnapshot("horizontal line pattern");
     log("Applied horizontal line pattern.");
   });
   elements.verticalLineButton.addEventListener("click", () => {
     applyVerticalLinePattern();
+    pushHistorySnapshot("vertical line pattern");
     log("Applied vertical line pattern.");
   });
   elements.movingDotButton.addEventListener("click", () => {
@@ -876,22 +1212,66 @@ function bindEvents() {
 
   window.addEventListener("pointerup", () => {
     state.isPointerDown = false;
+    if (state.strokeHasChanges) {
+      pushHistorySnapshot("drawing stroke");
+      state.strokeHasChanges = false;
+    }
   });
   window.addEventListener("pointerleave", () => {
     state.isPointerDown = false;
   });
+  window.addEventListener("pointercancel", () => {
+    state.isPointerDown = false;
+    if (state.strokeHasChanges) {
+      pushHistorySnapshot("drawing stroke");
+      state.strokeHasChanges = false;
+    }
+  });
+  window.addEventListener("keydown", (event) => {
+    const isUndo = (event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z";
+    const isRedo = ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "y")
+      || ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "z");
+
+    if (!isUndo && !isRedo) {
+      return;
+    }
+
+    const activeTagName = document.activeElement?.tagName;
+    if (activeTagName === "INPUT" || activeTagName === "TEXTAREA" || activeTagName === "SELECT") {
+      return;
+    }
+
+    event.preventDefault();
+    if (isUndo) {
+      undoHistory();
+      return;
+    }
+
+    redoHistory();
+  });
 }
 
 function init() {
+  loadSavedEndpoints();
   elements.gridWidth.value = String(state.width);
   elements.gridHeight.value = String(state.height);
   elements.drawingName.value = state.drawingName;
+  elements.endpointName.value = state.endpointName;
+  if (state.savedEndpoints[0]) {
+    elements.endpoint.value = state.savedEndpoints[0].url;
+    elements.endpointName.value = state.savedEndpoints[0].name;
+    state.endpointName = state.savedEndpoints[0].name;
+  }
   syncBrightnessInputs();
   syncMovingDotInputs();
   syncPiDrawingOptions();
+  syncSavedEndpointOptions();
   renderGrid();
   updateModeButtons();
+  pushHistorySnapshot("startup");
+  loadAutosave();
   bindEvents();
+  updateHistoryButtons();
   log("Editor ready.");
   log("Set the Pi endpoint, connect, and start drawing.");
 }

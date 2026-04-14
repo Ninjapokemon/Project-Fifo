@@ -43,9 +43,9 @@ Done when:
 ### 2. Add undo and redo
 
 Status:
-- [ ] keep a bounded history stack in the desktop app
-- [ ] push changes after meaningful edits rather than every single hover cell
-- [ ] add `Undo` and `Redo` buttons
+- [x] keep a bounded history stack in the desktop app
+- [x] push changes after meaningful edits rather than every single hover cell
+- [x] add `Undo` and `Redo` buttons
 
 Done when:
 - draw several changes
@@ -55,9 +55,9 @@ Done when:
 ### 3. Add autosave in the browser
 
 Status:
-- [ ] save the current drawing to browser local storage
-- [ ] restore it on page load if the dimensions match
-- [ ] make it clear when autosaved content has been restored
+- [x] save the current drawing to browser local storage
+- [x] restore it on page load if the dimensions match
+- [x] make it clear when autosaved content has been restored
 
 Done when:
 - draw something
@@ -67,8 +67,8 @@ Done when:
 ### 4. Add named Pi endpoints in the desktop app
 
 Status:
-- [ ] save recent endpoints in browser local storage
-- [ ] allow the user to pick from or reuse saved addresses
+- [x] save recent endpoints in browser local storage
+- [x] allow the user to pick from or reuse saved addresses
 
 Done when:
 - connect to a Pi once
