@@ -1,6 +1,6 @@
 # Project Fifo
 
-Project Fifo is a repo for drawing pixels in a browser-based desktop editor and streaming those frames to a Raspberry Pi that drives chained MAX7219 LED matrices through `luma.led_matrix`.
+Project Fifo is a small setup for drawing pixels on a browser-based editor and pushing them to a Raspberry Pi that drives MAX7219 LED matrices with `luma.led_matrix`.
 
 ## Repo Layout
 
@@ -16,18 +16,18 @@ scripts/           Development and deployment helpers
 
 ## Architecture
 
-The system is split into three parts:
+The project is split into three parts:
 
 1. `apps/desktop`
-   Owns the UI: drawing tools, preview, and sending frames to the Pi.
+   This is the editor on the PC. It handles drawing, preview, and sending frames to the Pi.
 2. `apps/pi-controller`
-   Owns hardware: receiving frames, mapping pixels, and writing to MAX7219 devices with `luma`.
+   This is the Pi side. It receives frames, handles mapping, and writes to the MAX7219 chain with `luma`.
 3. `packages/shared`
-   Owns the contract: frame shape, message types, and protocol examples.
+   This is where the shared message format and protocol notes live.
 
-## Initial Direction
+## How It Works
 
-The first goal is a simple real-time pipeline:
+The basic flow is pretty simple:
 
 1. Start the browser editor on the PC.
 2. Draw pixels in the desktop app.
@@ -35,11 +35,17 @@ The first goal is a simple real-time pipeline:
 4. Validate and decode frames on the Pi.
 5. Render those frames through `luma`.
 
-## Next Build Steps
+## Right Now
 
-1. Start the desktop app from `apps/desktop`.
-2. Start the Pi controller from `apps/pi-controller`.
-3. Fill in `mapping.py` for your exact panel order and rotation.
-4. Add a small animation/test pattern tool for hardware bring-up.
+The current version is enough to:
+
+1. run the editor locally
+2. connect to the Pi over WebSocket
+3. draw live on the matrix display
+4. tune panel order and rotation in config
+
+There is still more to build, especially around brightness, saving drawings, and boot-time startup on the Pi.
 
 See [docs/architecture.md](/z:/Project%20Fifo/Project-Fifo/docs/architecture.md) for the data flow and [apps/pi-controller/README.md](/z:/Project%20Fifo/Project-Fifo/apps/pi-controller/README.md) for Pi-specific setup.
+
+The running TODO list is in [TODO.md](/z:/Project%20Fifo/Project-Fifo/TODO.md).

@@ -2,7 +2,7 @@
 
 ## What the Pi runs
 
-The Pi side runs a Python WebSocket server from `apps/pi-controller/src/server.py`. That server receives frame messages from the browser app and renders them through `luma.led_matrix`.
+The Pi runs a small Python WebSocket server from `apps/pi-controller/src/server.py`. That server receives frames from the browser app and renders them through `luma.led_matrix`.
 
 ## 1. Enable SPI on the Pi
 
@@ -20,7 +20,7 @@ Then:
 
 ## 2. Clone or copy this repo onto the Pi
 
-Put the repo somewhere convenient, for example:
+Put the repo somewhere convenient. Home directory is fine:
 
 ```bash
 cd ~
@@ -44,9 +44,9 @@ cp apps/pi-controller/config.example.json apps/pi-controller/config.json
 
 ## 5. Edit the Pi config
 
-Open `apps/pi-controller/config.json` and set the values for your hardware.
+Open `apps/pi-controller/config.json` and set it to match your hardware.
 
-Important fields:
+The main fields to care about are:
 
 - `host`: usually `0.0.0.0` so the desktop app can connect over the network
 - `port`: default is `8765`
@@ -110,7 +110,7 @@ ws://192.168.1.50:8765
 
 ## 8. Test from the desktop app
 
-Start the browser editor on your PC, connect to the Pi endpoint, and use:
+Start the browser editor on your PC, connect to the Pi endpoint, and try:
 
 - `Fill` to confirm every pixel turns on
 - `Clear` to confirm every pixel turns off
@@ -118,18 +118,18 @@ Start the browser editor on your PC, connect to the Pi endpoint, and use:
 
 ## If the display is wrong
 
-There are two layers to adjust:
+There are two main places to adjust things:
 
 1. `apps/pi-controller/config.json`
 2. `apps/pi-controller/src/mapping.py`
 
-Start with `rotate`, `block_orientation`, and `reverse_order`. If the image is still scrambled after that, update `mapping.py` to reflect your physical wiring order.
+Start with `rotate`, `block_orientation`, and `reverse_order`. If the image is still scrambled after that, `mapping.py` is where the custom fixes belong.
 
 ## Common Issues And Fixes
 
 ### Error: `ModuleNotFoundError: No module named 'spidev'`
 
-Cause:
+What it means:
 The Python SPI binding is not installed in the virtual environment.
 
 Fix:
@@ -149,7 +149,7 @@ pip install spidev
 
 ### Drawing starts on the wrong physical module
 
-Cause:
+What it usually means:
 The panel chain order is reversed compared with the logical grid.
 
 Fix in `apps/pi-controller/config.json`:
@@ -160,8 +160,8 @@ Fix in `apps/pi-controller/config.json`:
 
 ### The image is rotated even though the connection works
 
-Cause:
-The panel orientation is wrong, but the network path is fine.
+What it usually means:
+The panel orientation is wrong, but the network path itself is fine.
 
 Fix in `apps/pi-controller/config.json`:
 
@@ -170,8 +170,7 @@ Fix in `apps/pi-controller/config.json`:
 
 ### The desktop app connects, but the LEDs stay dark
 
-Cause:
-Usually one of these:
+The usual causes are:
 
 - SPI is not enabled on the Pi
 - wiring for `DIN`, `CS`, or `CLK` is wrong
@@ -185,7 +184,7 @@ Fix:
 
 ### Pressing `Ctrl+C` shows a traceback when stopping the server
 
-Cause:
+What it means:
 The server exits through `KeyboardInterrupt` while cancelling the long-running asyncio wait.
 
 Fix:

@@ -12,7 +12,7 @@ This app hosts the browser-based pixel editor used on your PC.
 
 ## Current Implementation
 
-The first working version uses plain HTML, CSS, and JavaScript with no frontend build step. That keeps setup simple while we validate the network flow and LED mapping.
+The first working version uses plain HTML, CSS, and JavaScript with no frontend build step. That keeps setup simple while I validate the network flow and LED mapping.
 
 ## Files
 

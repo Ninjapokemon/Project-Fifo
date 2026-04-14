@@ -1,8 +1,8 @@
 # Pi Controller
 
-This app runs on the Raspberry Pi and drives chained MAX7219 matrices through `luma.led_matrix`.
+This is the Raspberry Pi side of the project. It listens for frames from the desktop app and pushes them to the MAX7219 chain through `luma.led_matrix`.
 
-## Responsibilities
+## What Lives Here
 
 - accept frame messages from the desktop app
 - validate payload shape
@@ -26,7 +26,7 @@ This project uses:
 - `spidev`
 - `websockets`
 
-You can add systemd service wiring later after the basic loop is working.
+Once the basics are solid, this is also the place to add `systemd` startup and any Pi-specific setup helpers.
 
 ## Common Issues
 
@@ -51,7 +51,7 @@ pip install spidev
 
 ### The browser connects, but drawing starts on the wrong module
 
-This usually means the MAX7219 chain order is reversed.
+This usually means the MAX7219 chain order is backwards from what the app expects.
 
 Fix in `config.json`:
 
@@ -61,7 +61,7 @@ Fix in `config.json`:
 
 ### The pixels show up rotated or twisted across the two modules
 
-This is usually an orientation issue rather than a networking issue.
+If the app connects and pixels show up, but they are twisted or rotated, that is usually a panel orientation problem and not a network problem.
 
 Fix in `config.json`:
 
@@ -70,4 +70,4 @@ Fix in `config.json`:
 
 ### `Ctrl+C` prints a traceback when stopping the server
 
-That is currently expected. The server waits forever with `asyncio.Future()`, so `Ctrl+C` cancels that wait and Python prints a `KeyboardInterrupt` traceback while exiting. It is noisy, but not a bug.
+That is expected right now. The server waits forever with `asyncio.Future()`, so `Ctrl+C` cancels that wait and Python prints a `KeyboardInterrupt` traceback on the way out. It looks ugly, but it does not mean the server is broken.

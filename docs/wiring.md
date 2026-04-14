@@ -4,11 +4,11 @@ This project assumes MAX7219 LED matrices connected to a Raspberry Pi and driven
 
 Typical SPI wiring:
 
-- `VCC` -> `5V`
-- `GND` -> `GND`
-- `DIN` -> `MOSI`
-- `CS` -> `CE0`
-- `CLK` -> `SCLK`
+- `VCC` -> `5V` (Pin 2 or 4)
+- `GND` -> `GND` (Pin 6)
+- `DIN` -> `MOSI` (Pin 19)
+- `CS` -> `CE0` (Pin 24)
+- `CLK` -> `SCLK` (Pin 23)
 
 ## Reminder
 
