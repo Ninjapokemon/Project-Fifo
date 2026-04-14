@@ -7,7 +7,7 @@ import websockets
 
 from config import load_config
 from display import MatrixDisplay
-from protocol import ProtocolError, validate_frame_message
+from protocol import ProtocolError, validate_brightness_message, validate_frame_message
 
 
 async def handle_connection(websocket, display: MatrixDisplay) -> None:
@@ -16,6 +16,18 @@ async def handle_connection(websocket, display: MatrixDisplay) -> None:
             message = json.loads(raw_message)
             if message.get("type") == "clear":
                 display.clear()
+                continue
+            if message.get("type") == "brightness":
+                brightness = validate_brightness_message(message)
+                applied_value = display.set_brightness(brightness["value"])
+                await websocket.send(
+                    json.dumps(
+                        {
+                            "type": "brightness",
+                            "value": applied_value,
+                        }
+                    )
+                )
                 continue
 
             frame = validate_frame_message(message)
@@ -45,4 +57,7 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Shutting down Project Fifo controller.")

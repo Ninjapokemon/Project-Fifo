@@ -207,6 +207,38 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.tool-settings {
+  margin-top: 14px;
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.field.grow {
+  flex: 1 1 260px;
+}
+
+.brightness-field {
+  min-width: 220px;
+}
+
+.brightness-control {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.brightness-control input[type="range"] {
+  flex: 1 1 auto;
+  accent-color: var(--accent);
+  padding: 0;
+}
+
+.brightness-control input[type="number"] {
+  width: 76px;
+}
+
 .workspace {
   overflow: hidden;
 }
@@ -311,6 +343,7 @@ code {
 
   .button-row,
   .grid-settings,
+  .tool-settings,
   .grid-header,
   .console-header {
     flex-direction: column;

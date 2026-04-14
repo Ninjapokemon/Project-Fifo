@@ -5,6 +5,7 @@ This is the Raspberry Pi side of the project. It listens for frames from the des
 ## What Lives Here
 
 - accept frame messages from the desktop app
+- accept brightness messages from the desktop app
 - validate payload shape
 - map logical pixels to the physical panel arrangement
 - render frames to the hardware device
@@ -27,6 +28,8 @@ This project uses:
 - `websockets`
 
 Once the basics are solid, this is also the place to add `systemd` startup and any Pi-specific setup helpers.
+
+Brightness messages use the same WebSocket connection as frames and are clamped to the MAX7219 `0-15` range on the Pi before being applied.
 
 ## Common Issues
 

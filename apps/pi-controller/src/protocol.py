@@ -7,6 +7,10 @@ class ProtocolError(ValueError):
     pass
 
 
+def clamp_brightness_value(value: int) -> int:
+    return max(0, min(15, value))
+
+
 def validate_frame_message(message: dict[str, Any]) -> dict[str, Any]:
     if message.get("type") != "frame":
         raise ProtocolError("Unsupported message type")
@@ -36,4 +40,19 @@ def validate_frame_message(message: dict[str, Any]) -> dict[str, Any]:
         "width": width,
         "height": height,
         "pixels": normalized_pixels,
+    }
+
+
+def validate_brightness_message(message: dict[str, Any]) -> dict[str, Any]:
+    if message.get("type") != "brightness":
+        raise ProtocolError("Unsupported message type")
+
+    value = message.get("value")
+    if not isinstance(value, int):
+        raise ProtocolError("brightness value must be an integer")
+
+    return {
+        "type": "brightness",
+        "version": 1,
+        "value": clamp_brightness_value(value),
     }

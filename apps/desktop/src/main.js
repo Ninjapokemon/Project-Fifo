@@ -1,11 +1,16 @@
 const DEFAULT_WIDTH = 32;
 const DEFAULT_HEIGHT = 8;
 const SEND_DELAY_MS = 40;
+const DEFAULT_BRIGHTNESS = 3;
+const MIN_BRIGHTNESS = 0;
+const MAX_BRIGHTNESS = 15;
 
 const state = {
   width: DEFAULT_WIDTH,
   height: DEFAULT_HEIGHT,
   pixels: Array(DEFAULT_WIDTH * DEFAULT_HEIGHT).fill(0),
+  drawingName: "fifo-drawing",
+  brightness: DEFAULT_BRIGHTNESS,
   drawValue: 1,
   socket: null,
   sendTimer: null,
@@ -20,11 +25,17 @@ const elements = {
   gridWidth: document.querySelector("#gridWidth"),
   gridHeight: document.querySelector("#gridHeight"),
   resizeButton: document.querySelector("#resizeButton"),
+  drawingName: document.querySelector("#drawingName"),
+  brightnessRange: document.querySelector("#brightnessRange"),
+  brightnessValue: document.querySelector("#brightnessValue"),
   paintModeButton: document.querySelector("#paintModeButton"),
   eraseModeButton: document.querySelector("#eraseModeButton"),
   clearButton: document.querySelector("#clearButton"),
   fillButton: document.querySelector("#fillButton"),
   checkerButton: document.querySelector("#checkerButton"),
+  saveButton: document.querySelector("#saveButton"),
+  loadButton: document.querySelector("#loadButton"),
+  loadInput: document.querySelector("#loadInput"),
   sendButton: document.querySelector("#sendButton"),
   grid: document.querySelector("#grid"),
   gridMeta: document.querySelector("#gridMeta"),
@@ -120,6 +131,27 @@ function buildFrameMessage() {
   };
 }
 
+function buildBrightnessMessage() {
+  return {
+    type: "brightness",
+    version: 1,
+    value: state.brightness,
+  };
+}
+
+function clampBrightness(value) {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_BRIGHTNESS;
+  }
+
+  return Math.max(MIN_BRIGHTNESS, Math.min(MAX_BRIGHTNESS, Math.round(value)));
+}
+
+function sanitizeDrawingName(value) {
+  const trimmed = value.trim();
+  return trimmed || "fifo-drawing";
+}
+
 function sendMessage(message) {
   if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
     return false;
@@ -174,6 +206,16 @@ function resizeGrid() {
   log(`Resized grid to ${width}x${height}.`);
 }
 
+function applyDrawing(frame, reason) {
+  state.width = frame.width;
+  state.height = frame.height;
+  state.pixels = [...frame.pixels];
+  elements.gridWidth.value = String(frame.width);
+  elements.gridHeight.value = String(frame.height);
+  renderGrid();
+  scheduleFrameSend(reason);
+}
+
 function setAllPixels(value) {
   state.pixels = Array(state.width * state.height).fill(value);
   syncGridDom();
@@ -188,6 +230,100 @@ function applyCheckerPattern() {
   });
   syncGridDom();
   scheduleFrameSend("checker pattern");
+}
+
+function syncBrightnessInputs() {
+  elements.brightnessRange.value = String(state.brightness);
+  elements.brightnessValue.value = String(state.brightness);
+}
+
+function setBrightness(value, reason) {
+  const brightness = clampBrightness(value);
+  const previous = state.brightness;
+  state.brightness = brightness;
+  syncBrightnessInputs();
+
+  if (previous === brightness) {
+    return;
+  }
+
+  const sent = sendMessage(buildBrightnessMessage());
+  if (sent) {
+    log(`Set brightness to ${brightness} after ${reason}.`);
+    return;
+  }
+
+  log(`Brightness set to ${brightness} locally. Connect to send it to the Pi.`);
+}
+
+function triggerDownload(filename, content) {
+  const blob = new Blob([content], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  window.setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 0);
+}
+
+function saveDrawing() {
+  state.drawingName = sanitizeDrawingName(elements.drawingName.value);
+  elements.drawingName.value = state.drawingName;
+
+  const drawing = {
+    name: state.drawingName,
+    ...buildFrameMessage(),
+  };
+  const safeFilename = state.drawingName.replace(/[^a-z0-9-_]+/gi, "-").replace(/^-+|-+$/g, "") || "fifo-drawing";
+  triggerDownload(`${safeFilename}.json`, `${JSON.stringify(drawing, null, 2)}\n`);
+  log(`Saved drawing "${state.drawingName}" to JSON.`);
+}
+
+function validateLoadedDrawing(data) {
+  if (!data || typeof data !== "object") {
+    throw new Error("Drawing file must contain a JSON object.");
+  }
+
+  const width = data.width;
+  const height = data.height;
+  const pixels = data.pixels;
+
+  if (!Number.isInteger(width) || width <= 0) {
+    throw new Error("Drawing width must be a positive integer.");
+  }
+  if (!Number.isInteger(height) || height <= 0) {
+    throw new Error("Drawing height must be a positive integer.");
+  }
+  if (!Array.isArray(pixels) || pixels.length !== width * height) {
+    throw new Error("Drawing pixels must match width * height.");
+  }
+
+  const normalizedPixels = pixels.map((value) => {
+    if (value !== 0 && value !== 1) {
+      throw new Error("Drawing pixels must contain only 0 or 1.");
+    }
+    return value;
+  });
+
+  return {
+    name: typeof data.name === "string" ? sanitizeDrawingName(data.name) : "fifo-drawing",
+    width,
+    height,
+    pixels: normalizedPixels,
+  };
+}
+
+async function loadDrawingFromFile(file) {
+  const content = await file.text();
+  const data = JSON.parse(content);
+  const drawing = validateLoadedDrawing(data);
+
+  state.drawingName = drawing.name;
+  elements.drawingName.value = drawing.name;
+  applyDrawing(drawing, "load");
+  log(`Loaded drawing "${drawing.name}" (${drawing.width}x${drawing.height}).`);
 }
 
 function connect() {
@@ -213,6 +349,8 @@ function connect() {
     log(`Connected to ${endpoint}.`);
     sendMessage(buildFrameMessage());
     log("Sent initial frame after connect.");
+    sendMessage(buildBrightnessMessage());
+    log(`Sent brightness ${state.brightness} after connect.`);
   });
 
   socket.addEventListener("close", () => {
@@ -261,6 +399,16 @@ function bindEvents() {
   elements.connectButton.addEventListener("click", connect);
   elements.disconnectButton.addEventListener("click", disconnect);
   elements.resizeButton.addEventListener("click", resizeGrid);
+  elements.drawingName.addEventListener("change", () => {
+    state.drawingName = sanitizeDrawingName(elements.drawingName.value);
+    elements.drawingName.value = state.drawingName;
+  });
+  elements.brightnessRange.addEventListener("input", () => {
+    setBrightness(Number(elements.brightnessRange.value), "slider change");
+  });
+  elements.brightnessValue.addEventListener("change", () => {
+    setBrightness(Number(elements.brightnessValue.value), "number change");
+  });
   elements.paintModeButton.addEventListener("click", () => {
     state.drawValue = 1;
     updateModeButtons();
@@ -278,6 +426,25 @@ function bindEvents() {
     applyCheckerPattern();
     log("Applied checker pattern.");
   });
+  elements.saveButton.addEventListener("click", saveDrawing);
+  elements.loadButton.addEventListener("click", () => {
+    elements.loadInput.click();
+  });
+  elements.loadInput.addEventListener("change", async () => {
+    const [file] = elements.loadInput.files;
+    if (!file) {
+      return;
+    }
+
+    try {
+      await loadDrawingFromFile(file);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load drawing.";
+      log(message);
+    } finally {
+      elements.loadInput.value = "";
+    }
+  });
   elements.sendButton.addEventListener("click", sendCurrentFrame);
   elements.clearLogButton.addEventListener("click", () => {
     elements.logOutput.textContent = "";
@@ -292,6 +459,10 @@ function bindEvents() {
 }
 
 function init() {
+  elements.gridWidth.value = String(state.width);
+  elements.gridHeight.value = String(state.height);
+  elements.drawingName.value = state.drawingName;
+  syncBrightnessInputs();
   renderGrid();
   updateModeButtons();
   bindEvents();

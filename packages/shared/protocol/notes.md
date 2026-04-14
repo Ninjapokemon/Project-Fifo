@@ -5,10 +5,11 @@
 - Use JSON for simplicity while iterating.
 - Send full frames from the desktop app.
 - Keep `pixels` as a flat row-major array of `0` and `1`.
+- Support `brightness` messages with a `value` clamped to the MAX7219 `0-15` range.
 
 ## Future Improvements
 
 - bit-packed payloads
 - delta updates
-- brightness and animation commands
+- animation commands
 - device health and acknowledgement messages

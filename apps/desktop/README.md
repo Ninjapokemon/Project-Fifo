@@ -8,6 +8,8 @@ This app hosts the browser-based pixel editor used on your PC.
 - let the user paint or erase cells
 - preview the current frame
 - connect to the Pi by IP or hostname
+- save and load drawings as JSON files
+- change MAX7219 brightness from the browser
 - send frame messages using the shared protocol
 
 ## Current Implementation
@@ -39,5 +41,7 @@ Then open `http://localhost:4173`.
 2. Match the grid size to your matrix chain.
 3. Click `Connect`.
 4. Draw on the grid to stream frames to the Pi.
+5. Use `Brightness` to update LED intensity without editing Pi config.
+6. Use `Save` and `Load` to move drawings in and out as JSON files.
 
 Left click paints. Right click erases. `Clear`, `Fill`, and `Checker` are included for quick testing.

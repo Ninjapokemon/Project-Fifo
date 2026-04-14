@@ -46,18 +46,35 @@
           <button id="resizeButton" type="button">Resize Grid</button>
         </div>
 
+        <div class="tool-settings">
+          <label class="field grow">
+            <span>Drawing Name</span>
+            <input id="drawingName" type="text" value="fifo-drawing" maxlength="80" />
+          </label>
+          <label class="field brightness-field">
+            <span>Brightness</span>
+            <div class="brightness-control">
+              <input id="brightnessRange" type="range" min="0" max="15" step="1" value="3" />
+              <input id="brightnessValue" type="number" min="0" max="15" step="1" value="3" />
+            </div>
+          </label>
+        </div>
+
         <div class="button-row wrap">
           <button id="paintModeButton" type="button">Paint Mode</button>
           <button id="eraseModeButton" type="button" class="secondary">Erase Mode</button>
           <button id="clearButton" type="button" class="secondary">Clear</button>
           <button id="fillButton" type="button" class="secondary">Fill</button>
           <button id="checkerButton" type="button" class="secondary">Checker</button>
+          <button id="saveButton" type="button" class="secondary">Save</button>
+          <button id="loadButton" type="button" class="secondary">Load</button>
           <button id="sendButton" type="button" class="secondary">Send Now</button>
         </div>
 
         <p class="hint">
-          Left click paints. Right click erases. Drag to draw continuously.
+          Left click paints. Right click erases. Drag to draw continuously. Save and load use JSON files.
         </p>
+        <input id="loadInput" type="file" accept="application/json,.json" hidden />
       </section>
 
       <section class="panel workspace">

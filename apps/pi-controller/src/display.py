@@ -5,6 +5,7 @@ from luma.core.render import canvas
 from luma.led_matrix.device import max7219
 
 from mapping import logical_to_physical
+from protocol import clamp_brightness_value
 
 
 class MatrixDisplay:
@@ -20,7 +21,15 @@ class MatrixDisplay:
             block_orientation=config.get("block_orientation", 90),
             reverse_order=config.get("reverse_order", False),
         )
-        self.device.contrast(config.get("brightness", 3) * 16)
+        self.brightness = 0
+        self.set_brightness(config.get("brightness", 3))
+
+    def set_brightness(self, value: int) -> int:
+        self.brightness = clamp_brightness_value(value)
+        # luma expects contrast in the 0-255 range while MAX7219 brightness is 0-15.
+        contrast = round((self.brightness / 15) * 255) if self.brightness > 0 else 0
+        self.device.contrast(contrast)
+        return self.brightness
 
     def render_frame(self, pixels: list[int], width: int, height: int) -> None:
         if width != self.width or height != self.height:

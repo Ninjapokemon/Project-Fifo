@@ -11,4 +11,14 @@ export type ClearMessage = {
   version: 1;
 };
 
-export type ClientMessage = FrameMessage | ClearMessage;
+export type BrightnessMessage = {
+  type: "brightness";
+  version: 1;
+  value: number;
+};
+
+export type SavedDrawing = FrameMessage & {
+  name: string;
+};
+
+export type ClientMessage = FrameMessage | ClearMessage | BrightnessMessage;
