@@ -32,14 +32,12 @@ class MatrixDisplay:
         return self.brightness
 
     def render_frame(self, pixels: list[int], width: int, height: int) -> None:
-        if width != self.width or height != self.height:
-            raise ValueError(
-                f"Frame dimensions {width}x{height} do not match display {self.width}x{self.height}"
-            )
-
         with canvas(self.device) as draw:
-            for y in range(height):
-                for x in range(width):
+            clipped_width = min(width, self.width)
+            clipped_height = min(height, self.height)
+
+            for y in range(clipped_height):
+                for x in range(clipped_width):
                     if pixels[(y * width) + x] != 1:
                         continue
                     physical_x, physical_y = logical_to_physical(x, y, width, height)
