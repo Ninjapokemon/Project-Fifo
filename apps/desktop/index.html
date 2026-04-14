@@ -68,11 +68,25 @@
           <button id="checkerButton" type="button" class="secondary">Checker</button>
           <button id="saveButton" type="button" class="secondary">Save</button>
           <button id="loadButton" type="button" class="secondary">Load</button>
+          <button id="saveToPiButton" type="button" class="secondary">Save To Pi</button>
           <button id="sendButton" type="button" class="secondary">Send Now</button>
         </div>
 
+        <div class="tool-settings">
+          <label class="field grow">
+            <span>Pi Drawings</span>
+            <select id="piDrawingSelect">
+              <option value="">No Pi drawings loaded</option>
+            </select>
+          </label>
+          <div class="button-row">
+            <button id="refreshPiDrawingsButton" type="button" class="secondary">Refresh Pi List</button>
+            <button id="loadFromPiButton" type="button" class="secondary">Load From Pi</button>
+          </div>
+        </div>
+
         <p class="hint">
-          Left click paints. Right click erases. Drag to draw continuously. Save and load use JSON files.
+          Left click paints. Right click erases. Drag to draw continuously. Save and load use JSON files, and connected Pi storage can keep a drawing library on the device.
         </p>
         <input id="loadInput" type="file" accept="application/json,.json" hidden />
       </section>

@@ -7,6 +7,7 @@ This is the running list of what would make the project nicer to use and easier 
 ### Done
 
 - [x] Save and load drawings in the desktop app using browser JSON files
+- [x] Save and load drawings on the Pi over WebSocket
 - [x] Change brightness from the desktop app and apply it on the Pi
 - [x] Make Pi shutdown cleaner for `Ctrl+C` and service stops
 - [x] Start the Pi server automatically on boot with `systemd`
@@ -155,12 +156,12 @@ Status:
 - [x] add `Save` and `Load` actions in the desktop app
 - [x] store drawings as JSON files containing `name`, `width`, `height`, and `pixels`
 - [x] use browser file download/upload first for a simple implementation
-- [ ] add a Pi-side save/load path so drawings can live on the Pi itself
+- [x] add a Pi-side save/load path so drawings can live on the Pi itself
 - [ ] optionally add local browser storage later for quick autosave
 
 Notes:
 - [x] use the existing frame message shape to keep the format simple
-- [ ] Pi-side storage would be useful for keeping a small library of drawings with the hardware
+- [x] Pi-side storage would be useful for keeping a small library of drawings with the hardware
 - [x] reject files whose width and height do not match the current data shape unless the app resizes automatically
 
 ### Brightness control

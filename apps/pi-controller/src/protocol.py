@@ -56,3 +56,39 @@ def validate_brightness_message(message: dict[str, Any]) -> dict[str, Any]:
         "version": 1,
         "value": clamp_brightness_value(value),
     }
+
+
+def validate_named_drawing(message: dict[str, Any], expected_type: str = "save_drawing") -> dict[str, Any]:
+    if message.get("type") != expected_type:
+        raise ProtocolError("Unsupported message type")
+
+    name = message.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ProtocolError("drawing name must be a non-empty string")
+
+    frame = validate_frame_message(
+        {
+            "type": "frame",
+            "version": 1,
+            "width": message.get("width"),
+            "height": message.get("height"),
+            "pixels": message.get("pixels"),
+        }
+    )
+    frame["name"] = name.strip()
+    return frame
+
+
+def validate_drawing_name_message(message: dict[str, Any], expected_type: str) -> dict[str, Any]:
+    if message.get("type") != expected_type:
+        raise ProtocolError("Unsupported message type")
+
+    name = message.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ProtocolError("drawing name must be a non-empty string")
+
+    return {
+        "type": expected_type,
+        "version": 1,
+        "name": name.strip(),
+    }

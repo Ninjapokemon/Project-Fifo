@@ -21,4 +21,26 @@ export type SavedDrawing = FrameMessage & {
   name: string;
 };
 
-export type ClientMessage = FrameMessage | ClearMessage | BrightnessMessage;
+export type SaveDrawingMessage = SavedDrawing & {
+  type: "save_drawing";
+  version: 1;
+};
+
+export type LoadDrawingMessage = {
+  type: "load_drawing";
+  version: 1;
+  name: string;
+};
+
+export type ListDrawingsMessage = {
+  type: "list_drawings";
+  version: 1;
+};
+
+export type ClientMessage =
+  | FrameMessage
+  | ClearMessage
+  | BrightnessMessage
+  | SaveDrawingMessage
+  | LoadDrawingMessage
+  | ListDrawingsMessage;

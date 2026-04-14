@@ -8,6 +8,7 @@ Today it is mostly a networked renderer. The longer-term goal is for it to becom
 
 - accept frame messages from the desktop app
 - accept brightness messages from the desktop app
+- store saved drawings on the Pi and send them back on request
 - validate payload shape
 - map logical pixels to the physical panel arrangement
 - render frames to the hardware device
@@ -21,6 +22,7 @@ Today it is mostly a networked renderer. The longer-term goal is for it to becom
 - `src/protocol.py`: message validation helpers
 - `src/display.py`: `luma` device wrapper
 - `src/mapping.py`: logical-to-physical coordinate translation
+- `src/storage.py`: Pi-side drawing library storage
 - `config.example.json`: template for local hardware settings
 - `project-fifo.service`: `systemd` unit template for boot-time startup
 
@@ -36,6 +38,8 @@ This project uses:
 Once the basics are solid, this is also the place to add `systemd` startup and any Pi-specific setup helpers.
 
 Brightness messages use the same WebSocket connection as frames and are clamped to the MAX7219 `0-15` range on the Pi before being applied.
+
+Saved drawings are stored on the Pi under `apps/pi-controller/data/drawings` as JSON files. The desktop app can save to that directory, ask for the drawing list, and load a stored drawing back over WebSocket.
 
 ## Future Runtime Direction
 

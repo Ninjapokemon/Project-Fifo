@@ -44,7 +44,8 @@ The current version is enough to:
 1. run the editor locally
 2. connect to the Pi over WebSocket
 3. draw live on the matrix display
-4. tune panel order and rotation in config
+4. save drawings locally or on the Pi
+5. tune panel order and rotation in config
 
 There is still more to build, especially around brightness, saving drawings, and boot-time startup on the Pi.
 

@@ -10,6 +10,7 @@ const state = {
   height: DEFAULT_HEIGHT,
   pixels: Array(DEFAULT_WIDTH * DEFAULT_HEIGHT).fill(0),
   drawingName: "fifo-drawing",
+  piDrawings: [],
   brightness: DEFAULT_BRIGHTNESS,
   drawValue: 1,
   socket: null,
@@ -35,6 +36,10 @@ const elements = {
   checkerButton: document.querySelector("#checkerButton"),
   saveButton: document.querySelector("#saveButton"),
   loadButton: document.querySelector("#loadButton"),
+  saveToPiButton: document.querySelector("#saveToPiButton"),
+  piDrawingSelect: document.querySelector("#piDrawingSelect"),
+  refreshPiDrawingsButton: document.querySelector("#refreshPiDrawingsButton"),
+  loadFromPiButton: document.querySelector("#loadFromPiButton"),
   loadInput: document.querySelector("#loadInput"),
   sendButton: document.querySelector("#sendButton"),
   grid: document.querySelector("#grid"),
@@ -136,6 +141,32 @@ function buildBrightnessMessage() {
     type: "brightness",
     version: 1,
     value: state.brightness,
+  };
+}
+
+function buildSaveDrawingMessage() {
+  return {
+    type: "save_drawing",
+    version: 1,
+    name: state.drawingName,
+    width: state.width,
+    height: state.height,
+    pixels: state.pixels,
+  };
+}
+
+function buildListDrawingsMessage() {
+  return {
+    type: "list_drawings",
+    version: 1,
+  };
+}
+
+function buildLoadDrawingMessage(name) {
+  return {
+    type: "load_drawing",
+    version: 1,
+    name,
   };
 }
 
@@ -281,6 +312,74 @@ function saveDrawing() {
   log(`Saved drawing "${state.drawingName}" to JSON.`);
 }
 
+function syncPiDrawingOptions() {
+  const previousValue = elements.piDrawingSelect.value;
+  elements.piDrawingSelect.innerHTML = "";
+
+  if (state.piDrawings.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No Pi drawings loaded";
+    elements.piDrawingSelect.appendChild(option);
+    elements.piDrawingSelect.value = "";
+    return;
+  }
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select a Pi drawing";
+  elements.piDrawingSelect.appendChild(placeholder);
+
+  state.piDrawings.forEach((name) => {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    elements.piDrawingSelect.appendChild(option);
+  });
+
+  if (state.piDrawings.includes(previousValue)) {
+    elements.piDrawingSelect.value = previousValue;
+  } else {
+    elements.piDrawingSelect.value = "";
+  }
+}
+
+function requestPiDrawingList(reason) {
+  const sent = sendMessage(buildListDrawingsMessage());
+  if (sent) {
+    log(`Requested Pi drawing list after ${reason}.`);
+  } else {
+    log("Not connected. Could not request Pi drawing list.");
+  }
+}
+
+function saveDrawingToPi() {
+  state.drawingName = sanitizeDrawingName(elements.drawingName.value);
+  elements.drawingName.value = state.drawingName;
+
+  const sent = sendMessage(buildSaveDrawingMessage());
+  if (sent) {
+    log(`Sent drawing "${state.drawingName}" to the Pi for storage.`);
+  } else {
+    log("Not connected. Could not save drawing to the Pi.");
+  }
+}
+
+function loadDrawingFromPi() {
+  const drawingName = elements.piDrawingSelect.value;
+  if (!drawingName) {
+    log("Pick a Pi drawing first.");
+    return;
+  }
+
+  const sent = sendMessage(buildLoadDrawingMessage(drawingName));
+  if (sent) {
+    log(`Requested drawing "${drawingName}" from the Pi.`);
+  } else {
+    log("Not connected. Could not load drawing from the Pi.");
+  }
+}
+
 function validateLoadedDrawing(data) {
   if (!data || typeof data !== "object") {
     throw new Error("Drawing file must contain a JSON object.");
@@ -326,6 +425,61 @@ async function loadDrawingFromFile(file) {
   log(`Loaded drawing "${drawing.name}" (${drawing.width}x${drawing.height}).`);
 }
 
+function handleServerMessage(message) {
+  if (!message || typeof message !== "object") {
+    log("Pi sent an unsupported message.");
+    return;
+  }
+
+  if (message.type === "error") {
+    log(`Pi error: ${message.message}`);
+    return;
+  }
+
+  if (message.type === "brightness" && Number.isInteger(message.value)) {
+    state.brightness = clampBrightness(message.value);
+    syncBrightnessInputs();
+    log(`Pi brightness is now ${state.brightness}.`);
+    return;
+  }
+
+  if (message.type === "drawings_list" && Array.isArray(message.drawings)) {
+    state.piDrawings = message.drawings
+      .filter((value) => typeof value === "string")
+      .map((value) => sanitizeDrawingName(value));
+    syncPiDrawingOptions();
+    log(`Pi has ${state.piDrawings.length} saved drawing${state.piDrawings.length === 1 ? "" : "s"}.`);
+    return;
+  }
+
+  if (message.type === "drawing_saved" && typeof message.name === "string") {
+    const savedName = sanitizeDrawingName(message.name);
+    if (!state.piDrawings.includes(savedName)) {
+      state.piDrawings = [...state.piDrawings, savedName].sort((left, right) => left.localeCompare(right));
+      syncPiDrawingOptions();
+    }
+    log(`Pi saved drawing "${savedName}".`);
+    return;
+  }
+
+  if (message.type === "drawing") {
+    try {
+      const drawing = validateLoadedDrawing(message);
+      state.drawingName = drawing.name;
+      elements.drawingName.value = drawing.name;
+      applyDrawing(drawing, "Pi load");
+      log(`Loaded drawing "${drawing.name}" from the Pi.`);
+      return;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to load drawing from the Pi.";
+      log(errorMessage);
+      return;
+    }
+  }
+
+  log(`Pi says: ${JSON.stringify(message)}`);
+}
+
 function connect() {
   if (state.socket && state.socket.readyState === WebSocket.OPEN) {
     log("Already connected.");
@@ -351,6 +505,7 @@ function connect() {
     log("Sent initial frame after connect.");
     sendMessage(buildBrightnessMessage());
     log(`Sent brightness ${state.brightness} after connect.`);
+    requestPiDrawingList("connect");
   });
 
   socket.addEventListener("close", () => {
@@ -367,7 +522,11 @@ function connect() {
   });
 
   socket.addEventListener("message", (event) => {
-    log(`Pi says: ${event.data}`);
+    try {
+      handleServerMessage(JSON.parse(event.data));
+    } catch (error) {
+      log(`Pi says: ${event.data}`);
+    }
   });
 }
 
@@ -430,6 +589,11 @@ function bindEvents() {
   elements.loadButton.addEventListener("click", () => {
     elements.loadInput.click();
   });
+  elements.saveToPiButton.addEventListener("click", saveDrawingToPi);
+  elements.refreshPiDrawingsButton.addEventListener("click", () => {
+    requestPiDrawingList("manual refresh");
+  });
+  elements.loadFromPiButton.addEventListener("click", loadDrawingFromPi);
   elements.loadInput.addEventListener("change", async () => {
     const [file] = elements.loadInput.files;
     if (!file) {
@@ -463,6 +627,7 @@ function init() {
   elements.gridHeight.value = String(state.height);
   elements.drawingName.value = state.drawingName;
   syncBrightnessInputs();
+  syncPiDrawingOptions();
   renderGrid();
   updateModeButtons();
   bindEvents();

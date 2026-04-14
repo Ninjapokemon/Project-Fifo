@@ -13,6 +13,7 @@ For now it is the main editing interface. Long term, it is intended to become th
 - save and load drawings as JSON files
 - change MAX7219 brightness from the browser
 - send frame messages using the shared protocol
+- save drawings to the connected Pi and load them back later
 - eventually edit named animations and preview them before sending or uploading to the Pi
 - eventually manage project files that can be deployed to the Pi runtime
 
@@ -55,6 +56,7 @@ Then open `http://localhost:4173`.
 4. Draw on the grid to stream frames to the Pi.
 5. Use `Brightness` to update LED intensity without editing Pi config.
 6. Use `Save` and `Load` to move drawings in and out as JSON files.
+7. Use `Save To Pi`, `Refresh Pi List`, and `Load From Pi` to keep drawings on the connected Pi.
 
 Left click paints. Right click erases. `Clear`, `Fill`, and `Checker` are included for quick testing.
 
