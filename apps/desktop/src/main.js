@@ -15,7 +15,10 @@ const PANEL_INDEX_TEST_FPS = 2;
 const HISTORY_LIMIT = 48;
 const AUTOSAVE_STORAGE_KEY = "project-fifo.autosave";
 const PI_ENDPOINTS_STORAGE_KEY = "project-fifo.pi-endpoints";
+const PIXEL_COLOR_STORAGE_KEY = "project-fifo.pixel-color";
 const DEFAULT_ENDPOINT_NAME = "Workshop Pi";
+const DEFAULT_PIXEL_COLOR = "#7CF7D4";
+const PIXEL_CELL_SIZE = 28;
 
 const state = {
   width: DEFAULT_WIDTH,
@@ -26,6 +29,7 @@ const state = {
   piDrawings: [],
   savedEndpoints: [],
   brightness: DEFAULT_BRIGHTNESS,
+  pixelColor: DEFAULT_PIXEL_COLOR,
   drawValue: 1,
   socket: null,
   sendTimer: null,
@@ -58,6 +62,8 @@ const elements = {
   drawingName: document.querySelector("#drawingName"),
   brightnessRange: document.querySelector("#brightnessRange"),
   brightnessValue: document.querySelector("#brightnessValue"),
+  pixelColor: document.querySelector("#pixelColor"),
+  pixelColorValue: document.querySelector("#pixelColorValue"),
   paintModeButton: document.querySelector("#paintModeButton"),
   eraseModeButton: document.querySelector("#eraseModeButton"),
   undoButton: document.querySelector("#undoButton"),
@@ -113,6 +119,42 @@ function setAutosaveStatus(message) {
   elements.autosaveStatus.textContent = message;
 }
 
+function normalizeHexColor(value) {
+  if (typeof value !== "string") {
+    return DEFAULT_PIXEL_COLOR;
+  }
+
+  const normalized = value.trim().toUpperCase();
+  return /^#[0-9A-F]{6}$/.test(normalized) ? normalized : DEFAULT_PIXEL_COLOR;
+}
+
+function hexToRgb(color) {
+  const normalized = normalizeHexColor(color);
+  return {
+    r: Number.parseInt(normalized.slice(1, 3), 16),
+    g: Number.parseInt(normalized.slice(3, 5), 16),
+    b: Number.parseInt(normalized.slice(5, 7), 16),
+  };
+}
+
+function applyPixelColor() {
+  const color = normalizeHexColor(state.pixelColor);
+  const { r, g, b } = hexToRgb(color);
+  document.documentElement.style.setProperty("--pixel-on-color", color);
+  document.documentElement.style.setProperty("--pixel-on-glow", `rgba(${r}, ${g}, ${b}, 0.3)`);
+  elements.pixelColor.value = color;
+  elements.pixelColorValue.textContent = color;
+}
+
+function savePixelColorPreference() {
+  window.localStorage.setItem(PIXEL_COLOR_STORAGE_KEY, normalizeHexColor(state.pixelColor));
+}
+
+function loadPixelColorPreference() {
+  const savedColor = window.localStorage.getItem(PIXEL_COLOR_STORAGE_KEY);
+  state.pixelColor = normalizeHexColor(savedColor || DEFAULT_PIXEL_COLOR);
+}
+
 function updateGridMeta() {
   elements.gridMeta.textContent = `${state.width} x ${state.height}`;
 }
@@ -165,7 +207,7 @@ function createCell(x, y) {
 
 function renderGrid() {
   elements.grid.innerHTML = "";
-  elements.grid.style.gridTemplateColumns = `repeat(${state.width}, 24px)`;
+  elements.grid.style.gridTemplateColumns = `repeat(${state.width}, ${PIXEL_CELL_SIZE}px)`;
 
   for (let y = 0; y < state.height; y += 1) {
     for (let x = 0; x < state.width; x += 1) {
@@ -1125,6 +1167,11 @@ function bindEvents() {
   elements.brightnessValue.addEventListener("change", () => {
     setBrightness(Number(elements.brightnessValue.value), "number change");
   });
+  elements.pixelColor.addEventListener("input", () => {
+    state.pixelColor = normalizeHexColor(elements.pixelColor.value);
+    applyPixelColor();
+    savePixelColorPreference();
+  });
   elements.paintModeButton.addEventListener("click", () => {
     state.drawValue = 1;
     updateModeButtons();
@@ -1253,6 +1300,7 @@ function bindEvents() {
 
 function init() {
   loadSavedEndpoints();
+  loadPixelColorPreference();
   elements.gridWidth.value = String(state.width);
   elements.gridHeight.value = String(state.height);
   elements.drawingName.value = state.drawingName;
@@ -1263,6 +1311,7 @@ function init() {
     state.endpointName = state.savedEndpoints[0].name;
   }
   syncBrightnessInputs();
+  applyPixelColor();
   syncMovingDotInputs();
   syncPiDrawingOptions();
   syncSavedEndpointOptions();
