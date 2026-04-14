@@ -66,10 +66,27 @@
           <button id="clearButton" type="button" class="secondary">Clear</button>
           <button id="fillButton" type="button" class="secondary">Fill</button>
           <button id="checkerButton" type="button" class="secondary">Checker</button>
+          <button id="borderButton" type="button" class="secondary">Border</button>
+          <button id="horizontalLineButton" type="button" class="secondary">Horizontal Line</button>
+          <button id="verticalLineButton" type="button" class="secondary">Vertical Line</button>
+          <button id="movingDotButton" type="button" class="secondary">Moving Dot</button>
+          <button id="panelIndexTestButton" type="button" class="secondary">Panel Index Test</button>
+          <button id="stopPatternButton" type="button" class="secondary">Stop Pattern</button>
           <button id="saveButton" type="button" class="secondary">Save</button>
           <button id="loadButton" type="button" class="secondary">Load</button>
           <button id="saveToPiButton" type="button" class="secondary">Save To Pi</button>
           <button id="sendButton" type="button" class="secondary">Send Now</button>
+        </div>
+
+        <div class="tool-settings">
+          <label class="field compact">
+            <span>Moving Dot Speed</span>
+            <input id="movingDotSpeed" type="number" min="1" max="32" step="1" value="1" />
+          </label>
+          <label class="field compact">
+            <span>Moving Dot FPS</span>
+            <input id="movingDotFps" type="number" min="1" max="60" step="1" value="12" />
+          </label>
         </div>
 
         <div class="tool-settings">
@@ -86,7 +103,7 @@
         </div>
 
         <p class="hint">
-          Left click paints. Right click erases. Drag to draw continuously. Save and load use JSON files, and connected Pi storage can keep a drawing library on the device.
+          Left click paints. Right click erases. Drag to draw continuously. The test-pattern buttons are handy during mapping bring-up, and connected Pi storage can keep a drawing library on the device.
         </p>
         <input id="loadInput" type="file" accept="application/json,.json" hidden />
       </section>

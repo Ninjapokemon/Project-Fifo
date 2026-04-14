@@ -33,8 +33,8 @@ This is the running list of what would make the project nicer to use and easier 
 ### 1. Add more hardware test patterns
 
 Status:
-- [ ] add desktop buttons for `border`, `horizontal line`, `vertical line`, `moving dot`, and `panel index test`
-- [ ] use these patterns during mapping bring-up
+- [x] add desktop buttons for `border`, `horizontal line`, `vertical line`, `moving dot`, and `panel index test`
+- [x] use these patterns during mapping bring-up
 
 Done when:
 - the user can trigger each pattern from the desktop app

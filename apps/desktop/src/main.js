@@ -4,6 +4,14 @@ const SEND_DELAY_MS = 40;
 const DEFAULT_BRIGHTNESS = 3;
 const MIN_BRIGHTNESS = 0;
 const MAX_BRIGHTNESS = 15;
+const DEFAULT_MOVING_DOT_SPEED = 1;
+const DEFAULT_MOVING_DOT_FPS = 12;
+const MIN_MOVING_DOT_SPEED = 1;
+const MAX_MOVING_DOT_SPEED = 32;
+const MIN_MOVING_DOT_FPS = 1;
+const MAX_MOVING_DOT_FPS = 60;
+const PANEL_SIZE = 8;
+const PANEL_INDEX_TEST_FPS = 2;
 
 const state = {
   width: DEFAULT_WIDTH,
@@ -16,6 +24,11 @@ const state = {
   socket: null,
   sendTimer: null,
   isPointerDown: false,
+  movingDotSpeed: DEFAULT_MOVING_DOT_SPEED,
+  movingDotFps: DEFAULT_MOVING_DOT_FPS,
+  activePattern: null,
+  patternTimer: null,
+  patternFrame: 0,
 };
 
 const elements = {
@@ -34,6 +47,14 @@ const elements = {
   clearButton: document.querySelector("#clearButton"),
   fillButton: document.querySelector("#fillButton"),
   checkerButton: document.querySelector("#checkerButton"),
+  borderButton: document.querySelector("#borderButton"),
+  horizontalLineButton: document.querySelector("#horizontalLineButton"),
+  verticalLineButton: document.querySelector("#verticalLineButton"),
+  movingDotButton: document.querySelector("#movingDotButton"),
+  panelIndexTestButton: document.querySelector("#panelIndexTestButton"),
+  stopPatternButton: document.querySelector("#stopPatternButton"),
+  movingDotSpeed: document.querySelector("#movingDotSpeed"),
+  movingDotFps: document.querySelector("#movingDotFps"),
   saveButton: document.querySelector("#saveButton"),
   loadButton: document.querySelector("#loadButton"),
   saveToPiButton: document.querySelector("#saveToPiButton"),
@@ -68,8 +89,20 @@ function updateGridMeta() {
   elements.gridMeta.textContent = `${state.width} x ${state.height}`;
 }
 
+function createEmptyPixels() {
+  return Array(state.width * state.height).fill(0);
+}
+
 function indexFor(x, y) {
   return (y * state.width) + x;
+}
+
+function setPixelInArray(pixels, x, y, value = 1) {
+  if (x < 0 || x >= state.width || y < 0 || y >= state.height) {
+    return;
+  }
+
+  pixels[indexFor(x, y)] = value;
 }
 
 function createCell(x, y) {
@@ -170,12 +203,24 @@ function buildLoadDrawingMessage(name) {
   };
 }
 
-function clampBrightness(value) {
+function clampNumber(value, minimum, maximum, fallback) {
   if (!Number.isFinite(value)) {
-    return DEFAULT_BRIGHTNESS;
+    return fallback;
   }
 
-  return Math.max(MIN_BRIGHTNESS, Math.min(MAX_BRIGHTNESS, Math.round(value)));
+  return Math.max(minimum, Math.min(maximum, Math.round(value)));
+}
+
+function clampBrightness(value) {
+  return clampNumber(value, MIN_BRIGHTNESS, MAX_BRIGHTNESS, DEFAULT_BRIGHTNESS);
+}
+
+function clampMovingDotSpeed(value) {
+  return clampNumber(value, MIN_MOVING_DOT_SPEED, MAX_MOVING_DOT_SPEED, DEFAULT_MOVING_DOT_SPEED);
+}
+
+function clampMovingDotFps(value) {
+  return clampNumber(value, MIN_MOVING_DOT_FPS, MAX_MOVING_DOT_FPS, DEFAULT_MOVING_DOT_FPS);
 }
 
 function sanitizeDrawingName(value) {
@@ -192,7 +237,8 @@ function sendMessage(message) {
   return true;
 }
 
-function scheduleFrameSend(reason) {
+function scheduleFrameSend(reason, options = {}) {
+  const { logSend = true } = options;
   if (state.sendTimer) {
     window.clearTimeout(state.sendTimer);
   }
@@ -200,13 +246,34 @@ function scheduleFrameSend(reason) {
   state.sendTimer = window.setTimeout(() => {
     state.sendTimer = null;
     const sent = sendMessage(buildFrameMessage());
-    if (sent) {
+    if (sent && logSend) {
       log(`Sent frame (${state.width}x${state.height}) after ${reason}.`);
     }
   }, SEND_DELAY_MS);
 }
 
+function stopPatternPlayback(logReason) {
+  if (state.patternTimer) {
+    window.clearInterval(state.patternTimer);
+    state.patternTimer = null;
+  }
+
+  if (state.activePattern && logReason) {
+    log(`Stopped ${state.activePattern} pattern ${logReason}.`);
+  }
+
+  state.activePattern = null;
+  state.patternFrame = 0;
+}
+
+function applyPixels(pixels, reason, options) {
+  state.pixels = pixels;
+  syncGridDom();
+  scheduleFrameSend(reason, options);
+}
+
 function applyCellValue(x, y, value) {
+  stopPatternPlayback("for manual drawing");
   const index = indexFor(x, y);
   if (state.pixels[index] === value) {
     return;
@@ -221,6 +288,7 @@ function applyCellValue(x, y, value) {
 }
 
 function resizeGrid() {
+  stopPatternPlayback("for grid resize");
   const width = Number(elements.gridWidth.value);
   const height = Number(elements.gridHeight.value);
 
@@ -238,6 +306,7 @@ function resizeGrid() {
 }
 
 function applyDrawing(frame, reason) {
+  stopPatternPlayback(`for ${reason}`);
   state.width = frame.width;
   state.height = frame.height;
   state.pixels = [...frame.pixels];
@@ -248,24 +317,174 @@ function applyDrawing(frame, reason) {
 }
 
 function setAllPixels(value) {
-  state.pixels = Array(state.width * state.height).fill(value);
-  syncGridDom();
-  scheduleFrameSend(value === 0 ? "clear" : "fill");
+  stopPatternPlayback(value === 0 ? "for clear" : "for fill");
+  applyPixels(Array(state.width * state.height).fill(value), value === 0 ? "clear" : "fill");
 }
 
 function applyCheckerPattern() {
-  state.pixels = state.pixels.map((_, index) => {
+  stopPatternPlayback("for checker pattern");
+  const pixels = state.pixels.map((_, index) => {
     const x = index % state.width;
     const y = Math.floor(index / state.width);
     return (x + y) % 2;
   });
-  syncGridDom();
-  scheduleFrameSend("checker pattern");
+  applyPixels(pixels, "checker pattern");
+}
+
+function applyBorderPattern() {
+  stopPatternPlayback("for border pattern");
+  const pixels = createEmptyPixels();
+
+  for (let x = 0; x < state.width; x += 1) {
+    setPixelInArray(pixels, x, 0);
+    setPixelInArray(pixels, x, state.height - 1);
+  }
+
+  for (let y = 0; y < state.height; y += 1) {
+    setPixelInArray(pixels, 0, y);
+    setPixelInArray(pixels, state.width - 1, y);
+  }
+
+  applyPixels(pixels, "border pattern");
+}
+
+function applyHorizontalLinePattern() {
+  stopPatternPlayback("for horizontal line pattern");
+  const pixels = createEmptyPixels();
+  const y = Math.floor(state.height / 2);
+
+  for (let x = 0; x < state.width; x += 1) {
+    setPixelInArray(pixels, x, y);
+  }
+
+  applyPixels(pixels, "horizontal line pattern");
+}
+
+function applyVerticalLinePattern() {
+  stopPatternPlayback("for vertical line pattern");
+  const pixels = createEmptyPixels();
+  const x = Math.floor(state.width / 2);
+
+  for (let y = 0; y < state.height; y += 1) {
+    setPixelInArray(pixels, x, y);
+  }
+
+  applyPixels(pixels, "vertical line pattern");
+}
+
+function buildMovingDotPixels(frameIndex) {
+  const pixels = createEmptyPixels();
+  const totalPixels = state.width * state.height;
+  const safeTotalPixels = Math.max(totalPixels, 1);
+  const dotIndex = (frameIndex * state.movingDotSpeed) % safeTotalPixels;
+  const x = dotIndex % state.width;
+  const y = Math.floor(dotIndex / state.width);
+  setPixelInArray(pixels, x, y);
+  return pixels;
+}
+
+function buildPanelIndexTestPixels(frameIndex) {
+  const pixels = createEmptyPixels();
+  const panelColumns = Math.max(1, Math.ceil(state.width / PANEL_SIZE));
+  const panelRows = Math.max(1, Math.ceil(state.height / PANEL_SIZE));
+  const panelCount = panelColumns * panelRows;
+  const activePanel = frameIndex % panelCount;
+  const panelX = activePanel % panelColumns;
+  const panelY = Math.floor(activePanel / panelColumns);
+  const startX = panelX * PANEL_SIZE;
+  const startY = panelY * PANEL_SIZE;
+  const endX = Math.min(startX + PANEL_SIZE, state.width);
+  const endY = Math.min(startY + PANEL_SIZE, state.height);
+
+  for (let x = startX; x < endX; x += 1) {
+    setPixelInArray(pixels, x, startY);
+    setPixelInArray(pixels, x, endY - 1);
+  }
+
+  for (let y = startY; y < endY; y += 1) {
+    setPixelInArray(pixels, startX, y);
+    setPixelInArray(pixels, endX - 1, y);
+  }
+
+  const localBits = Math.min(6, Math.max(0, endX - startX - 2));
+  for (let bit = 0; bit < localBits; bit += 1) {
+    if ((activePanel >> bit) & 1) {
+      setPixelInArray(pixels, startX + 1 + bit, startY + 1);
+    }
+  }
+
+  setPixelInArray(
+    pixels,
+    Math.min(endX - 1, startX + Math.floor((endX - startX) / 2)),
+    Math.min(endY - 1, startY + Math.floor((endY - startY) / 2)),
+  );
+
+  return pixels;
+}
+
+function renderPatternFrame(patternName) {
+  let pixels = null;
+
+  if (patternName === "moving dot") {
+    pixels = buildMovingDotPixels(state.patternFrame);
+  } else if (patternName === "panel index test") {
+    pixels = buildPanelIndexTestPixels(state.patternFrame);
+  }
+
+  if (!pixels) {
+    return;
+  }
+
+  applyPixels(pixels, patternName, { logSend: false });
+  state.patternFrame += 1;
+}
+
+function startPatternPlayback(patternName) {
+  stopPatternPlayback();
+  state.activePattern = patternName;
+  state.patternFrame = 0;
+  renderPatternFrame(patternName);
+
+  const fps = patternName === "moving dot" ? state.movingDotFps : PANEL_INDEX_TEST_FPS;
+  const frameDelayMs = Math.max(16, Math.round(1000 / fps));
+  state.patternTimer = window.setInterval(() => {
+    renderPatternFrame(patternName);
+  }, frameDelayMs);
+
+  if (patternName === "moving dot") {
+    log(`Started moving dot pattern at ${state.movingDotSpeed} pixel${state.movingDotSpeed === 1 ? "" : "s"} per frame and ${state.movingDotFps} FPS.`);
+    return;
+  }
+
+  log(`Started ${patternName} pattern at ${fps} FPS.`);
 }
 
 function syncBrightnessInputs() {
   elements.brightnessRange.value = String(state.brightness);
   elements.brightnessValue.value = String(state.brightness);
+}
+
+function syncMovingDotInputs() {
+  elements.movingDotSpeed.value = String(state.movingDotSpeed);
+  elements.movingDotFps.value = String(state.movingDotFps);
+}
+
+function setMovingDotSpeed(value) {
+  state.movingDotSpeed = clampMovingDotSpeed(value);
+  syncMovingDotInputs();
+
+  if (state.activePattern === "moving dot") {
+    startPatternPlayback("moving dot");
+  }
+}
+
+function setMovingDotFps(value) {
+  state.movingDotFps = clampMovingDotFps(value);
+  syncMovingDotInputs();
+
+  if (state.activePattern === "moving dot") {
+    startPatternPlayback("moving dot");
+  }
 }
 
 function setBrightness(value, reason) {
@@ -585,6 +804,38 @@ function bindEvents() {
     applyCheckerPattern();
     log("Applied checker pattern.");
   });
+  elements.borderButton.addEventListener("click", () => {
+    applyBorderPattern();
+    log("Applied border pattern.");
+  });
+  elements.horizontalLineButton.addEventListener("click", () => {
+    applyHorizontalLinePattern();
+    log("Applied horizontal line pattern.");
+  });
+  elements.verticalLineButton.addEventListener("click", () => {
+    applyVerticalLinePattern();
+    log("Applied vertical line pattern.");
+  });
+  elements.movingDotButton.addEventListener("click", () => {
+    startPatternPlayback("moving dot");
+  });
+  elements.panelIndexTestButton.addEventListener("click", () => {
+    startPatternPlayback("panel index test");
+  });
+  elements.stopPatternButton.addEventListener("click", () => {
+    if (!state.activePattern) {
+      log("No active pattern is running.");
+      return;
+    }
+
+    stopPatternPlayback("manually");
+  });
+  elements.movingDotSpeed.addEventListener("change", () => {
+    setMovingDotSpeed(Number(elements.movingDotSpeed.value));
+  });
+  elements.movingDotFps.addEventListener("change", () => {
+    setMovingDotFps(Number(elements.movingDotFps.value));
+  });
   elements.saveButton.addEventListener("click", saveDrawing);
   elements.loadButton.addEventListener("click", () => {
     elements.loadInput.click();
@@ -627,6 +878,7 @@ function init() {
   elements.gridHeight.value = String(state.height);
   elements.drawingName.value = state.drawingName;
   syncBrightnessInputs();
+  syncMovingDotInputs();
   syncPiDrawingOptions();
   renderGrid();
   updateModeButtons();
