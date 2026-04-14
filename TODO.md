@@ -11,10 +11,10 @@ When the Pi turns on, the server should already be running. No opening a shell j
 
 Probably do it like this:
 
-- add a `systemd` service for `apps/pi-controller/src/server.py`
-- make it run after the network is available
-- point it at the repo path and virtual environment Python
-- configure restart behavior so the service comes back if it crashes
+- [ ] add a `systemd` service for `apps/pi-controller/src/server.py`
+- [ ] make it run after the network is available
+- [ ] point it at the repo path and virtual environment Python
+- [ ] configure restart behavior so the service comes back if it crashes
 
 Done when:
 
@@ -25,8 +25,8 @@ Done when:
 
 Notes:
 
-- document the service file and install steps in `docs/setup-pi.md`
-- make shutdown output cleaner so service logs are less noisy
+- [ ] document the service file and install steps in `docs/setup-pi.md`
+- [ ] make shutdown output cleaner so service logs are less noisy
 
 ### 2. Allow the user to save drawings
 
@@ -35,15 +35,11 @@ Be able to save a drawing from the desktop app and load it back later without an
 
 Probably do it like this:
 
-- add `Save` and `Load` actions in the desktop app
-- store drawings as JSON files containing:
-  - name
-  - width
-  - height
-  - pixels
-- use browser file download/upload first for a simple implementation
-- add a Pi-side save/load path so drawings can live on the Pi itself
-- optionally add local browser storage later for quick autosave
+- [x] add `Save` and `Load` actions in the desktop app
+- [x] store drawings as JSON files containing `name`, `width`, `height`, and `pixels`
+- [x] use browser file download/upload first for a simple implementation
+- [ ] add a Pi-side save/load path so drawings can live on the Pi itself
+- [ ] optionally add local browser storage later for quick autosave
 
 Done when:
 
@@ -55,9 +51,9 @@ Done when:
 
 Notes:
 
-- use the existing frame message shape to keep the format simple
-- Pi-side storage would be useful for keeping a small library of drawings with the hardware
-- reject files whose width and height do not match the current data shape unless the app resizes automatically
+- [x] use the existing frame message shape to keep the format simple
+- [ ] Pi-side storage would be useful for keeping a small library of drawings with the hardware
+- [x] reject files whose width and height do not match the current data shape unless the app resizes automatically
 
 ### 3. Allow changing brightness from the desktop app
 
@@ -66,8 +62,8 @@ Change LED brightness from the editor instead of opening the Pi config every tim
 
 Probably do it like this:
 
-- add a brightness slider or number input in the desktop app
-- add a new protocol message type such as:
+- [x] add a brightness slider or number input in the desktop app
+- [x] add a new protocol message type such as:
 
 ```json
 {
@@ -77,8 +73,8 @@ Probably do it like this:
 }
 ```
 
-- handle that message on the Pi and call the appropriate `luma` contrast method
-- keep the allowed range aligned with MAX7219 expectations
+- [x] handle that message on the Pi and call the appropriate `luma` contrast method
+- [x] keep the allowed range aligned with MAX7219 expectations
 
 Done when:
 
@@ -87,8 +83,8 @@ Done when:
 
 Notes:
 
-- clamp brightness values on the Pi for safety
-- decide whether the brightness setting should persist across reconnects or reboot
+- [x] clamp brightness values on the Pi for safety
+- [ ] decide whether the brightness setting should persist across reconnects or reboot
 
 ### 4. Add cleaner Pi shutdown behavior
 
@@ -97,9 +93,9 @@ Stopping the server with `Ctrl+C` should feel normal instead of looking like it 
 
 Probably do it like this:
 
-- catch `KeyboardInterrupt` around `asyncio.run(...)`
-- optionally add signal-aware cleanup for the display
-- keep log output short and service-friendly
+- [x] catch `KeyboardInterrupt` around `asyncio.run(...)`
+- [ ] optionally add signal-aware cleanup for the display
+- [x] keep log output short and service-friendly
 
 Done when:
 
@@ -113,13 +109,8 @@ Stop hand-drawing the same test lines over and over whenever panel order is wron
 
 Probably do it like this:
 
-- add desktop buttons for:
-  - border
-  - horizontal line
-  - vertical line
-  - moving dot
-  - panel index test
-- use these patterns during mapping bring-up
+- [ ] add desktop buttons for `border`, `horizontal line`, `vertical line`, `moving dot`, and `panel index test`
+- [ ] use these patterns during mapping bring-up
 
 Done when:
 
@@ -133,9 +124,9 @@ Make the editor usable for actual drawing, not just quick tests.
 
 Probably do it like this:
 
-- keep a bounded history stack in the desktop app
-- push changes after meaningful edits rather than every single hover cell
-- add `Undo` and `Redo` buttons
+- [ ] keep a bounded history stack in the desktop app
+- [ ] push changes after meaningful edits rather than every single hover cell
+- [ ] add `Undo` and `Redo` buttons
 
 Done when:
 
@@ -150,9 +141,9 @@ Refreshing the browser should not wipe whatever was on the grid.
 
 Probably do it like this:
 
-- save the current drawing to browser local storage
-- restore it on page load if the dimensions match
-- make it clear when autosaved content has been restored
+- [ ] save the current drawing to browser local storage
+- [ ] restore it on page load if the dimensions match
+- [ ] make it clear when autosaved content has been restored
 
 Done when:
 
@@ -167,8 +158,8 @@ Stop retyping the Pi address every time the page reloads.
 
 Probably do it like this:
 
-- save recent endpoints in browser local storage
-- allow the user to pick from or reuse saved addresses
+- [ ] save recent endpoints in browser local storage
+- [ ] allow the user to pick from or reuse saved addresses
 
 Done when:
 
@@ -183,12 +174,8 @@ Let the desktop app ask the Pi what it is currently doing instead of guessing.
 
 Probably do it like this:
 
-- add request and response messages for:
-  - brightness
-  - width
-  - height
-  - connection status
-- use that information to keep the desktop UI in sync
+- [ ] add request and response messages for `brightness`, `width`, `height`, and `connection status`
+- [ ] use that information to keep the desktop UI in sync
 
 Done when:
 
@@ -203,15 +190,12 @@ Be able to fix rotation, chain order, and common panel layout issues from the br
 
 Probably do it like this:
 
-- add controls in the desktop app for:
-  - `rotate`
-  - `block_orientation`
-  - `reverse_order`
-- add a few layout presets for common arrangements
-- send those settings to the Pi over the protocol
-- let the Pi apply those settings without needing a restart
-- add a way to save the current settings on the Pi so they survive reboot
-- optionally write those saved settings back to the Pi config file later
+- [ ] add controls in the desktop app for `rotate`, `block_orientation`, and `reverse_order`
+- [ ] add a few layout presets for common arrangements
+- [ ] send those settings to the Pi over the protocol
+- [ ] let the Pi apply those settings without needing a restart
+- [ ] add a way to save the current settings on the Pi so they survive reboot
+- [ ] optionally write those saved settings back to the Pi config file later
 
 Done when:
 
@@ -221,9 +205,9 @@ Done when:
 
 Notes:
 
-- this probably fits naturally with brightness control and the future Pi state message
-- layout presets would make first-time setup much less annoying
-- Pi-side persistence matters here so the browser does not become the only place the setup lives
+- [ ] this probably fits naturally with brightness control and the future Pi state message
+- [ ] layout presets would make first-time setup much less annoying
+- [ ] Pi-side persistence matters here so the browser does not become the only place the setup lives
 
 ### 11. Add a Pi install script
 
@@ -232,11 +216,7 @@ Make fresh Pi setup feel more like one command and less like a checklist.
 
 Probably do it like this:
 
-- create a script that:
-  - creates the virtual environment
-  - installs Python dependencies
-  - copies the config template if needed
-  - optionally installs the `systemd` service
+- [ ] create a script that creates the virtual environment, installs Python dependencies, copies the config template if needed, and optionally installs the `systemd` service
 
 Done when:
 
@@ -250,9 +230,9 @@ Catch the dumb breakages before they make it all the way to the hardware.
 
 Probably do it like this:
 
-- test frame validation success and failure cases
-- test mapping for common panel layouts
-- test brightness clamping once brightness control is added
+- [ ] test frame validation success and failure cases
+- [ ] test mapping for common panel layouts
+- [ ] test brightness clamping once brightness control is added
 
 Done when:
 
@@ -266,11 +246,9 @@ Support animations instead of only single still frames.
 
 Probably do it like this:
 
-- support multiple frames in the desktop UI
-- add frame timing controls
-- choose whether playback happens:
-  - on the desktop by streaming frames
-  - or on the Pi by uploading an animation payload
+- [ ] support multiple frames in the desktop UI
+- [ ] add frame timing controls
+- [ ] choose whether playback happens on the desktop by streaming frames or on the Pi by uploading an animation payload
 
 Done when:
 
