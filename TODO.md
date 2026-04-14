@@ -11,10 +11,10 @@ When the Pi turns on, the server should already be running. No opening a shell j
 
 Probably do it like this:
 
-- [ ] add a `systemd` service for `apps/pi-controller/src/server.py`
-- [ ] make it run after the network is available
-- [ ] point it at the repo path and virtual environment Python
-- [ ] configure restart behavior so the service comes back if it crashes
+- [x] add a `systemd` service for `apps/pi-controller/src/server.py`
+- [x] make it run after the network is available
+- [x] point it at the repo path and virtual environment Python
+- [x] configure restart behavior so the service comes back if it crashes
 
 Done when:
 
@@ -25,8 +25,8 @@ Done when:
 
 Notes:
 
-- [ ] document the service file and install steps in `docs/setup-pi.md`
-- [ ] make shutdown output cleaner so service logs are less noisy
+- [x] document the service file and install steps in `docs/setup-pi.md`
+- [x] make shutdown output cleaner so service logs are less noisy
 
 ### 2. Allow the user to save drawings
 
@@ -94,7 +94,7 @@ Stopping the server with `Ctrl+C` should feel normal instead of looking like it 
 Probably do it like this:
 
 - [x] catch `KeyboardInterrupt` around `asyncio.run(...)`
-- [ ] optionally add signal-aware cleanup for the display
+- [x] optionally add signal-aware cleanup for the display
 - [x] keep log output short and service-friendly
 
 Done when:

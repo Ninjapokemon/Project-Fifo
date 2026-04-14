@@ -86,7 +86,46 @@ If it starts correctly, you should see a message like:
 Listening on ws://0.0.0.0:8765
 ```
 
-## 7. Find the Pi's address
+Stopping with `Ctrl+C` should now exit cleanly, clear the display, and avoid the old traceback noise.
+
+## 7. Install the autostart service
+
+A `systemd` service template lives at `apps/pi-controller/project-fifo.service`, and there is a helper installer script at `scripts/install-pi-service.sh`.
+
+From the repo root on the Pi:
+
+```bash
+chmod +x scripts/install-pi-service.sh
+sudo ./scripts/install-pi-service.sh
+```
+
+What the installer does:
+
+1. rewrites the service file to use the current repo path
+2. points `ExecStart` at the repo virtual environment Python
+3. installs it to `/etc/systemd/system/project-fifo.service`
+4. runs `systemctl daemon-reload`
+5. enables the service at boot and starts it immediately
+
+Useful commands afterward:
+
+```bash
+sudo systemctl status project-fifo.service
+sudo systemctl restart project-fifo.service
+sudo journalctl -u project-fifo.service -n 50 --no-pager
+```
+
+Done check for autostart:
+
+- reboot the Pi
+- wait for startup to finish
+- run `sudo systemctl status project-fifo.service`
+- confirm the server is already listening on port `8765`
+- connect from the desktop app without manually launching Python
+
+If your repo path or username differs from the defaults in the template, that is fine. The installer script rewrites those values automatically.
+
+## 8. Find the Pi's address
 
 To connect from your PC, you need the Pi hostname or IP address.
 
@@ -108,7 +147,7 @@ Otherwise use the IP from `hostname -I`, for example:
 ws://192.168.1.50:8765
 ```
 
-## 8. Test from the desktop app
+## 9. Test from the desktop app
 
 Start the browser editor on your PC, connect to the Pi endpoint, and try:
 
@@ -182,10 +221,20 @@ Fix:
 - re-check the MAX7219 wiring
 - verify the desktop grid size matches the Pi config
 
-### Pressing `Ctrl+C` shows a traceback when stopping the server
+### The service does not start on boot
 
-What it means:
-The server exits through `KeyboardInterrupt` while cancelling the long-running asyncio wait.
+What it usually means:
+The service path, virtual environment path, or user does not match the real Pi setup.
 
 Fix:
-No fix is required right now. The traceback is noisy, but expected with the current server loop.
+
+```bash
+sudo systemctl status project-fifo.service
+sudo journalctl -u project-fifo.service -n 100 --no-pager
+```
+
+If the paths are wrong, rerun:
+
+```bash
+sudo ./scripts/install-pi-service.sh
+```

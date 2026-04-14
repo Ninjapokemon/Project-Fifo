@@ -47,3 +47,10 @@ class MatrixDisplay:
 
     def clear(self) -> None:
         self.device.clear()
+
+    def shutdown(self) -> None:
+        # Leave the panels in a known off state before the process exits.
+        self.clear()
+        hide = getattr(self.device, "hide", None)
+        if callable(hide):
+            hide()

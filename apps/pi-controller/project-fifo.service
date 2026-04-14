@@ -1,0 +1,15 @@
+[Unit]
+Description=Project Fifo Pi controller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/Project-Fifo
+ExecStart=/home/pi/Project-Fifo/.venv/bin/python /home/pi/Project-Fifo/apps/pi-controller/src/server.py
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
