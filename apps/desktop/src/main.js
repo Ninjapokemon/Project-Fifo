@@ -238,9 +238,18 @@ function sendMessage(message) {
 }
 
 function scheduleFrameSend(reason, options = {}) {
-  const { logSend = true } = options;
+  const { logSend = true, immediate = false } = options;
   if (state.sendTimer) {
     window.clearTimeout(state.sendTimer);
+    state.sendTimer = null;
+  }
+
+  if (immediate) {
+    const sent = sendMessage(buildFrameMessage());
+    if (sent && logSend) {
+      log(`Sent frame (${state.width}x${state.height}) after ${reason}.`);
+    }
+    return;
   }
 
   state.sendTimer = window.setTimeout(() => {
@@ -435,7 +444,7 @@ function renderPatternFrame(patternName) {
     return;
   }
 
-  applyPixels(pixels, patternName, { logSend: false });
+  applyPixels(pixels, patternName, { logSend: false, immediate: true });
   state.patternFrame += 1;
 }
 
