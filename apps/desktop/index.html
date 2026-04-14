@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Project Fifo Editor</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="panel hero">
+        <div>
+          <p class="eyebrow">Project Fifo</p>
+          <h1>Draw on your PC. Stream to your Pi.</h1>
+          <p class="subtitle">
+            This editor sends full-frame updates over WebSocket to the Raspberry Pi
+            controller that drives your MAX7219 chain with <code>luma</code>.
+          </p>
+        </div>
+        <div class="connection-card">
+          <label class="field">
+            <span>Pi Endpoint</span>
+            <input id="endpoint" type="text" value="ws://raspberrypi.local:8765" />
+          </label>
+          <div class="button-row">
+            <button id="connectButton" type="button">Connect</button>
+            <button id="disconnectButton" type="button" class="secondary">Disconnect</button>
+          </div>
+          <p class="status-line">
+            Status:
+            <span id="connectionStatus" class="status-pill idle">Disconnected</span>
+          </p>
+        </div>
+      </section>
+
+      <section class="panel controls">
+        <div class="grid-settings">
+          <label class="field compact">
+            <span>Width</span>
+            <input id="gridWidth" type="number" min="1" max="128" value="32" />
+          </label>
+          <label class="field compact">
+            <span>Height</span>
+            <input id="gridHeight" type="number" min="1" max="64" value="8" />
+          </label>
+          <button id="resizeButton" type="button">Resize Grid</button>
+        </div>
+
+        <div class="button-row wrap">
+          <button id="paintModeButton" type="button">Paint Mode</button>
+          <button id="eraseModeButton" type="button" class="secondary">Erase Mode</button>
+          <button id="clearButton" type="button" class="secondary">Clear</button>
+          <button id="fillButton" type="button" class="secondary">Fill</button>
+          <button id="checkerButton" type="button" class="secondary">Checker</button>
+          <button id="sendButton" type="button" class="secondary">Send Now</button>
+        </div>
+
+        <p class="hint">
+          Left click paints. Right click erases. Drag to draw continuously.
+        </p>
+      </section>
+
+      <section class="panel workspace">
+        <div class="grid-header">
+          <div>
+            <h2>Pixel Grid</h2>
+            <p id="gridMeta" class="grid-meta">32 x 8</p>
+          </div>
+          <p class="legend">
+            <span class="legend-chip on"></span> On
+            <span class="legend-chip off"></span> Off
+          </p>
+        </div>
+        <div id="grid" class="pixel-grid" aria-label="Pixel editor grid"></div>
+      </section>
+
+      <section class="panel console-panel">
+        <div class="console-header">
+          <h2>Event Log</h2>
+          <button id="clearLogButton" type="button" class="secondary">Clear Log</button>
+        </div>
+        <pre id="logOutput" class="log-output"></pre>
+      </section>
+    </main>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "host": "0.0.0.0",
+  "port": 8765,
+  "matrices_wide": 4,
+  "matrices_high": 1,
+  "rotate": 0,
+  "brightness": 3,
+  "block_orientation": 90,
+  "reverse_order": false,
+  "serpentine": false
+}
