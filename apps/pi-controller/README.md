@@ -2,6 +2,8 @@
 
 This is the Raspberry Pi side of the project. It listens for frames from the desktop app and pushes them to the MAX7219 chain through `luma.led_matrix`.
 
+Today it is mostly a networked renderer. The longer-term goal is for it to become the standalone runtime for a protogen face.
+
 ## What Lives Here
 
 - accept frame messages from the desktop app
@@ -9,6 +11,9 @@ This is the Raspberry Pi side of the project. It listens for frames from the des
 - validate payload shape
 - map logical pixels to the physical panel arrangement
 - render frames to the hardware device
+- eventually load saved face projects from disk
+- eventually play animations locally on boot without needing a browser connection
+- eventually react to inputs such as GPIO buttons or microphone activity
 
 ## Main Files
 
@@ -17,6 +22,7 @@ This is the Raspberry Pi side of the project. It listens for frames from the des
 - `src/display.py`: `luma` device wrapper
 - `src/mapping.py`: logical-to-physical coordinate translation
 - `config.example.json`: template for local hardware settings
+- `project-fifo.service`: `systemd` unit template for boot-time startup
 
 ## Dependencies
 
@@ -30,6 +36,21 @@ This project uses:
 Once the basics are solid, this is also the place to add `systemd` startup and any Pi-specific setup helpers.
 
 Brightness messages use the same WebSocket connection as frames and are clamped to the MAX7219 `0-15` range on the Pi before being applied.
+
+## Future Runtime Direction
+
+For the protogen face goal, the Pi should eventually own the runtime behavior instead of only mirroring whatever the browser sends.
+
+That future runtime will likely need to add:
+
+- a project loader that can read a primary file on boot
+- a playback engine for named multi-frame animations
+- a face-state model such as `idle`, `blink`, `talk`, and `happy`
+- input handling for buttons, microphone activity, and future sensors
+- runtime rules that map input events to animation or state changes
+- protocol endpoints for project loading, playback control, and runtime state queries
+
+The current frame transport is still useful because it keeps the renderer easy to test while those larger runtime pieces are added.
 
 ## Common Issues
 
@@ -71,6 +92,6 @@ Fix in `config.json`:
 - try `block_orientation: -90` if `90` is wrong
 - if the whole display is rotated, also test `rotate`
 
-### `Ctrl+C` prints a traceback when stopping the server
+### Stopping with `Ctrl+C` clears the display and exits cleanly
 
-That is expected right now. The server waits forever with `asyncio.Future()`, so `Ctrl+C` cancels that wait and Python prints a `KeyboardInterrupt` traceback on the way out. It looks ugly, but it does not mean the server is broken.
+That is the expected behavior now. The server handles shutdown signals, clears the display, and exits without the old traceback noise.

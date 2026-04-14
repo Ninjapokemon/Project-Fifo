@@ -2,6 +2,8 @@
 
 This app hosts the browser-based pixel editor used on your PC.
 
+For now it is the main editing interface. Long term, it is intended to become the authoring tool for a protogen face project that the Pi can later run on its own.
+
 ## Responsibilities
 
 - render the logical drawing grid
@@ -11,10 +13,20 @@ This app hosts the browser-based pixel editor used on your PC.
 - save and load drawings as JSON files
 - change MAX7219 brightness from the browser
 - send frame messages using the shared protocol
+- eventually edit named animations and preview them before sending or uploading to the Pi
+- eventually manage project files that can be deployed to the Pi runtime
 
 ## Current Implementation
 
 The first working version uses plain HTML, CSS, and JavaScript with no frontend build step. That keeps setup simple while I validate the network flow and LED mapping.
+
+The current desktop app is intentionally simple and frame-oriented. It is expected to grow toward:
+
+- multi-frame animation editing
+- named animations for face states such as `idle`, `blink`, and `talk`
+- browser playback preview for fast iteration
+- project save/load that can later match the Pi runtime format
+- runtime control actions once the Pi can load and play projects on its own
 
 ## Files
 
@@ -45,3 +57,21 @@ Then open `http://localhost:4173`.
 6. Use `Save` and `Load` to move drawings in and out as JSON files.
 
 Left click paints. Right click erases. `Clear`, `Fill`, and `Checker` are included for quick testing.
+
+## Future Direction
+
+The browser editor is not meant to stay only a live pixel pusher. The longer-term goal is:
+
+1. create and edit face expressions and animations on the desktop
+2. preview them locally in the browser
+3. save them in a project format that supports multiple named animations
+4. send or upload that project to the Pi
+5. use the desktop app as an optional control panel once the Pi is running standalone
+
+That future project format will likely need to represent at least:
+
+- display dimensions
+- named animations
+- frame durations
+- a default startup animation or face state
+- future input-driven behavior rules
