@@ -46,6 +46,6 @@ The current version is enough to:
 
 There is still more to build, especially around brightness, saving drawings, and boot-time startup on the Pi.
 
-See [docs/architecture.md](/z:/Project%20Fifo/Project-Fifo/docs/architecture.md) for the data flow and [apps/pi-controller/README.md](/z:/Project%20Fifo/Project-Fifo/apps/pi-controller/README.md) for Pi-specific setup.
+See [docs/architecture.md](docs/architecture.md) for the data flow and [apps/pi-controller/README.md](apps/pi-controller/README.md) for Pi-specific setup.
 
-The running TODO list is in [TODO.md](/z:/Project%20Fifo/Project-Fifo/TODO.md).
+The running TODO list is in [TODO.md](TODO.md).

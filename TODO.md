@@ -42,6 +42,7 @@ Probably do it like this:
   - height
   - pixels
 - use browser file download/upload first for a simple implementation
+- add a Pi-side save/load path so drawings can live on the Pi itself
 - optionally add local browser storage later for quick autosave
 
 Done when:
@@ -55,6 +56,7 @@ Done when:
 Notes:
 
 - use the existing frame message shape to keep the format simple
+- Pi-side storage would be useful for keeping a small library of drawings with the hardware
 - reject files whose width and height do not match the current data shape unless the app resizes automatically
 
 ### 3. Allow changing brightness from the desktop app
@@ -208,7 +210,8 @@ Probably do it like this:
 - add a few layout presets for common arrangements
 - send those settings to the Pi over the protocol
 - let the Pi apply those settings without needing a restart
-- optionally add a way to save the current settings back to config later
+- add a way to save the current settings on the Pi so they survive reboot
+- optionally write those saved settings back to the Pi config file later
 
 Done when:
 
@@ -220,6 +223,7 @@ Notes:
 
 - this probably fits naturally with brightness control and the future Pi state message
 - layout presets would make first-time setup much less annoying
+- Pi-side persistence matters here so the browser does not become the only place the setup lives
 
 ### 11. Add a Pi install script
 
