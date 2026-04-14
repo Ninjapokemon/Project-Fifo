@@ -194,7 +194,34 @@ Done when:
 - request state
 - show the current Pi settings in the UI
 
-### 10. Add a Pi install script
+### 10. Add display orientation and panel layout controls in the desktop app
+
+What I want:
+Be able to fix rotation, chain order, and common panel layout issues from the browser instead of editing the Pi config file by hand.
+
+Probably do it like this:
+
+- add controls in the desktop app for:
+  - `rotate`
+  - `block_orientation`
+  - `reverse_order`
+- add a few layout presets for common arrangements
+- send those settings to the Pi over the protocol
+- let the Pi apply those settings without needing a restart
+- optionally add a way to save the current settings back to config later
+
+Done when:
+
+- change display settings from the browser
+- see the matrix update without restarting the server
+- use test patterns to confirm the settings are correct
+
+Notes:
+
+- this probably fits naturally with brightness control and the future Pi state message
+- layout presets would make first-time setup much less annoying
+
+### 11. Add a Pi install script
 
 What I want:
 Make fresh Pi setup feel more like one command and less like a checklist.
@@ -212,7 +239,7 @@ Done when:
 - run one command on a fresh Pi clone
 - finish with a ready-to-run controller setup
 
-### 11. Add unit tests for protocol and mapping
+### 12. Add unit tests for protocol and mapping
 
 What I want:
 Catch the dumb breakages before they make it all the way to the hardware.
@@ -228,7 +255,7 @@ Done when:
 - test suite runs locally
 - expected failures are covered for bad messages and edge coordinates
 
-### 12. Add multi-frame animation support
+### 13. Add multi-frame animation support
 
 What I want:
 Support animations instead of only single still frames.
@@ -256,10 +283,11 @@ Done when:
 6. Autosave
 7. Undo and redo
 8. Named Pi endpoints
-9. Pi install script
-10. Protocol state message
-11. Unit tests
-12. Animation support
+9. Protocol state message
+10. Display orientation and layout controls
+11. Pi install script
+12. Unit tests
+13. Animation support
 
 Why this order:
 
@@ -268,3 +296,4 @@ Why this order:
 - cleaner shutdown makes service work nicer and easier to trust
 - test patterns reduce friction during every future hardware change
 - boot-time auto-start is best done after the server behavior is stable
+- display controls in the browser would remove a lot of manual config editing
