@@ -124,3 +124,69 @@ There are two layers to adjust:
 2. `apps/pi-controller/src/mapping.py`
 
 Start with `rotate`, `block_orientation`, and `reverse_order`. If the image is still scrambled after that, update `mapping.py` to reflect your physical wiring order.
+
+## Common Issues And Fixes
+
+### Error: `ModuleNotFoundError: No module named 'spidev'`
+
+Cause:
+The Python SPI binding is not installed in the virtual environment.
+
+Fix:
+
+```bash
+source .venv/bin/activate
+pip install -r apps/pi-controller/requirements.txt
+```
+
+If needed:
+
+```bash
+sudo apt update
+sudo apt install -y python3-dev build-essential
+pip install spidev
+```
+
+### Drawing starts on the wrong physical module
+
+Cause:
+The panel chain order is reversed compared with the logical grid.
+
+Fix in `apps/pi-controller/config.json`:
+
+```json
+"reverse_order": true
+```
+
+### The image is rotated even though the connection works
+
+Cause:
+The panel orientation is wrong, but the network path is fine.
+
+Fix in `apps/pi-controller/config.json`:
+
+- try `block_orientation: -90` instead of `90`
+- if the whole display is turned, also try changing `rotate`
+
+### The desktop app connects, but the LEDs stay dark
+
+Cause:
+Usually one of these:
+
+- SPI is not enabled on the Pi
+- wiring for `DIN`, `CS`, or `CLK` is wrong
+- `matrices_wide` and `matrices_high` do not match the real hardware
+
+Fix:
+
+- enable SPI with `sudo raspi-config`
+- re-check the MAX7219 wiring
+- verify the desktop grid size matches the Pi config
+
+### Pressing `Ctrl+C` shows a traceback when stopping the server
+
+Cause:
+The server exits through `KeyboardInterrupt` while cancelling the long-running asyncio wait.
+
+Fix:
+No fix is required right now. The traceback is noisy, but expected with the current server loop.
