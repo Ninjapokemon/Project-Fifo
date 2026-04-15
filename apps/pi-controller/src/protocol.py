@@ -86,6 +86,16 @@ def validate_brightness_message(message: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def validate_simple_request_message(message: dict[str, Any], expected_type: str) -> dict[str, Any]:
+    if message.get("type") != expected_type:
+        raise ProtocolError("Unsupported message type")
+
+    return {
+        "type": expected_type,
+        "version": 1,
+    }
+
+
 def validate_named_drawing(message: dict[str, Any], expected_type: str = "save_drawing") -> dict[str, Any]:
     if message.get("type") != expected_type:
         raise ProtocolError("Unsupported message type")

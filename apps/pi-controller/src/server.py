@@ -15,6 +15,7 @@ from protocol import (
     validate_frame_message,
     validate_layout_message,
     validate_named_drawing,
+    validate_simple_request_message,
 )
 from storage import DrawingStore
 
@@ -23,6 +24,31 @@ def build_layout_state_message(display: MatrixDisplay, message_type: str = "layo
     return {
         "type": message_type,
         **display.get_layout(),
+    }
+
+
+def build_state_message(
+    display: MatrixDisplay,
+    drawing_store: DrawingStore,
+    config: dict,
+) -> dict[str, int | bool | str | list[str] | None]:
+    persisted_layout = {
+        "rotate": config.get("rotate", 0),
+        "block_orientation": config.get("block_orientation", 90),
+        "reverse_order": config.get("reverse_order", False),
+    }
+    live_state = display.get_state()
+
+    return {
+        "type": "state",
+        **live_state,
+        "drawings": drawing_store.list_names(),
+        "layout_persisted": live_state["rotate"] == persisted_layout["rotate"]
+        and live_state["block_orientation"] == persisted_layout["block_orientation"]
+        and live_state["reverse_order"] == persisted_layout["reverse_order"],
+        "active_project": None,
+        "boot_project": None,
+        "connection_status": "connected",
     }
 
 
@@ -35,7 +61,12 @@ async def handle_connection(
     async for raw_message in websocket:
         try:
             message = json.loads(raw_message)
+            if message.get("type") == "get_state":
+                validate_simple_request_message(message, "get_state")
+                await websocket.send(json.dumps(build_state_message(display, drawing_store, config)))
+                continue
             if message.get("type") == "get_layout":
+                validate_simple_request_message(message, "get_layout")
                 await websocket.send(json.dumps(build_layout_state_message(display)))
                 continue
             if message.get("type") == "clear":

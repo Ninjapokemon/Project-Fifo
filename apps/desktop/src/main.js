@@ -294,6 +294,13 @@ function buildGetLayoutMessage() {
   };
 }
 
+function buildGetStateMessage() {
+  return {
+    type: "get_state",
+    version: 1,
+  };
+}
+
 function buildLayoutMessage() {
   return {
     type: "layout",
@@ -976,6 +983,17 @@ function requestLayoutState(reason) {
   return false;
 }
 
+function requestPiState(reason) {
+  const sent = sendMessage(buildGetStateMessage());
+  if (sent) {
+    log(`Requested Pi state after ${reason}.`);
+    return true;
+  }
+
+  log("Not connected. Could not request Pi state.");
+  return false;
+}
+
 function setLayout(reason) {
   const nextLayout = {
     rotate: clampRotate(Number(elements.rotateSelect.value)),
@@ -1192,6 +1210,38 @@ function handleServerMessage(message) {
   }
 
   if (
+    message.type === "state"
+    && Number.isInteger(message.width)
+    && Number.isInteger(message.height)
+    && Number.isInteger(message.brightness)
+    && Number.isInteger(message.rotate)
+    && Number.isInteger(message.block_orientation)
+    && typeof message.reverse_order === "boolean"
+  ) {
+    state.brightness = clampBrightness(message.brightness);
+    syncBrightnessInputs();
+    applyLayoutState({
+      rotate: message.rotate,
+      blockOrientation: message.block_orientation,
+      reverseOrder: message.reverse_order,
+    });
+    if (Array.isArray(message.drawings)) {
+      state.piDrawings = message.drawings
+        .filter((value) => typeof value === "string")
+        .map((value) => sanitizeDrawingName(value));
+      syncPiDrawingOptions();
+    }
+    log(
+      `Pi state synced: ${message.width}x${message.height}, brightness ${state.brightness}, `
+      + `${state.piDrawings.length} saved drawing${state.piDrawings.length === 1 ? "" : "s"}.`,
+    );
+    if (message.layout_persisted === false) {
+      log("Pi layout has live changes that are not saved to config yet.");
+    }
+    return;
+  }
+
+  if (
     (message.type === "layout_state" || message.type === "layout_saved")
     && Number.isInteger(message.rotate)
     && Number.isInteger(message.block_orientation)
@@ -1274,10 +1324,7 @@ function connect() {
     log(`Connected to ${endpoint}.`);
     sendMessage(buildFrameMessage());
     log("Sent initial frame after connect.");
-    sendMessage(buildBrightnessMessage());
-    log(`Sent brightness ${state.brightness} after connect.`);
-    requestLayoutState("connect");
-    requestPiDrawingList("connect");
+    requestPiState("connect");
   });
 
   socket.addEventListener("close", () => {

@@ -42,6 +42,14 @@ class MatrixDisplay:
             "reverse_order": self.config.get("reverse_order", False),
         }
 
+    def get_state(self) -> dict[str, int | bool]:
+        return {
+            "width": self.width,
+            "height": self.height,
+            "brightness": self.brightness,
+            **self.get_layout(),
+        }
+
     def set_layout(self, rotate: int, block_orientation: int, reverse_order: bool) -> dict[str, int | bool]:
         next_layout = {
             "rotate": rotate,
