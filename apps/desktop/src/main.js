@@ -994,10 +994,11 @@ function setLayout(reason) {
 
   const sent = sendMessage(buildLayoutMessage());
   if (sent) {
+    sendMessage(buildFrameMessage());
     log(
       `Applied layout after ${reason}: rotate ${state.layout.rotate * 90} degrees, `
       + `block orientation ${state.layout.blockOrientation} degrees, `
-      + `reverse order ${state.layout.reverseOrder ? "on" : "off"}.`,
+      + `reverse order ${state.layout.reverseOrder ? "on" : "off"}, and re-sent the current frame.`,
     );
     return;
   }
@@ -1016,7 +1017,8 @@ function applyLayoutPreset() {
   applyLayoutState(preset);
   const sent = sendMessage(buildLayoutMessage());
   if (sent) {
-    log(`Applied "${preset.label}" preset to the Pi.`);
+    sendMessage(buildFrameMessage());
+    log(`Applied "${preset.label}" preset to the Pi and re-sent the current frame.`);
   } else {
     log(`Applied "${preset.label}" preset locally. Connect to send it to the Pi.`);
   }
