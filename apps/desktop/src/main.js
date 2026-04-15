@@ -296,8 +296,105 @@ function cloneBoardLayout(layout = state.boardLayout) {
   return layout.map((board) => cloneBoard(board));
 }
 
+function serializeBoardLayout(layout = state.boardLayout) {
+  return layout.map((board) => ({
+    id: board.id,
+    chainIndex: board.chainIndex,
+    visualGridX: board.visualGridX,
+    visualGridY: board.visualGridY,
+    groupId: board.groupId,
+    width: board.width,
+    height: board.height,
+  }));
+}
+
 function createBoardId(index) {
   return `board-${index + 1}`;
+}
+
+function claimBoardId(preferredId, fallbackId, index, usedIds) {
+  const candidates = [];
+  if (typeof preferredId === "string" && preferredId.trim()) {
+    candidates.push(preferredId.trim());
+  }
+  if (typeof fallbackId === "string" && fallbackId.trim()) {
+    candidates.push(fallbackId.trim());
+  }
+
+  for (const candidate of candidates) {
+    if (!usedIds.has(candidate)) {
+      usedIds.add(candidate);
+      return candidate;
+    }
+  }
+
+  let nextIndex = index;
+  let candidate = createBoardId(nextIndex);
+  while (usedIds.has(candidate)) {
+    nextIndex += 1;
+    candidate = createBoardId(nextIndex);
+  }
+
+  usedIds.add(candidate);
+  return candidate;
+}
+
+function createBoardPositionKey(x, y) {
+  return `${x},${y}`;
+}
+
+function claimVisualBoardPosition(preferredX, preferredY, fallbackX, fallbackY, occupiedKeys, fallbackPositions) {
+  const candidates = [];
+  if (Number.isInteger(preferredX) && preferredX >= 0 && Number.isInteger(preferredY) && preferredY >= 0) {
+    candidates.push({ x: preferredX, y: preferredY });
+  }
+  candidates.push({ x: fallbackX, y: fallbackY });
+  fallbackPositions.forEach((position) => {
+    candidates.push(position);
+  });
+
+  for (const candidate of candidates) {
+    const key = createBoardPositionKey(candidate.x, candidate.y);
+    if (!occupiedKeys.has(key)) {
+      occupiedKeys.add(key);
+      return candidate;
+    }
+  }
+
+  let scanY = 0;
+  while (true) {
+    for (let scanX = 0; scanX <= occupiedKeys.size; scanX += 1) {
+      const key = createBoardPositionKey(scanX, scanY);
+      if (!occupiedKeys.has(key)) {
+        occupiedKeys.add(key);
+        return { x: scanX, y: scanY };
+      }
+    }
+    scanY += 1;
+  }
+}
+
+function orderPersistedBoardsByChainIndex(persistedBoardLayout, expectedCount) {
+  const orderedBoards = Array(expectedCount).fill(null);
+  const extras = [];
+
+  persistedBoardLayout.forEach((board, index) => {
+    const chainIndex = Number.isInteger(board?.chainIndex) ? board.chainIndex : index;
+    if (chainIndex >= 0 && chainIndex < expectedCount && orderedBoards[chainIndex] == null) {
+      orderedBoards[chainIndex] = board;
+      return;
+    }
+
+    extras.push(board);
+  });
+
+  for (let index = 0; index < expectedCount; index += 1) {
+    if (orderedBoards[index] == null) {
+      orderedBoards[index] = extras.shift() || null;
+    }
+  }
+
+  return orderedBoards;
 }
 
 function boardOriginX(board) {
@@ -397,36 +494,36 @@ function normalizePersistedBoardWorkspace(frameWidth, frameHeight, framePixels, 
     };
   }
 
+  const persistedBoards = orderPersistedBoardsByChainIndex(persistedBoardLayout, fallbackLayout.length);
+  const fallbackVisualPositions = fallbackLayout.map((board) => ({
+    x: board.visualGridX,
+    y: board.visualGridY,
+  }));
+  const occupiedVisualKeys = new Set();
+  const usedIds = new Set();
   const normalizedBoardLayout = fallbackLayout.map((fallbackBoard, index) => {
-    const persistedBoard = persistedBoardLayout[index];
-    const persistedPixels = Array.isArray(persistedBoard?.pixels) && persistedBoard.pixels.length === fallbackBoard.pixels.length
-      ? persistedBoard.pixels.map((value) => (value === 1 ? 1 : 0))
-      : [...fallbackBoard.pixels];
-
-    return {
+    const persistedBoard = persistedBoards[index];
+    const visualPosition = claimVisualBoardPosition(
+      persistedBoard?.visualGridX ?? persistedBoard?.gridX,
+      persistedBoard?.visualGridY ?? persistedBoard?.gridY,
+      fallbackBoard.visualGridX,
+      fallbackBoard.visualGridY,
+      occupiedVisualKeys,
+      fallbackVisualPositions,
+    );
+    const board = {
       ...fallbackBoard,
-      id: typeof persistedBoard?.id === "string" && persistedBoard.id.trim() ? persistedBoard.id.trim() : fallbackBoard.id,
-      chainIndex: Number.isInteger(persistedBoard?.chainIndex) ? persistedBoard.chainIndex : fallbackBoard.chainIndex,
-      logicalGridX: Number.isInteger(persistedBoard?.logicalGridX) ? persistedBoard.logicalGridX : fallbackBoard.logicalGridX,
-      logicalGridY: Number.isInteger(persistedBoard?.logicalGridY) ? persistedBoard.logicalGridY : fallbackBoard.logicalGridY,
-      visualGridX: Number.isInteger(persistedBoard?.visualGridX)
-        ? persistedBoard.visualGridX
-        : (Number.isInteger(persistedBoard?.gridX) ? persistedBoard.gridX : fallbackBoard.visualGridX),
-      visualGridY: Number.isInteger(persistedBoard?.visualGridY)
-        ? persistedBoard.visualGridY
-        : (Number.isInteger(persistedBoard?.gridY) ? persistedBoard.gridY : fallbackBoard.visualGridY),
+      id: claimBoardId(persistedBoard?.id, fallbackBoard.id, index, usedIds),
+      chainIndex: index,
+      visualGridX: visualPosition.x,
+      visualGridY: visualPosition.y,
       groupId: typeof persistedBoard?.groupId === "string" && persistedBoard.groupId.trim()
         ? persistedBoard.groupId.trim()
         : DEFAULT_BOARD_GROUP_ID,
-      pixels: persistedPixels,
     };
-  }).sort((left, right) => left.chainIndex - right.chainIndex);
 
-  normalizedBoardLayout.forEach((board, index) => {
-    board.chainIndex = index;
-    if (!board.id) {
-      board.id = createBoardId(index);
-    }
+    board.pixels = extractBoardPixelsFromFrame(board, frameWidth, frameHeight, framePixels);
+    return board;
   });
 
   return {
@@ -1159,7 +1256,7 @@ function saveAutosave() {
     height: state.height,
     pixels: state.pixels,
     drawingName: state.drawingName,
-    boardLayout: cloneBoardLayout(),
+    boardLayout: serializeBoardLayout(),
     boardGroups: [...state.boardGroups],
     savedAt: new Date().toISOString(),
   };
@@ -1385,6 +1482,10 @@ function applyPixels(pixels, reason, options) {
 
 function applyCellValue(x, y, value) {
   stopPatternPlayback("for manual drawing");
+  if (x < 0 || x >= state.width || y < 0 || y >= state.height) {
+    return;
+  }
+
   const index = indexFor(x, y);
   if (state.pixels[index] === value) {
     return;
@@ -1761,7 +1862,7 @@ function saveDrawing() {
   const drawing = {
     name: state.drawingName,
     ...buildFrameMessage(),
-    boardLayout: cloneBoardLayout(),
+    boardLayout: serializeBoardLayout(),
     boardGroups: [...state.boardGroups],
   };
   const safeFilename = state.drawingName.replace(/[^a-z0-9-_]+/gi, "-").replace(/^-+|-+$/g, "") || "fifo-drawing";
