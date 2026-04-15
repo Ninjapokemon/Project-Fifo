@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Project Fifo Editor</title>
-    <link rel="stylesheet" href="./src/styles.css" />
+    <link rel="stylesheet" href="./src/styles.css?v=board-layout-6" />
   </head>
   <body>
     <main class="app-shell">
@@ -246,6 +246,10 @@
                 <p class="section-label">Workspace</p>
                 <h2>Pixel Grid</h2>
                 <p id="gridMeta" class="grid-meta">16 x 8</p>
+                <p class="board-layout-hint">Drag chain boards anywhere in the workspace, then use groups to split eyes, nose, and mouth visually without changing the real chain order.</p>
+                <div class="workspace-tools">
+                  <button id="newBoardGroupButton" type="button" class="secondary">New Group</button>
+                </div>
               </div>
               <p class="legend">
                 <span class="legend-chip on"></span> On
@@ -269,6 +273,6 @@
       </section>
     </main>
 
-    <script type="module" src="./src/main.js"></script>
+    <script type="module" src="./src/main.js?v=board-layout-6"></script>
   </body>
 </html>

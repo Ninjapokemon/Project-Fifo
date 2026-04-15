@@ -19,6 +19,31 @@ const PIXEL_COLOR_STORAGE_KEY = "project-fifo.pixel-color";
 const DEFAULT_ENDPOINT_NAME = "Workshop Pi";
 const DEFAULT_PIXEL_COLOR = "#7CF7D4";
 const PIXEL_CELL_SIZE = 28;
+const BOARD_GRID_COLUMN_GAP = 7;
+const BOARD_GRID_ROW_GAP = 1;
+const BOARD_CARD_PADDING = 14;
+const BOARD_CARD_BORDER = 2;
+const BOARD_HEADER_HEIGHT = 32;
+const BOARD_LABEL_GAP = 12;
+const BOARD_WORKSPACE_GAP = 18;
+const BOARD_SLOT_WIDTH = (PANEL_SIZE * PIXEL_CELL_SIZE)
+  + ((PANEL_SIZE - 1) * BOARD_GRID_COLUMN_GAP)
+  + (BOARD_CARD_PADDING * 2)
+  + (BOARD_CARD_BORDER * 2);
+const BOARD_SLOT_HEIGHT = BOARD_HEADER_HEIGHT
+  + BOARD_LABEL_GAP
+  + (PANEL_SIZE * PIXEL_CELL_SIZE)
+  + ((PANEL_SIZE - 1) * BOARD_GRID_ROW_GAP)
+  + (BOARD_CARD_PADDING * 2)
+  + (BOARD_CARD_BORDER * 2);
+const BOARD_SLOT_PITCH_X = BOARD_SLOT_WIDTH + BOARD_WORKSPACE_GAP;
+const BOARD_SLOT_PITCH_Y = BOARD_SLOT_HEIGHT + BOARD_WORKSPACE_GAP;
+const BOARD_WORKSPACE_INSET_X = 24;
+const BOARD_WORKSPACE_INSET_Y = 40;
+const GROUP_SHELL_SIDE_PADDING = 18;
+const GROUP_SHELL_TOP_PADDING = 32;
+const GROUP_SHELL_BOTTOM_PADDING = 18;
+const DEFAULT_BOARD_GROUP_ID = "group-1";
 const DEFAULT_LAYOUT = {
   rotate: 0,
   blockOrientation: 90,
@@ -63,6 +88,9 @@ const state = {
   brightness: DEFAULT_BRIGHTNESS,
   layout: { ...DEFAULT_LAYOUT },
   pixelColor: DEFAULT_PIXEL_COLOR,
+  boardLayout: [],
+  boardGroups: [DEFAULT_BOARD_GROUP_ID],
+  boardDrag: null,
   drawValue: 1,
   socket: null,
   sendTimer: null,
@@ -110,6 +138,7 @@ const elements = {
   redoButton: document.querySelector("#redoButton"),
   clearButton: document.querySelector("#clearButton"),
   fillButton: document.querySelector("#fillButton"),
+  newBoardGroupButton: document.querySelector("#newBoardGroupButton"),
   checkerButton: document.querySelector("#checkerButton"),
   borderButton: document.querySelector("#borderButton"),
   horizontalLineButton: document.querySelector("#horizontalLineButton"),
@@ -196,15 +225,323 @@ function loadPixelColorPreference() {
 }
 
 function updateGridMeta() {
-  elements.gridMeta.textContent = `${state.width} x ${state.height}`;
+  const boardCount = Math.max(state.boardLayout.length, 1);
+  const groupCount = Math.max(getBoardGroups().length, 1);
+  elements.gridMeta.textContent = `${state.width} x ${state.height} - ${boardCount} board${boardCount === 1 ? "" : "s"} - ${groupCount} group${groupCount === 1 ? "" : "s"}`;
 }
 
 function createEmptyPixels() {
   return Array(state.width * state.height).fill(0);
 }
 
+function indexForDimensions(x, y, width) {
+  return (y * width) + x;
+}
+
 function indexFor(x, y) {
-  return (y * state.width) + x;
+  return indexForDimensions(x, y, state.width);
+}
+
+function extractBoardGroupNumber(groupId) {
+  const match = /^group-(\d+)$/.exec(String(groupId || "").trim());
+  return match ? Number(match[1]) : 1;
+}
+
+function compareGroupIds(left, right) {
+  return extractBoardGroupNumber(left) - extractBoardGroupNumber(right);
+}
+
+function getBoardGroupLabel(groupId) {
+  return `Group ${extractBoardGroupNumber(groupId)}`;
+}
+
+function getBoardChainLabel(board) {
+  return `Chain ${board.chainIndex + 1}`;
+}
+
+function getBoardGroups(layout = state.boardLayout, preferredGroups = state.boardGroups) {
+  const groups = new Set(preferredGroups || []);
+  layout.forEach((board) => {
+    groups.add(board.groupId || DEFAULT_BOARD_GROUP_ID);
+  });
+
+  if (groups.size === 0) {
+    groups.add(DEFAULT_BOARD_GROUP_ID);
+  }
+
+  return [...groups].sort(compareGroupIds);
+}
+
+function syncBoardGroups(layout = state.boardLayout, preferredGroups = state.boardGroups) {
+  state.boardGroups = getBoardGroups(layout, preferredGroups);
+  return state.boardGroups;
+}
+
+function cloneBoard(board) {
+  return {
+    id: board.id,
+    chainIndex: board.chainIndex,
+    logicalGridX: board.logicalGridX,
+    logicalGridY: board.logicalGridY,
+    visualGridX: board.visualGridX,
+    visualGridY: board.visualGridY,
+    groupId: board.groupId,
+    width: board.width,
+    height: board.height,
+    pixels: [...board.pixels],
+  };
+}
+
+function cloneBoardLayout(layout = state.boardLayout) {
+  return layout.map((board) => cloneBoard(board));
+}
+
+function createBoardId(index) {
+  return `board-${index + 1}`;
+}
+
+function boardOriginX(board) {
+  return board.logicalGridX * PANEL_SIZE;
+}
+
+function boardOriginY(board) {
+  return board.logicalGridY * PANEL_SIZE;
+}
+
+function boardVisualLeft(board) {
+  return BOARD_WORKSPACE_INSET_X + (board.visualGridX * BOARD_SLOT_PITCH_X);
+}
+
+function boardVisualTop(board) {
+  return BOARD_WORKSPACE_INSET_Y + (board.visualGridY * BOARD_SLOT_PITCH_Y);
+}
+
+function boardOuterWidth(board) {
+  return (board.width * PIXEL_CELL_SIZE)
+    + (Math.max(board.width - 1, 0) * BOARD_GRID_COLUMN_GAP)
+    + (BOARD_CARD_PADDING * 2)
+    + (BOARD_CARD_BORDER * 2);
+}
+
+function boardOuterHeight(board) {
+  return BOARD_HEADER_HEIGHT
+    + BOARD_LABEL_GAP
+    + (board.height * PIXEL_CELL_SIZE)
+    + (Math.max(board.height - 1, 0) * BOARD_GRID_ROW_GAP)
+    + (BOARD_CARD_PADDING * 2)
+    + (BOARD_CARD_BORDER * 2);
+}
+
+function extractBoardPixelsFromFrame(board, frameWidth = state.width, frameHeight = state.height, framePixels = state.pixels) {
+  const pixels = [];
+  const startX = boardOriginX(board);
+  const startY = boardOriginY(board);
+
+  for (let localY = 0; localY < board.height; localY += 1) {
+    for (let localX = 0; localX < board.width; localX += 1) {
+      const x = startX + localX;
+      const y = startY + localY;
+      if (x < 0 || x >= frameWidth || y < 0 || y >= frameHeight) {
+        pixels.push(0);
+      } else {
+        pixels.push(framePixels[indexForDimensions(x, y, frameWidth)] ?? 0);
+      }
+    }
+  }
+
+  return pixels;
+}
+
+function createBoardLayoutFromFrame(frameWidth = state.width, frameHeight = state.height, framePixels = state.pixels) {
+  const boardLayout = [];
+  const boardColumns = Math.max(Math.ceil(frameWidth / PANEL_SIZE), 1);
+  const boardRows = Math.max(Math.ceil(frameHeight / PANEL_SIZE), 1);
+
+  for (let boardY = 0; boardY < boardRows; boardY += 1) {
+    for (let boardX = 0; boardX < boardColumns; boardX += 1) {
+      const startX = boardX * PANEL_SIZE;
+      const startY = boardY * PANEL_SIZE;
+      const width = Math.min(PANEL_SIZE, Math.max(frameWidth - startX, 0));
+      const height = Math.min(PANEL_SIZE, Math.max(frameHeight - startY, 0));
+      if (width <= 0 || height <= 0) {
+        continue;
+      }
+
+      const board = {
+        id: createBoardId(boardLayout.length),
+        chainIndex: boardLayout.length,
+        logicalGridX: boardX,
+        logicalGridY: boardY,
+        visualGridX: boardX,
+        visualGridY: boardY,
+        groupId: DEFAULT_BOARD_GROUP_ID,
+        width,
+        height,
+        pixels: [],
+      };
+
+      board.pixels = extractBoardPixelsFromFrame(board, frameWidth, frameHeight, framePixels);
+      boardLayout.push(board);
+    }
+  }
+
+  return boardLayout;
+}
+
+function normalizePersistedBoardWorkspace(frameWidth, frameHeight, framePixels, persistedBoardLayout, persistedBoardGroups) {
+  const fallbackLayout = createBoardLayoutFromFrame(frameWidth, frameHeight, framePixels);
+  if (!Array.isArray(persistedBoardLayout) || persistedBoardLayout.length === 0) {
+    return {
+      boardLayout: fallbackLayout,
+      boardGroups: getBoardGroups(fallbackLayout, persistedBoardGroups),
+    };
+  }
+
+  const normalizedBoardLayout = fallbackLayout.map((fallbackBoard, index) => {
+    const persistedBoard = persistedBoardLayout[index];
+    const persistedPixels = Array.isArray(persistedBoard?.pixels) && persistedBoard.pixels.length === fallbackBoard.pixels.length
+      ? persistedBoard.pixels.map((value) => (value === 1 ? 1 : 0))
+      : [...fallbackBoard.pixels];
+
+    return {
+      ...fallbackBoard,
+      id: typeof persistedBoard?.id === "string" && persistedBoard.id.trim() ? persistedBoard.id.trim() : fallbackBoard.id,
+      chainIndex: Number.isInteger(persistedBoard?.chainIndex) ? persistedBoard.chainIndex : fallbackBoard.chainIndex,
+      logicalGridX: Number.isInteger(persistedBoard?.logicalGridX) ? persistedBoard.logicalGridX : fallbackBoard.logicalGridX,
+      logicalGridY: Number.isInteger(persistedBoard?.logicalGridY) ? persistedBoard.logicalGridY : fallbackBoard.logicalGridY,
+      visualGridX: Number.isInteger(persistedBoard?.visualGridX)
+        ? persistedBoard.visualGridX
+        : (Number.isInteger(persistedBoard?.gridX) ? persistedBoard.gridX : fallbackBoard.visualGridX),
+      visualGridY: Number.isInteger(persistedBoard?.visualGridY)
+        ? persistedBoard.visualGridY
+        : (Number.isInteger(persistedBoard?.gridY) ? persistedBoard.gridY : fallbackBoard.visualGridY),
+      groupId: typeof persistedBoard?.groupId === "string" && persistedBoard.groupId.trim()
+        ? persistedBoard.groupId.trim()
+        : DEFAULT_BOARD_GROUP_ID,
+      pixels: persistedPixels,
+    };
+  }).sort((left, right) => left.chainIndex - right.chainIndex);
+
+  normalizedBoardLayout.forEach((board, index) => {
+    board.chainIndex = index;
+    if (!board.id) {
+      board.id = createBoardId(index);
+    }
+  });
+
+  return {
+    boardLayout: normalizedBoardLayout,
+    boardGroups: getBoardGroups(normalizedBoardLayout, persistedBoardGroups),
+  };
+}
+
+function normalizeLogicalBoardLayoutCoordinates(boardLayout) {
+  if (boardLayout.length === 0) {
+    return [];
+  }
+
+  const minGridX = Math.min(...boardLayout.map((board) => board.logicalGridX));
+  const minGridY = Math.min(...boardLayout.map((board) => board.logicalGridY));
+
+  return boardLayout.map((board) => ({
+    ...cloneBoard(board),
+    logicalGridX: board.logicalGridX - minGridX,
+    logicalGridY: board.logicalGridY - minGridY,
+  }));
+}
+
+function buildFrameFromBoardLayout(boardLayout) {
+  const normalizedBoardLayout = normalizeLogicalBoardLayoutCoordinates(boardLayout);
+  const frameWidth = Math.max(
+    1,
+    ...normalizedBoardLayout.map((board) => boardOriginX(board) + board.width),
+  );
+  const frameHeight = Math.max(
+    1,
+    ...normalizedBoardLayout.map((board) => boardOriginY(board) + board.height),
+  );
+  const pixels = Array(frameWidth * frameHeight).fill(0);
+
+  normalizedBoardLayout.forEach((board) => {
+    for (let localY = 0; localY < board.height; localY += 1) {
+      for (let localX = 0; localX < board.width; localX += 1) {
+        const frameX = boardOriginX(board) + localX;
+        const frameY = boardOriginY(board) + localY;
+        const value = board.pixels[(localY * board.width) + localX] ?? 0;
+        pixels[indexForDimensions(frameX, frameY, frameWidth)] = value;
+      }
+    }
+  });
+
+  return {
+    width: frameWidth,
+    height: frameHeight,
+    pixels,
+    boardLayout: normalizedBoardLayout,
+  };
+}
+
+function applyBoardFrame(boardLayout, boardGroups = state.boardGroups) {
+  const frame = buildFrameFromBoardLayout(boardLayout);
+  state.width = frame.width;
+  state.height = frame.height;
+  state.pixels = frame.pixels;
+  state.boardLayout = frame.boardLayout;
+  syncBoardGroups(frame.boardLayout, boardGroups);
+  elements.gridWidth.value = String(state.width);
+  elements.gridHeight.value = String(state.height);
+}
+
+function syncBoardPixelsFromFrame() {
+  state.boardLayout = state.boardLayout.map((board) => ({
+    ...cloneBoard(board),
+    pixels: extractBoardPixelsFromFrame(board),
+  }));
+}
+
+function setBoardPixelValue(board, x, y, value) {
+  const localX = x - boardOriginX(board);
+  const localY = y - boardOriginY(board);
+  if (localX < 0 || localX >= board.width || localY < 0 || localY >= board.height) {
+    return false;
+  }
+
+  board.pixels[(localY * board.width) + localX] = value;
+  return true;
+}
+
+function findBoardByCoordinate(x, y) {
+  return state.boardLayout.find((board) => (
+    x >= boardOriginX(board)
+    && x < boardOriginX(board) + board.width
+    && y >= boardOriginY(board)
+    && y < boardOriginY(board) + board.height
+  )) || null;
+}
+
+function boardLayoutMetadataMatches(leftLayout = [], rightLayout = []) {
+  if (leftLayout.length !== rightLayout.length) {
+    return false;
+  }
+
+  return leftLayout.every((leftBoard, index) => {
+    const rightBoard = rightLayout[index];
+    if (!rightBoard) {
+      return false;
+    }
+
+    return leftBoard.id === rightBoard.id
+      && leftBoard.chainIndex === rightBoard.chainIndex
+      && leftBoard.logicalGridX === rightBoard.logicalGridX
+      && leftBoard.logicalGridY === rightBoard.logicalGridY
+      && leftBoard.visualGridX === rightBoard.visualGridX
+      && leftBoard.visualGridY === rightBoard.visualGridY
+      && leftBoard.groupId === rightBoard.groupId
+      && leftBoard.width === rightBoard.width
+      && leftBoard.height === rightBoard.height
+      && leftBoard.pixels.length === rightBoard.pixels.length
+      && leftBoard.pixels.every((value, pixelIndex) => value === rightBoard.pixels[pixelIndex]);
+  });
 }
 
 function setPixelInArray(pixels, x, y, value = 1) {
@@ -215,10 +552,188 @@ function setPixelInArray(pixels, x, y, value = 1) {
   pixels[indexFor(x, y)] = value;
 }
 
-function createCell(x, y) {
+function createMovedBoardLayout(boardId, visualGridX, visualGridY) {
+  const nextLayout = cloneBoardLayout();
+  const board = nextLayout.find((entry) => entry.id === boardId);
+  if (!board) {
+    return nextLayout;
+  }
+
+  board.visualGridX = visualGridX;
+  board.visualGridY = visualGridY;
+  return nextLayout;
+}
+
+function boardKey(board) {
+  return `${board.visualGridX},${board.visualGridY}`;
+}
+
+function boardLayoutsOverlap(boardLayout) {
+  const occupied = new Set();
+
+  for (const board of boardLayout) {
+    const key = boardKey(board);
+    if (occupied.has(key)) {
+      return true;
+    }
+    occupied.add(key);
+  }
+
+  return false;
+}
+
+function validateBoardLayout(boardLayout) {
+  if (boardLayoutsOverlap(boardLayout)) {
+    return {
+      valid: false,
+      reason: "Boards cannot overlap. Drop the panel in an empty slot.",
+    };
+  }
+
+  return {
+    valid: true,
+    reason: "",
+  };
+}
+
+function getRenderedBoardLayout() {
+  if (!state.boardDrag) {
+    return cloneBoardLayout();
+  }
+
+  return createMovedBoardLayout(
+    state.boardDrag.boardId,
+    state.boardDrag.candidateGridX,
+    state.boardDrag.candidateGridY,
+  );
+}
+
+function calculateWorkspaceSize(boardLayout) {
+  if (boardLayout.length === 0) {
+    return {
+      width: BOARD_WORKSPACE_INSET_X + BOARD_SLOT_WIDTH + GROUP_SHELL_SIDE_PADDING,
+      height: BOARD_WORKSPACE_INSET_Y + BOARD_SLOT_HEIGHT + GROUP_SHELL_BOTTOM_PADDING,
+    };
+  }
+
+  const width = Math.max(
+    BOARD_WORKSPACE_INSET_X + BOARD_SLOT_WIDTH + GROUP_SHELL_SIDE_PADDING,
+    ...boardLayout.map((board) => boardVisualLeft(board) + boardOuterWidth(board) + GROUP_SHELL_SIDE_PADDING),
+  );
+  const height = Math.max(
+    BOARD_WORKSPACE_INSET_Y + BOARD_SLOT_HEIGHT + GROUP_SHELL_BOTTOM_PADDING,
+    ...boardLayout.map((board) => boardVisualTop(board) + boardOuterHeight(board) + GROUP_SHELL_BOTTOM_PADDING),
+  );
+
+  return { width, height };
+}
+
+function startBoardDrag(boardId, event) {
+  if (event.button !== 0) {
+    return;
+  }
+
+  const board = state.boardLayout.find((entry) => entry.id === boardId);
+  if (!board) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  state.isPointerDown = false;
+
+  state.boardDrag = {
+    boardId,
+    startClientX: event.clientX,
+    startClientY: event.clientY,
+    originGridX: board.visualGridX,
+    originGridY: board.visualGridY,
+    candidateGridX: board.visualGridX,
+    candidateGridY: board.visualGridY,
+    hasMoved: false,
+    isValid: true,
+    invalidReason: "",
+  };
+
+  renderGrid();
+}
+
+function updateBoardDrag(event) {
+  if (!state.boardDrag) {
+    return;
+  }
+
+  const nextGridX = Math.max(
+    0,
+    state.boardDrag.originGridX + Math.round((event.clientX - state.boardDrag.startClientX) / BOARD_SLOT_PITCH_X),
+  );
+  const nextGridY = Math.max(
+    0,
+    state.boardDrag.originGridY + Math.round((event.clientY - state.boardDrag.startClientY) / BOARD_SLOT_PITCH_Y),
+  );
+
+  if (nextGridX === state.boardDrag.candidateGridX && nextGridY === state.boardDrag.candidateGridY) {
+    return;
+  }
+
+  const previewLayout = createMovedBoardLayout(state.boardDrag.boardId, nextGridX, nextGridY);
+  const validation = validateBoardLayout(previewLayout);
+  state.boardDrag = {
+    ...state.boardDrag,
+    candidateGridX: nextGridX,
+    candidateGridY: nextGridY,
+    hasMoved: nextGridX !== state.boardDrag.originGridX || nextGridY !== state.boardDrag.originGridY,
+    isValid: validation.valid,
+    invalidReason: validation.reason,
+  };
+
+  renderGrid();
+}
+
+function finishBoardDrag() {
+  if (!state.boardDrag) {
+    return false;
+  }
+
+  const dragState = state.boardDrag;
+  state.boardDrag = null;
+
+  if (!dragState.hasMoved) {
+    renderGrid();
+    return true;
+  }
+
+  const nextLayout = createMovedBoardLayout(
+    dragState.boardId,
+    dragState.candidateGridX,
+    dragState.candidateGridY,
+  );
+  const validation = validateBoardLayout(nextLayout);
+
+  if (!validation.valid) {
+    renderGrid();
+    log(validation.reason);
+    return true;
+  }
+
+  if (boardLayoutMetadataMatches(state.boardLayout, nextLayout)) {
+    renderGrid();
+    return true;
+  }
+
+  state.boardLayout = nextLayout;
+  syncBoardGroups(nextLayout);
+  renderGrid();
+  saveAutosave();
+  pushHistorySnapshot("board layout move");
+  log("Updated the visual board layout.");
+  return true;
+}
+
+function createCell(x, y, value) {
   const cell = document.createElement("button");
   cell.type = "button";
-  cell.className = "pixel-cell";
+  cell.className = value === 1 ? "pixel-cell on" : "pixel-cell";
   cell.dataset.x = String(x);
   cell.dataset.y = String(y);
   cell.setAttribute("aria-label", `Pixel ${x}, ${y}`);
@@ -245,17 +760,150 @@ function createCell(x, y) {
   return cell;
 }
 
-function renderGrid() {
-  elements.grid.innerHTML = "";
-  elements.grid.style.gridTemplateColumns = `repeat(${state.width}, ${PIXEL_CELL_SIZE}px)`;
+function createGroupShell(groupId, boards) {
+  const shell = document.createElement("div");
+  const label = document.createElement("div");
+  const left = Math.min(...boards.map((board) => boardVisualLeft(board))) - GROUP_SHELL_SIDE_PADDING;
+  const top = Math.min(...boards.map((board) => boardVisualTop(board))) - GROUP_SHELL_TOP_PADDING;
+  const right = Math.max(...boards.map((board) => boardVisualLeft(board) + boardOuterWidth(board))) + GROUP_SHELL_SIDE_PADDING;
+  const bottom = Math.max(...boards.map((board) => boardVisualTop(board) + boardOuterHeight(board))) + GROUP_SHELL_BOTTOM_PADDING;
 
-  for (let y = 0; y < state.height; y += 1) {
-    for (let x = 0; x < state.width; x += 1) {
-      elements.grid.appendChild(createCell(x, y));
+  shell.className = "pixel-board-group";
+  shell.style.left = `${left}px`;
+  shell.style.top = `${top}px`;
+  shell.style.width = `${Math.max(right - left, boardOuterWidth(boards[0]) + (GROUP_SHELL_SIDE_PADDING * 2))}px`;
+  shell.style.height = `${Math.max(bottom - top, boardOuterHeight(boards[0]) + GROUP_SHELL_TOP_PADDING + GROUP_SHELL_BOTTOM_PADDING)}px`;
+
+  label.className = "pixel-board-group-label";
+  label.textContent = getBoardGroupLabel(groupId);
+
+  shell.appendChild(label);
+  return shell;
+}
+
+function assignBoardToGroup(boardId, nextGroupId) {
+  const nextLayout = cloneBoardLayout();
+  const board = nextLayout.find((entry) => entry.id === boardId);
+  if (!board || !nextGroupId) {
+    return;
+  }
+
+  board.groupId = nextGroupId;
+  state.boardLayout = nextLayout;
+  syncBoardGroups(nextLayout, [...state.boardGroups, nextGroupId]);
+  renderGrid();
+  saveAutosave();
+  pushHistorySnapshot("board group change");
+  log(`Assigned ${getBoardChainLabel(board)} to ${getBoardGroupLabel(nextGroupId)}.`);
+}
+
+function createNewBoardGroup() {
+  const highestGroupNumber = Math.max(...getBoardGroups().map((groupId) => extractBoardGroupNumber(groupId)));
+  const nextGroupId = `group-${highestGroupNumber + 1}`;
+  state.boardGroups = getBoardGroups(state.boardLayout, [...state.boardGroups, nextGroupId]);
+  renderGrid();
+  saveAutosave();
+  pushHistorySnapshot("board group creation");
+  log(`Created ${getBoardGroupLabel(nextGroupId)}.`);
+}
+
+function createBoard(boardData) {
+  const board = document.createElement("section");
+  const boardHeader = document.createElement("div");
+  const boardLabel = document.createElement("button");
+  const groupSelect = document.createElement("select");
+  const boardGrid = document.createElement("div");
+  const dragState = state.boardDrag && state.boardDrag.boardId === boardData.id ? state.boardDrag : null;
+
+  board.className = "pixel-board";
+  board.setAttribute("aria-label", getBoardChainLabel(boardData));
+  board.dataset.boardId = boardData.id;
+  board.style.left = `${boardVisualLeft(boardData)}px`;
+  board.style.top = `${boardVisualTop(boardData)}px`;
+  board.style.width = `${boardOuterWidth(boardData)}px`;
+  board.style.height = `${boardOuterHeight(boardData)}px`;
+  board.classList.toggle("dragging", Boolean(dragState));
+  board.classList.toggle("drag-valid", Boolean(dragState && dragState.hasMoved && dragState.isValid));
+  board.classList.toggle("drag-invalid", Boolean(dragState && dragState.hasMoved && !dragState.isValid));
+
+  boardHeader.className = "pixel-board-header";
+
+  boardLabel.type = "button";
+  boardLabel.className = "pixel-board-label";
+  boardLabel.textContent = getBoardChainLabel(boardData);
+  boardLabel.setAttribute("aria-label", `Drag ${getBoardChainLabel(boardData)}`);
+  boardLabel.addEventListener("pointerdown", (event) => {
+    startBoardDrag(boardData.id, event);
+  });
+
+  groupSelect.className = "pixel-board-group-select";
+  groupSelect.setAttribute("aria-label", `${getBoardChainLabel(boardData)} group`);
+  getBoardGroups().forEach((groupId) => {
+    const option = document.createElement("option");
+    option.value = groupId;
+    option.textContent = getBoardGroupLabel(groupId);
+    groupSelect.appendChild(option);
+  });
+  groupSelect.value = boardData.groupId || DEFAULT_BOARD_GROUP_ID;
+  groupSelect.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+  });
+  groupSelect.addEventListener("change", () => {
+    assignBoardToGroup(boardData.id, groupSelect.value);
+  });
+
+  boardHeader.appendChild(boardLabel);
+  boardHeader.appendChild(groupSelect);
+
+  boardGrid.className = "pixel-board-grid";
+  boardGrid.style.gridTemplateColumns = `repeat(${boardData.width}, ${PIXEL_CELL_SIZE}px)`;
+  boardGrid.style.gridTemplateRows = `repeat(${boardData.height}, ${PIXEL_CELL_SIZE}px)`;
+
+  for (let localY = 0; localY < boardData.height; localY += 1) {
+    for (let localX = 0; localX < boardData.width; localX += 1) {
+      const x = boardOriginX(boardData) + localX;
+      const y = boardOriginY(boardData) + localY;
+      const value = boardData.pixels[(localY * boardData.width) + localX] ?? 0;
+      boardGrid.appendChild(createCell(x, y, value));
     }
   }
 
-  syncGridDom();
+  board.appendChild(boardHeader);
+  board.appendChild(boardGrid);
+  return board;
+}
+
+function renderGrid() {
+  elements.grid.innerHTML = "";
+  const boardLayout = getRenderedBoardLayout()
+    .sort((left, right) => (left.visualGridY - right.visualGridY) || (left.visualGridX - right.visualGridX) || left.chainIndex - right.chainIndex);
+  const workspace = document.createElement("div");
+  const workspaceSize = calculateWorkspaceSize(boardLayout);
+  const boardsByGroup = new Map();
+
+  workspace.className = "pixel-grid-workspace";
+  workspace.style.width = `${workspaceSize.width}px`;
+  workspace.style.height = `${workspaceSize.height}px`;
+
+  boardLayout.forEach((board) => {
+    const groupId = board.groupId || DEFAULT_BOARD_GROUP_ID;
+    const groupedBoards = boardsByGroup.get(groupId) || [];
+    groupedBoards.push(board);
+    boardsByGroup.set(groupId, groupedBoards);
+  });
+
+  getBoardGroups(boardLayout).forEach((groupId) => {
+    const groupedBoards = boardsByGroup.get(groupId) || [];
+    if (groupedBoards.length > 0) {
+      workspace.appendChild(createGroupShell(groupId, groupedBoards));
+    }
+  });
+
+  boardLayout.forEach((board) => {
+    workspace.appendChild(createBoard(board));
+  });
+
+  elements.grid.appendChild(workspace);
   updateGridMeta();
 }
 
@@ -395,21 +1043,34 @@ function createEditorSnapshot() {
     height: state.height,
     pixels: [...state.pixels],
     drawingName: state.drawingName,
+    boardLayout: cloneBoardLayout(),
+    boardGroups: [...state.boardGroups],
   };
 }
 
 function restoreSnapshot(snapshot, reason, options = {}) {
   stopPatternPlayback(`for ${reason}`);
-  state.width = snapshot.width;
-  state.height = snapshot.height;
-  state.pixels = [...snapshot.pixels];
+  const pixelsChanged = state.width !== snapshot.width
+    || state.height !== snapshot.height
+    || state.pixels.length !== snapshot.pixels.length
+    || state.pixels.some((value, index) => value !== snapshot.pixels[index]);
   state.drawingName = sanitizeDrawingName(snapshot.drawingName);
+  const normalizedWorkspace = normalizePersistedBoardWorkspace(
+    snapshot.width,
+    snapshot.height,
+    snapshot.pixels,
+    snapshot.boardLayout,
+    snapshot.boardGroups,
+  );
+  applyBoardFrame(normalizedWorkspace.boardLayout, normalizedWorkspace.boardGroups);
   elements.gridWidth.value = String(state.width);
   elements.gridHeight.value = String(state.height);
   elements.drawingName.value = state.drawingName;
   renderGrid();
   saveAutosave();
-  scheduleFrameSend(reason, options);
+  if (options.syncFrame !== false && pixelsChanged) {
+    scheduleFrameSend(reason, options);
+  }
 }
 
 function snapshotsMatch(left, right) {
@@ -425,7 +1086,21 @@ function snapshotsMatch(left, right) {
     return false;
   }
 
-  return left.pixels.every((value, index) => value === right.pixels[index]);
+  if (!left.pixels.every((value, index) => value === right.pixels[index])) {
+    return false;
+  }
+
+  if (!boardLayoutMetadataMatches(left.boardLayout, right.boardLayout)) {
+    return false;
+  }
+
+  const leftGroups = [...(left.boardGroups || [])].sort(compareGroupIds);
+  const rightGroups = [...(right.boardGroups || [])].sort(compareGroupIds);
+  if (leftGroups.length !== rightGroups.length) {
+    return false;
+  }
+
+  return leftGroups.every((value, index) => value === rightGroups[index]);
 }
 
 function pushHistorySnapshot(reason) {
@@ -484,6 +1159,8 @@ function saveAutosave() {
     height: state.height,
     pixels: state.pixels,
     drawingName: state.drawingName,
+    boardLayout: cloneBoardLayout(),
+    boardGroups: [...state.boardGroups],
     savedAt: new Date().toISOString(),
   };
 
@@ -500,12 +1177,6 @@ function loadAutosave() {
   try {
     const parsedAutosave = JSON.parse(rawValue);
     const autosave = validateLoadedDrawing(parsedAutosave);
-    const dimensionsMatch = autosave.width === state.width && autosave.height === state.height;
-    if (!dimensionsMatch) {
-      setAutosaveStatus(`Skipped autosave restore because it was ${autosave.width}x${autosave.height}.`);
-      return;
-    }
-
     state.drawingName = autosave.name;
     elements.drawingName.value = autosave.name;
     restoreSnapshot({
@@ -513,7 +1184,9 @@ function loadAutosave() {
       height: autosave.height,
       pixels: autosave.pixels,
       drawingName: autosave.name,
-    }, "autosave restore", { immediate: true });
+      boardLayout: autosave.boardLayout,
+      boardGroups: autosave.boardGroups,
+    }, "autosave restore", { immediate: true, syncFrame: false });
     pushHistorySnapshot("autosave restore");
     log(`Restored autosaved drawing "${autosave.name}".`);
     setAutosaveStatus(`Restored autosave from ${new Date(parsedAutosave.savedAt || Date.now()).toLocaleString()}.`);
@@ -704,6 +1377,7 @@ function stopPatternPlayback(logReason) {
 
 function applyPixels(pixels, reason, options) {
   state.pixels = pixels;
+  syncBoardPixelsFromFrame();
   syncGridDom();
   saveAutosave();
   scheduleFrameSend(reason, options);
@@ -717,6 +1391,10 @@ function applyCellValue(x, y, value) {
   }
 
   state.pixels[index] = value;
+  const board = findBoardByCoordinate(x, y);
+  if (board) {
+    setBoardPixelValue(board, x, y, value);
+  }
   state.strokeHasChanges = true;
   const target = elements.grid.querySelector(`[data-x="${x}"][data-y="${y}"]`);
   if (target) {
@@ -739,6 +1417,8 @@ function resizeGrid() {
   state.width = width;
   state.height = height;
   state.pixels = Array(width * height).fill(0);
+  state.boardLayout = createBoardLayoutFromFrame(width, height, state.pixels);
+  syncBoardGroups(state.boardLayout, [DEFAULT_BOARD_GROUP_ID]);
   renderGrid();
   pushHistorySnapshot("grid resize");
   scheduleFrameSend("resize");
@@ -747,11 +1427,16 @@ function resizeGrid() {
 
 function applyDrawing(frame, reason) {
   stopPatternPlayback(`for ${reason}`);
-  state.width = frame.width;
-  state.height = frame.height;
-  state.pixels = [...frame.pixels];
-  elements.gridWidth.value = String(frame.width);
-  elements.gridHeight.value = String(frame.height);
+  const normalizedWorkspace = normalizePersistedBoardWorkspace(
+    frame.width,
+    frame.height,
+    frame.pixels,
+    frame.boardLayout,
+    frame.boardGroups,
+  );
+  applyBoardFrame(normalizedWorkspace.boardLayout, normalizedWorkspace.boardGroups);
+  elements.gridWidth.value = String(state.width);
+  elements.gridHeight.value = String(state.height);
   renderGrid();
   pushHistorySnapshot(reason);
   scheduleFrameSend(reason);
@@ -826,16 +1511,20 @@ function buildMovingDotPixels(frameIndex) {
 
 function buildPanelIndexTestPixels(frameIndex) {
   const pixels = createEmptyPixels();
-  const panelColumns = Math.max(1, Math.ceil(state.width / PANEL_SIZE));
-  const panelRows = Math.max(1, Math.ceil(state.height / PANEL_SIZE));
-  const panelCount = panelColumns * panelRows;
+  const orderedBoards = cloneBoardLayout()
+    .sort((left, right) => left.chainIndex - right.chainIndex);
+  const panelCount = Math.max(orderedBoards.length, 1);
   const activePanel = frameIndex % panelCount;
-  const panelX = activePanel % panelColumns;
-  const panelY = Math.floor(activePanel / panelColumns);
-  const startX = panelX * PANEL_SIZE;
-  const startY = panelY * PANEL_SIZE;
-  const endX = Math.min(startX + PANEL_SIZE, state.width);
-  const endY = Math.min(startY + PANEL_SIZE, state.height);
+  const activeBoard = orderedBoards[activePanel];
+
+  if (!activeBoard) {
+    return pixels;
+  }
+
+  const startX = boardOriginX(activeBoard);
+  const startY = boardOriginY(activeBoard);
+  const endX = startX + activeBoard.width;
+  const endY = startY + activeBoard.height;
 
   for (let x = startX; x < endX; x += 1) {
     setPixelInArray(pixels, x, startY);
@@ -1072,6 +1761,8 @@ function saveDrawing() {
   const drawing = {
     name: state.drawingName,
     ...buildFrameMessage(),
+    boardLayout: cloneBoardLayout(),
+    boardGroups: [...state.boardGroups],
   };
   const safeFilename = state.drawingName.replace(/[^a-z0-9-_]+/gi, "-").replace(/^-+|-+$/g, "") || "fifo-drawing";
   triggerDownload(`${safeFilename}.json`, `${JSON.stringify(drawing, null, 2)}\n`);
@@ -1172,11 +1863,31 @@ function validateLoadedDrawing(data) {
     return value;
   });
 
+  if (data.boardLayout != null && !Array.isArray(data.boardLayout)) {
+    throw new Error("boardLayout must be an array when provided.");
+  }
+  if (data.boardLayout != null && data.boardLayout.some((entry) => !entry || typeof entry !== "object")) {
+    throw new Error("Each boardLayout entry must be an object.");
+  }
+  if (data.boardGroups != null && !Array.isArray(data.boardGroups)) {
+    throw new Error("boardGroups must be an array when provided.");
+  }
+
+  const normalizedWorkspace = normalizePersistedBoardWorkspace(
+    width,
+    height,
+    normalizedPixels,
+    data.boardLayout ?? null,
+    data.boardGroups ?? null,
+  );
+
   return {
     name: typeof data.name === "string" ? sanitizeDrawingName(data.name) : "fifo-drawing",
     width,
     height,
     pixels: normalizedPixels,
+    boardLayout: normalizedWorkspace.boardLayout,
+    boardGroups: normalizedWorkspace.boardGroups,
   };
 }
 
@@ -1442,6 +2153,7 @@ function bindEvents() {
     pushHistorySnapshot("fill");
     log("Filled the grid.");
   });
+  elements.newBoardGroupButton.addEventListener("click", createNewBoardGroup);
   elements.checkerButton.addEventListener("click", () => {
     applyCheckerPattern();
     pushHistorySnapshot("checker pattern");
@@ -1511,7 +2223,16 @@ function bindEvents() {
     elements.logOutput.textContent = "";
   });
 
+  window.addEventListener("pointermove", (event) => {
+    updateBoardDrag(event);
+  });
   window.addEventListener("pointerup", () => {
+    if (finishBoardDrag()) {
+      state.isPointerDown = false;
+      state.strokeHasChanges = false;
+      return;
+    }
+
     state.isPointerDown = false;
     if (state.strokeHasChanges) {
       pushHistorySnapshot("drawing stroke");
@@ -1519,9 +2240,19 @@ function bindEvents() {
     }
   });
   window.addEventListener("pointerleave", () => {
+    if (state.boardDrag) {
+      return;
+    }
+
     state.isPointerDown = false;
   });
   window.addEventListener("pointercancel", () => {
+    if (state.boardDrag) {
+      state.boardDrag = null;
+      renderGrid();
+      return;
+    }
+
     state.isPointerDown = false;
     if (state.strokeHasChanges) {
       pushHistorySnapshot("drawing stroke");
@@ -1555,6 +2286,8 @@ function bindEvents() {
 function init() {
   loadSavedEndpoints();
   loadPixelColorPreference();
+  state.boardLayout = createBoardLayoutFromFrame(state.width, state.height, state.pixels);
+  syncBoardGroups(state.boardLayout, [DEFAULT_BOARD_GROUP_ID]);
   elements.gridWidth.value = String(state.width);
   elements.gridHeight.value = String(state.height);
   elements.drawingName.value = state.drawingName;

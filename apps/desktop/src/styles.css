@@ -13,6 +13,11 @@
   --pixel-on-color: #7cf7d4;
   --pixel-on-glow: rgba(124, 247, 212, 0.3);
   --grid-border: rgba(237, 242, 247, 0.08);
+  --board-border: rgba(255, 122, 61, 0.58);
+  --board-shadow: rgba(255, 122, 61, 0.2);
+  --board-label-bg: rgba(255, 122, 61, 0.14);
+  --board-valid: rgba(124, 247, 212, 0.52);
+  --board-invalid: rgba(196, 69, 69, 0.68);
   --shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
   --font-display: "Aptos Display", "Segoe UI", sans-serif;
   --font-body: "Aptos", "Segoe UI", sans-serif;
@@ -93,6 +98,7 @@ h2 {
 .subtitle,
 .hint,
 .grid-meta,
+.board-layout-hint,
 .legend,
 .status-line {
   color: var(--muted);
@@ -432,23 +438,163 @@ button:disabled {
   background: var(--grid-off);
 }
 
+.board-layout-hint {
+  margin: 8px 0 0;
+  max-width: 42ch;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.workspace-tools {
+  margin-top: 12px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .pixel-grid {
   margin-top: 18px;
-  display: grid;
-  column-gap: 7px;
-  row-gap: 1px;
+  position: relative;
+  display: block;
   overflow: auto;
   padding: 24px;
   min-height: 440px;
-  align-content: start;
-  justify-content: start;
   border-radius: 24px;
   border: 1px solid rgba(124, 140, 156, 0.22);
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.02),
     0 0 0 1px rgba(6, 10, 16, 0.35);
+  user-select: none;
   background:
+    radial-gradient(circle at top left, rgba(255, 122, 61, 0.08), transparent 26%),
     linear-gradient(135deg, rgba(18, 27, 36, 0.98), rgba(24, 34, 44, 0.96));
+}
+
+.pixel-grid-workspace {
+  position: relative;
+  min-width: 100%;
+  min-height: 100%;
+}
+
+.pixel-board-group {
+  position: absolute;
+  z-index: 0;
+  border: 1px dashed rgba(134, 160, 185, 0.42);
+  border-radius: 24px;
+  background: rgba(11, 17, 24, 0.18);
+  pointer-events: none;
+}
+
+.pixel-board-group-label {
+  position: absolute;
+  top: 10px;
+  left: 14px;
+  z-index: 1;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(134, 160, 185, 0.28);
+  background: rgba(15, 23, 32, 0.92);
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pixel-board {
+  position: absolute;
+  z-index: 1;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 2px solid var(--board-border);
+  background:
+    linear-gradient(180deg, rgba(16, 23, 31, 0.96), rgba(11, 17, 24, 0.92));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.02),
+    0 0 0 2px rgba(255, 122, 61, 0.08),
+    0 16px 32px rgba(0, 0, 0, 0.22),
+    0 0 28px var(--board-shadow);
+  transition:
+    left 140ms ease,
+    top 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.pixel-board-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pixel-board.dragging {
+  z-index: 5;
+  transform: scale(1.02);
+}
+
+.pixel-board.drag-valid {
+  border-color: var(--board-valid);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03),
+    0 0 0 2px rgba(124, 247, 212, 0.14),
+    0 18px 36px rgba(0, 0, 0, 0.24),
+    0 0 30px rgba(124, 247, 212, 0.16);
+}
+
+.pixel-board.drag-invalid {
+  border-color: var(--board-invalid);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03),
+    0 0 0 2px rgba(196, 69, 69, 0.14),
+    0 18px 36px rgba(0, 0, 0, 0.24),
+    0 0 30px rgba(196, 69, 69, 0.16);
+}
+
+.pixel-board-label {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  width: fit-content;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 122, 61, 0.4);
+  background: var(--board-label-bg);
+  box-shadow: none;
+  color: var(--accent-strong);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: grab;
+}
+
+.pixel-board.dragging .pixel-board-label {
+  cursor: grabbing;
+}
+
+.pixel-board-label:hover {
+  transform: none;
+}
+
+.pixel-board-group-select {
+  width: auto;
+  min-width: 90px;
+  height: 32px;
+  padding: 0 30px 0 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(134, 160, 185, 0.18);
+  background: rgba(11, 17, 24, 0.82);
+  color: var(--text);
+  box-shadow: none;
+}
+
+.pixel-board-grid {
+  display: grid;
+  column-gap: 7px;
+  row-gap: 1px;
 }
 
 .pixel-cell {
