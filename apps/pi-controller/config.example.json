@@ -7,5 +7,6 @@
   "brightness": 3,
   "block_orientation": 90,
   "reverse_order": false,
-  "serpentine": false
+  "serpentine": false,
+  "panel_order": null
 }

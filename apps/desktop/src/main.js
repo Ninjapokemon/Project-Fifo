@@ -51,6 +51,18 @@ const LAYOUT_PRESETS = {
     reverseOrder: true,
   },
 };
+const PANEL_INDEX_DIGITS = {
+  "0": ["111", "101", "101", "101", "111"],
+  "1": ["010", "110", "010", "010", "111"],
+  "2": ["111", "001", "111", "100", "111"],
+  "3": ["111", "001", "111", "001", "111"],
+  "4": ["101", "101", "111", "001", "001"],
+  "5": ["111", "100", "111", "001", "111"],
+  "6": ["111", "100", "111", "101", "111"],
+  "7": ["111", "001", "001", "001", "001"],
+  "8": ["111", "101", "111", "101", "111"],
+  "9": ["111", "101", "111", "001", "111"],
+};
 
 const state = {
   width: DEFAULT_WIDTH,
@@ -847,18 +859,23 @@ function buildPanelIndexTestPixels(frameIndex) {
     setPixelInArray(pixels, endX - 1, y);
   }
 
-  const localBits = Math.min(6, Math.max(0, endX - startX - 2));
-  for (let bit = 0; bit < localBits; bit += 1) {
-    if ((activePanel >> bit) & 1) {
-      setPixelInArray(pixels, startX + 1 + bit, startY + 1);
+  const digit = String((activePanel + 1) % 10);
+  const glyph = PANEL_INDEX_DIGITS[digit] || PANEL_INDEX_DIGITS["0"];
+  const glyphHeight = glyph.length;
+  const glyphWidth = glyph[0].length;
+  const interiorWidth = Math.max(0, endX - startX - 2);
+  const interiorHeight = Math.max(0, endY - startY - 2);
+  const offsetX = startX + 1 + Math.max(0, Math.floor((interiorWidth - glyphWidth) / 2));
+  const offsetY = startY + 1 + Math.max(0, Math.floor((interiorHeight - glyphHeight) / 2));
+
+  for (let row = 0; row < glyphHeight; row += 1) {
+    for (let column = 0; column < glyphWidth; column += 1) {
+      if (glyph[row][column] !== "1") {
+        continue;
+      }
+      setPixelInArray(pixels, offsetX + column, offsetY + row);
     }
   }
-
-  setPixelInArray(
-    pixels,
-    Math.min(endX - 1, startX + Math.floor((endX - startX) / 2)),
-    Math.min(endY - 1, startY + Math.floor((endY - startY) / 2)),
-  );
 
   return pixels;
 }

@@ -4,7 +4,7 @@ from luma.core.interface.serial import spi, noop
 from luma.core.render import canvas
 from luma.led_matrix.device import max7219
 
-from mapping import logical_to_physical
+from mapping import build_panel_positions, logical_to_physical
 from protocol import clamp_brightness_value
 
 
@@ -15,6 +15,11 @@ class MatrixDisplay:
         self.serial = spi(port=0, device=0, gpio=noop())
         self.width = config["matrices_wide"] * 8
         self.height = config["matrices_high"] * 8
+        self.panel_positions = build_panel_positions(
+            config["matrices_wide"],
+            config["matrices_high"],
+            config.get("panel_order"),
+        )
         self.device = None
         self.brightness = 0
         self._rebuild_device()
@@ -83,7 +88,13 @@ class MatrixDisplay:
                 for x in range(clipped_width):
                     if pixels[(y * width) + x] != 1:
                         continue
-                    physical_x, physical_y = logical_to_physical(x, y, self.width, self.height)
+                    physical_x, physical_y = logical_to_physical(
+                        x,
+                        y,
+                        self.width,
+                        self.height,
+                        self.panel_positions,
+                    )
                     draw.point((physical_x, physical_y), fill="white")
 
     def clear(self) -> None:
