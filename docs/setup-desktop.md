@@ -57,6 +57,7 @@ Each MAX7219 module is `8x8`.
 Examples:
 
 - `4` modules in one row = `32x8`
+- `3` modules in one row = `24x8`
 - `8` modules in one row = `64x8`
 - `4 x 2` modules = `32x16`
 

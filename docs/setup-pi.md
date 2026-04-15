@@ -58,13 +58,13 @@ The main fields to care about are:
 - `reverse_order`: whether the matrix chain order is reversed
 - `serpentine`: reserved for later custom mapping logic
 
-Example for four matrices in one horizontal row:
+Example for three matrices in one horizontal row:
 
 ```json
 {
   "host": "0.0.0.0",
   "port": 8765,
-  "matrices_wide": 4,
+  "matrices_wide": 3,
   "matrices_high": 1,
   "rotate": 0,
   "brightness": 3,

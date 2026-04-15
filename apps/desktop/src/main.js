@@ -1,4 +1,4 @@
-const DEFAULT_WIDTH = 16;
+const DEFAULT_WIDTH = 24;
 const DEFAULT_HEIGHT = 8;
 const SEND_DELAY_MS = 40;
 const DEFAULT_BRIGHTNESS = 3;
