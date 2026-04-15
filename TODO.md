@@ -9,16 +9,17 @@ This is the running list of what would make the project nicer to use and easier 
 - [x] Save and load drawings in the desktop app using browser JSON files
 - [x] Save and load drawings on the Pi over WebSocket
 - [x] Change brightness from the desktop app and apply it on the Pi
+- [x] Add hardware test patterns
+- [x] Add undo and redo
+- [x] Add browser autosave
+- [x] Add named Pi endpoints in the desktop app
+- [x] Refresh the desktop editor layout and visual styling
 - [x] Add display orientation and panel layout controls in the desktop app
 - [x] Make Pi shutdown cleaner for `Ctrl+C` and service stops
 - [x] Start the Pi server automatically on boot with `systemd`
 
 ### Next
 
-- [ ] Add hardware test patterns
-- [ ] Add undo and redo
-- [ ] Add browser autosave
-- [ ] Add named Pi endpoints in the desktop app
 - [ ] Add a protocol state message
 - [ ] Add Pi project storage and boot project management
 - [ ] Add a Pi install script
@@ -174,6 +175,20 @@ Notes:
 - desktop-driven playback is a stepping stone, not the final architecture
 
 ## Completed Work
+
+### Desktop editor refresh
+
+Status:
+- [x] reorganize the desktop UI so the grid appears higher on the page
+- [x] move endpoint management into the top header card
+- [x] switch the editor to a dark theme with a wider full-screen layout
+- [x] group secondary tools into nested control sections
+- [x] add a preview pixel color picker with saved browser preference
+- [x] improve grid readability with clearer spacing and a visible canvas border
+
+Notes:
+- [x] preview color changes only affect the browser editor and legend
+- [x] frame data sent to the Pi remains binary `0` or `1`
 
 ### Save and load drawings
 
