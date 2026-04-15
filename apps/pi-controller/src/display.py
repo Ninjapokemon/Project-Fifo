@@ -27,12 +27,15 @@ class MatrixDisplay:
             if callable(hide):
                 hide()
 
+        # Use explicit dimensions so luma models the configured matrix shape
+        # instead of forcing every layout into a single 8px-tall strip.
         self.device = max7219(
             self.serial,
-            cascaded=self.total_matrices,
+            width=self.width,
+            height=self.height,
             rotate=self.config.get("rotate", 0),
             block_orientation=self.config.get("block_orientation", 90),
-            reverse_order=self.config.get("reverse_order", False),
+            blocks_arranged_in_reverse_order=self.config.get("reverse_order", False),
         )
 
     def get_layout(self) -> dict[str, int | bool]:
@@ -80,7 +83,7 @@ class MatrixDisplay:
                 for x in range(clipped_width):
                     if pixels[(y * width) + x] != 1:
                         continue
-                    physical_x, physical_y = logical_to_physical(x, y, width, height)
+                    physical_x, physical_y = logical_to_physical(x, y, self.width, self.height)
                     draw.point((physical_x, physical_y), fill="white")
 
     def clear(self) -> None:
