@@ -4,7 +4,7 @@ from luma.core.interface.serial import spi, noop
 from luma.core.render import canvas
 from luma.led_matrix.device import max7219
 
-from mapping import build_panel_positions, logical_to_physical, normalize_panel_order
+from mapping import build_panel_positions, build_physical_frame, normalize_panel_order
 from protocol import clamp_brightness_value
 
 
@@ -116,22 +116,22 @@ class MatrixDisplay:
         return self.brightness
 
     def render_frame(self, pixels: list[int], width: int, height: int) -> None:
-        with canvas(self.device) as draw:
-            clipped_width = min(width, self.width)
-            clipped_height = min(height, self.height)
+        physical_pixels = build_physical_frame(
+            pixels,
+            width,
+            height,
+            self.width,
+            self.height,
+            self.panel_positions,
+        )
 
-            for y in range(clipped_height):
-                for x in range(clipped_width):
-                    if pixels[(y * width) + x] != 1:
+        with canvas(self.device) as draw:
+            for y in range(self.height):
+                row_offset = y * self.width
+                for x in range(self.width):
+                    if physical_pixels[row_offset + x] != 1:
                         continue
-                    physical_x, physical_y = logical_to_physical(
-                        x,
-                        y,
-                        self.width,
-                        self.height,
-                        self.panel_positions,
-                    )
-                    draw.point((physical_x, physical_y), fill="white")
+                    draw.point((x, y), fill="white")
 
     def clear(self) -> None:
         self.device.clear()

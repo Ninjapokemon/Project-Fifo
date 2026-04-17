@@ -80,3 +80,115 @@ def logical_to_physical(
     physical_x = (physical_panel_x * PANEL_SIZE) + local_x
     physical_y = (physical_panel_y * PANEL_SIZE) + local_y
     return physical_x, physical_y
+
+
+def split_frame_into_panel_slices(
+    pixels: list[int],
+    frame_width: int,
+    frame_height: int,
+    panel_columns: int,
+    panel_rows: int,
+) -> list[list[int]]:
+    """
+    Split a row-major framebuffer into zero-padded 8x8 panel slices.
+
+    The slice count is driven by the target panel grid so frames smaller than
+    the physical display stay anchored at the top-left and leave the remaining
+    panels blank instead of spilling pixels into neighbouring panels.
+    """
+
+    panel_count = panel_columns * panel_rows
+    panel_slices = [[0] * (PANEL_SIZE * PANEL_SIZE) for _ in range(panel_count)]
+
+    for logical_panel_index in range(panel_count):
+        panel_x = logical_panel_index % panel_columns
+        panel_y = logical_panel_index // panel_columns
+        start_x = panel_x * PANEL_SIZE
+        start_y = panel_y * PANEL_SIZE
+        panel_slice = panel_slices[logical_panel_index]
+
+        for local_y in range(PANEL_SIZE):
+            source_y = start_y + local_y
+            if source_y >= frame_height:
+                continue
+
+            source_row_offset = source_y * frame_width
+            panel_row_offset = local_y * PANEL_SIZE
+            for local_x in range(PANEL_SIZE):
+                source_x = start_x + local_x
+                if source_x >= frame_width:
+                    continue
+                panel_slice[panel_row_offset + local_x] = pixels[source_row_offset + source_x]
+
+    return panel_slices
+
+
+def compose_physical_frame(
+    panel_slices: list[list[int]],
+    panel_columns: int,
+    panel_rows: int,
+    panel_positions: list[int] | None = None,
+) -> list[int]:
+    """
+    Assemble 8x8 logical panel slices into a physical row-major framebuffer.
+    """
+
+    panel_count = panel_columns * panel_rows
+    if len(panel_slices) != panel_count:
+        raise ValueError(f"panel_slices must contain exactly {panel_count} entries")
+    if panel_positions is not None and len(panel_positions) != panel_count:
+        raise ValueError(f"panel_positions must contain exactly {panel_count} entries")
+
+    frame_width = panel_columns * PANEL_SIZE
+    frame_height = panel_rows * PANEL_SIZE
+    physical_pixels = [0] * (frame_width * frame_height)
+
+    for logical_panel_index, panel_slice in enumerate(panel_slices):
+        if len(panel_slice) != PANEL_SIZE * PANEL_SIZE:
+            raise ValueError("each panel slice must contain exactly 64 pixels")
+
+        physical_panel_index = (
+            panel_positions[logical_panel_index]
+            if panel_positions is not None
+            else logical_panel_index
+        )
+        physical_panel_x = (physical_panel_index % panel_columns) * PANEL_SIZE
+        physical_panel_y = (physical_panel_index // panel_columns) * PANEL_SIZE
+
+        for local_y in range(PANEL_SIZE):
+            source_offset = local_y * PANEL_SIZE
+            target_offset = ((physical_panel_y + local_y) * frame_width) + physical_panel_x
+            physical_pixels[target_offset:target_offset + PANEL_SIZE] = panel_slice[
+                source_offset:source_offset + PANEL_SIZE
+            ]
+
+    return physical_pixels
+
+
+def build_physical_frame(
+    pixels: list[int],
+    frame_width: int,
+    frame_height: int,
+    display_width: int,
+    display_height: int,
+    panel_positions: list[int] | None = None,
+) -> list[int]:
+    """
+    Convert a logical frame into the exact physical framebuffer sent to luma.
+    """
+
+    panel_columns = max(1, display_width // PANEL_SIZE)
+    panel_rows = max(1, display_height // PANEL_SIZE)
+    panel_slices = split_frame_into_panel_slices(
+        pixels,
+        frame_width,
+        frame_height,
+        panel_columns,
+        panel_rows,
+    )
+    return compose_physical_frame(
+        panel_slices,
+        panel_columns,
+        panel_rows,
+        panel_positions,
+    )
