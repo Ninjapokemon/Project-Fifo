@@ -340,6 +340,17 @@ function clearConnectedDisplaySize() {
   }
 }
 
+function logDisplaySizeMismatch(sourceLabel) {
+  if (state.width === getLayoutWidth() && state.height === getLayoutHeight()) {
+    return;
+  }
+
+  log(
+    `${sourceLabel} is ${getLayoutWidth()}x${getLayoutHeight()}, but the editor grid is `
+    + `${state.width}x${state.height}. Resize the grid to match before using panel tests or live drawing.`,
+  );
+}
+
 function indexFor(x, y) {
   return (y * state.width) + x;
 }
@@ -1403,6 +1414,7 @@ function handleServerMessage(message) {
       `Pi state synced: ${message.width}x${message.height}, brightness ${state.brightness}, `
       + `${state.piDrawings.length} saved drawing${state.piDrawings.length === 1 ? "" : "s"}.`,
     );
+    logDisplaySizeMismatch("Pi display");
     if (message.layout_persisted === false) {
       log("Pi layout has live changes that are not saved to config yet.");
     }
@@ -1427,6 +1439,7 @@ function handleServerMessage(message) {
         ? "Pi layout was saved to config."
         : "Pi layout is now in sync with the desktop controls.",
     );
+    logDisplaySizeMismatch("Pi display");
     return;
   }
 

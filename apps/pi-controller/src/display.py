@@ -116,6 +116,11 @@ class MatrixDisplay:
         return self.brightness
 
     def render_frame(self, pixels: list[int], width: int, height: int) -> None:
+        if width != self.width or height != self.height:
+            raise ValueError(
+                f"Frame dimensions {width}x{height} do not match display {self.width}x{self.height}"
+            )
+
         physical_pixels = build_physical_frame(
             pixels,
             width,
