@@ -1,15 +1,194 @@
 from __future__ import annotations
 
 
-def logical_to_physical(x: int, y: int, width: int, height: int) -> tuple[int, int]:
+PANEL_SIZE = 8
+
+
+def normalize_panel_order(
+    panel_order: list[int] | None,
+    panel_columns: int,
+    panel_rows: int,
+) -> list[int] | None:
+    panel_count = panel_columns * panel_rows
+    if panel_order is None:
+        return None
+    if not isinstance(panel_order, list):
+        raise ValueError("panel_order must be a list of panel indexes or null")
+    if len(panel_order) != panel_count:
+        raise ValueError(f"panel_order must contain exactly {panel_count} entries")
+
+    normalized: list[int] = []
+    seen_indexes: set[int] = set()
+    for raw_index in panel_order:
+        if not isinstance(raw_index, int):
+            raise ValueError("panel_order entries must be integers")
+        if raw_index < 0 or raw_index >= panel_count:
+            raise ValueError(f"panel_order entries must be between 0 and {panel_count - 1}")
+        if raw_index in seen_indexes:
+            raise ValueError("panel_order entries must be unique")
+        normalized.append(raw_index)
+        seen_indexes.add(raw_index)
+
+    return normalized
+
+
+def build_panel_positions(
+    panel_columns: int,
+    panel_rows: int,
+    panel_order: list[int] | None = None,
+) -> list[int] | None:
+    normalized_order = normalize_panel_order(panel_order, panel_columns, panel_rows)
+    if normalized_order is None:
+        return None
+
+    panel_positions = [0] * len(normalized_order)
+    for physical_panel_index, logical_panel_index in enumerate(normalized_order):
+        panel_positions[logical_panel_index] = physical_panel_index
+
+    return panel_positions
+
+
+def logical_to_physical(
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    panel_positions: list[int] | None = None,
+) -> tuple[int, int]:
     """
     Translate logical coordinates to physical display coordinates.
 
-    This placeholder currently performs an identity mapping. Replace it when you
-    know the exact orientation and chaining order of your matrices.
+    When ``panel_positions`` is supplied, it remaps whole 8x8 panels before the
+    luma device applies its own per-panel orientation handling.
     """
 
     if x < 0 or x >= width or y < 0 or y >= height:
         raise ValueError("coordinate out of bounds")
+    if panel_positions is None:
+        return x, y
 
-    return x, y
+    panel_columns = max(1, width // PANEL_SIZE)
+    logical_panel_x = x // PANEL_SIZE
+    logical_panel_y = y // PANEL_SIZE
+    logical_panel_index = (logical_panel_y * panel_columns) + logical_panel_x
+    physical_panel_index = panel_positions[logical_panel_index]
+    local_x = x % PANEL_SIZE
+    local_y = y % PANEL_SIZE
+
+    physical_panel_x = physical_panel_index % panel_columns
+    physical_panel_y = physical_panel_index // panel_columns
+    physical_x = (physical_panel_x * PANEL_SIZE) + local_x
+    physical_y = (physical_panel_y * PANEL_SIZE) + local_y
+    return physical_x, physical_y
+
+
+def split_frame_into_panel_slices(
+    pixels: list[int],
+    frame_width: int,
+    frame_height: int,
+    panel_columns: int,
+    panel_rows: int,
+) -> list[list[int]]:
+    """
+    Split a row-major framebuffer into zero-padded 8x8 panel slices.
+
+    The slice count is driven by the target panel grid so frames smaller than
+    the physical display stay anchored at the top-left and leave the remaining
+    panels blank instead of spilling pixels into neighbouring panels.
+    """
+
+    panel_count = panel_columns * panel_rows
+    panel_slices = [[0] * (PANEL_SIZE * PANEL_SIZE) for _ in range(panel_count)]
+
+    for logical_panel_index in range(panel_count):
+        panel_x = logical_panel_index % panel_columns
+        panel_y = logical_panel_index // panel_columns
+        start_x = panel_x * PANEL_SIZE
+        start_y = panel_y * PANEL_SIZE
+        panel_slice = panel_slices[logical_panel_index]
+
+        for local_y in range(PANEL_SIZE):
+            source_y = start_y + local_y
+            if source_y >= frame_height:
+                continue
+
+            source_row_offset = source_y * frame_width
+            panel_row_offset = local_y * PANEL_SIZE
+            for local_x in range(PANEL_SIZE):
+                source_x = start_x + local_x
+                if source_x >= frame_width:
+                    continue
+                panel_slice[panel_row_offset + local_x] = pixels[source_row_offset + source_x]
+
+    return panel_slices
+
+
+def compose_physical_frame(
+    panel_slices: list[list[int]],
+    panel_columns: int,
+    panel_rows: int,
+    panel_positions: list[int] | None = None,
+) -> list[int]:
+    """
+    Assemble 8x8 logical panel slices into a physical row-major framebuffer.
+    """
+
+    panel_count = panel_columns * panel_rows
+    if len(panel_slices) != panel_count:
+        raise ValueError(f"panel_slices must contain exactly {panel_count} entries")
+    if panel_positions is not None and len(panel_positions) != panel_count:
+        raise ValueError(f"panel_positions must contain exactly {panel_count} entries")
+
+    frame_width = panel_columns * PANEL_SIZE
+    frame_height = panel_rows * PANEL_SIZE
+    physical_pixels = [0] * (frame_width * frame_height)
+
+    for logical_panel_index, panel_slice in enumerate(panel_slices):
+        if len(panel_slice) != PANEL_SIZE * PANEL_SIZE:
+            raise ValueError("each panel slice must contain exactly 64 pixels")
+
+        physical_panel_index = (
+            panel_positions[logical_panel_index]
+            if panel_positions is not None
+            else logical_panel_index
+        )
+        physical_panel_x = (physical_panel_index % panel_columns) * PANEL_SIZE
+        physical_panel_y = (physical_panel_index // panel_columns) * PANEL_SIZE
+
+        for local_y in range(PANEL_SIZE):
+            source_offset = local_y * PANEL_SIZE
+            target_offset = ((physical_panel_y + local_y) * frame_width) + physical_panel_x
+            physical_pixels[target_offset:target_offset + PANEL_SIZE] = panel_slice[
+                source_offset:source_offset + PANEL_SIZE
+            ]
+
+    return physical_pixels
+
+
+def build_physical_frame(
+    pixels: list[int],
+    frame_width: int,
+    frame_height: int,
+    display_width: int,
+    display_height: int,
+    panel_positions: list[int] | None = None,
+) -> list[int]:
+    """
+    Convert a logical frame into the exact physical framebuffer sent to luma.
+    """
+
+    panel_columns = max(1, display_width // PANEL_SIZE)
+    panel_rows = max(1, display_height // PANEL_SIZE)
+    panel_slices = split_frame_into_panel_slices(
+        pixels,
+        frame_width,
+        frame_height,
+        panel_columns,
+        panel_rows,
+    )
+    return compose_physical_frame(
+        panel_slices,
+        panel_columns,
+        panel_rows,
+        panel_positions,
+    )

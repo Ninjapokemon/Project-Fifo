@@ -42,6 +42,8 @@ Brightness messages use the same WebSocket connection as frames and are clamped 
 
 Layout messages use the same WebSocket connection and can update `rotate`, `block_orientation`, and `reverse_order` on the active `luma` device without restarting the server. A separate save action writes those values to `apps/pi-controller/config.json` so they survive reboot.
 
+If your chain order is more unusual than a simple reverse, `apps/pi-controller/config.json` also supports an optional `panel_order` list for remapping whole `8x8` panels in row-major physical order.
+
 Saved drawings are stored on the Pi under `apps/pi-controller/data/drawings` as JSON files. The desktop app can save to that directory, ask for the drawing list, and load a stored drawing back over WebSocket.
 
 That drawing store is a short-term editing convenience, not the final standalone runtime content model. The longer-term Pi runtime should store validated face projects, know which project is active, and know which project should load automatically on boot.
@@ -94,6 +96,16 @@ Fix in `config.json`:
 ```
 
 You can now test that from the desktop app first, then click `Save To Pi` in the layout section once it looks correct.
+
+### The panel order is neither normal nor fully reversed
+
+If the panel index test shows something like physical order `2, 1, 3`, use `panel_order` in `config.json`:
+
+```json
+"panel_order": [1, 0, 2]
+```
+
+That example is zero-based and means the physical left position should receive logical panel `1`, the middle position should receive logical panel `0`, and the right position should receive logical panel `2`.
 
 ### The pixels show up rotated or twisted across the two modules
 

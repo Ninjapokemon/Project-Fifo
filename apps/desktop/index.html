@@ -148,6 +148,21 @@
                 </div>
                 <input id="reverseOrderInput" type="checkbox" />
               </label>
+              <label class="field">
+                <span>Panel Order</span>
+                <input
+                  id="panelOrderInput"
+                  type="text"
+                  inputmode="numeric"
+                  placeholder="1, 2, 3, 4"
+                />
+              </label>
+              <p class="field-hint">
+                Optional custom order. Enter the logical panel numbers in physical left-to-right,
+                top-to-bottom order, for example <code>1, 3, 2, 4</code>. If two panels light at
+                once during <code>Panel Index Test</code>, that usually points to wiring mirroring
+                rather than a panel-order setting.
+              </p>
             </div>
           </details>
 

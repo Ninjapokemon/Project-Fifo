@@ -48,6 +48,7 @@ const DEFAULT_LAYOUT = {
   rotate: 0,
   blockOrientation: 90,
   reverseOrder: false,
+  panelOrder: null,
 };
 const LAYOUT_PRESETS = {
   custom: null,
@@ -76,6 +77,18 @@ const LAYOUT_PRESETS = {
     reverseOrder: true,
   },
 };
+const PANEL_INDEX_DIGITS = {
+  "0": ["111", "101", "101", "101", "111"],
+  "1": ["010", "110", "010", "010", "111"],
+  "2": ["111", "001", "111", "100", "111"],
+  "3": ["111", "001", "111", "001", "111"],
+  "4": ["101", "101", "111", "001", "001"],
+  "5": ["111", "100", "111", "001", "111"],
+  "6": ["111", "100", "111", "101", "111"],
+  "7": ["111", "001", "001", "001", "001"],
+  "8": ["111", "101", "111", "101", "111"],
+  "9": ["111", "101", "111", "001", "111"],
+};
 
 const state = {
   width: DEFAULT_WIDTH,
@@ -87,6 +100,8 @@ const state = {
   savedEndpoints: [],
   brightness: DEFAULT_BRIGHTNESS,
   layout: { ...DEFAULT_LAYOUT },
+  connectedDisplayWidth: null,
+  connectedDisplayHeight: null,
   pixelColor: DEFAULT_PIXEL_COLOR,
   boardLayout: [],
   boardGroups: [DEFAULT_BOARD_GROUP_ID],
@@ -130,6 +145,7 @@ const elements = {
   rotateSelect: document.querySelector("#rotateSelect"),
   blockOrientationSelect: document.querySelector("#blockOrientationSelect"),
   reverseOrderInput: document.querySelector("#reverseOrderInput"),
+  panelOrderInput: document.querySelector("#panelOrderInput"),
   pixelColor: document.querySelector("#pixelColor"),
   pixelColorValue: document.querySelector("#pixelColorValue"),
   paintModeButton: document.querySelector("#paintModeButton"),
@@ -232,6 +248,210 @@ function updateGridMeta() {
 
 function createEmptyPixels() {
   return Array(state.width * state.height).fill(0);
+}
+
+function getLayoutWidth() {
+  return Math.max(1, state.connectedDisplayWidth || state.width);
+}
+
+function getLayoutHeight() {
+  return Math.max(1, state.connectedDisplayHeight || state.height);
+}
+
+function getPanelColumnCount(width = getLayoutWidth()) {
+  return Math.max(1, Math.ceil(width / PANEL_SIZE));
+}
+
+function getPanelRowCount(height = getLayoutHeight()) {
+  return Math.max(1, Math.ceil(height / PANEL_SIZE));
+}
+
+function getPanelCount(width = getLayoutWidth(), height = getLayoutHeight()) {
+  return getPanelColumnCount(width) * getPanelRowCount(height);
+}
+
+function getDefaultPanelOrderLabel(width = getLayoutWidth(), height = getLayoutHeight()) {
+  return Array.from({ length: getPanelCount(width, height) }, (_, index) => String(index + 1)).join(", ");
+}
+
+function normalizePanelOrder(panelOrder, width = getLayoutWidth(), height = getLayoutHeight()) {
+  if (panelOrder == null) {
+    return null;
+  }
+  if (!Array.isArray(panelOrder)) {
+    throw new Error("panel_order must be a list or null.");
+  }
+
+  const panelCount = getPanelCount(width, height);
+  if (panelOrder.length !== panelCount) {
+    throw new Error(`panel_order must contain exactly ${panelCount} entries.`);
+  }
+
+  const normalized = [];
+  const seenIndexes = new Set();
+  panelOrder.forEach((value) => {
+    if (!Number.isInteger(value)) {
+      throw new Error("panel_order entries must be integers.");
+    }
+    if (value < 0 || value >= panelCount) {
+      throw new Error(`panel_order entries must be between 0 and ${panelCount - 1}.`);
+    }
+    if (seenIndexes.has(value)) {
+      throw new Error("panel_order entries must be unique.");
+    }
+
+    seenIndexes.add(value);
+    normalized.push(value);
+  });
+
+  return normalized.every((value, index) => value === index) ? null : normalized;
+}
+
+function formatPanelOrder(panelOrder, width = getLayoutWidth(), height = getLayoutHeight()) {
+  const normalized = normalizePanelOrder(panelOrder, width, height);
+  if (!normalized) {
+    return "";
+  }
+
+  return normalized.map((value) => String(value + 1)).join(", ");
+}
+
+function parsePanelOrderInput(value, width = getLayoutWidth(), height = getLayoutHeight()) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const panelCount = getPanelCount(width, height);
+  const tokens = trimmed.split(/[\s,]+/).filter(Boolean);
+  if (tokens.length !== panelCount) {
+    throw new Error(`Panel order needs ${panelCount} numbers for a ${width}x${height} display.`);
+  }
+
+  const usesZeroBasedIndexes = tokens.some((token) => token === "0");
+  const parsedOrder = tokens.map((token) => {
+    if (!/^-?\d+$/.test(token)) {
+      throw new Error("Panel order must use whole numbers separated by commas or spaces.");
+    }
+
+    const rawValue = Number(token);
+    const normalizedValue = usesZeroBasedIndexes ? rawValue : rawValue - 1;
+    const minimumValue = usesZeroBasedIndexes ? 0 : 1;
+    const maximumValue = usesZeroBasedIndexes ? panelCount - 1 : panelCount;
+    if (normalizedValue < 0 || normalizedValue >= panelCount) {
+      throw new Error(`Panel order entries must be between ${minimumValue} and ${maximumValue}.`);
+    }
+
+    return normalizedValue;
+  });
+
+  return normalizePanelOrder(parsedOrder, width, height);
+}
+
+function syncPanelOrderInput() {
+  elements.panelOrderInput.placeholder = getDefaultPanelOrderLabel();
+  elements.panelOrderInput.value = formatPanelOrder(state.layout.panelOrder);
+}
+
+function setConnectedDisplaySize(width, height) {
+  if (Number.isInteger(width) && width > 0 && Number.isInteger(height) && height > 0) {
+    state.connectedDisplayWidth = width;
+    state.connectedDisplayHeight = height;
+  }
+}
+
+function clearConnectedDisplaySize() {
+  state.connectedDisplayWidth = null;
+  state.connectedDisplayHeight = null;
+
+  try {
+    state.layout.panelOrder = normalizePanelOrder(state.layout.panelOrder, state.width, state.height);
+  } catch (error) {
+    state.layout.panelOrder = null;
+  }
+}
+
+function resizePixelBuffer(pixels, sourceWidth, sourceHeight, targetWidth, targetHeight) {
+  const resizedPixels = Array(targetWidth * targetHeight).fill(0);
+  const copyWidth = Math.min(sourceWidth, targetWidth);
+  const copyHeight = Math.min(sourceHeight, targetHeight);
+
+  for (let y = 0; y < copyHeight; y += 1) {
+    const sourceRowOffset = y * sourceWidth;
+    const targetRowOffset = y * targetWidth;
+
+    for (let x = 0; x < copyWidth; x += 1) {
+      resizedPixels[targetRowOffset + x] = pixels[sourceRowOffset + x] === 1 ? 1 : 0;
+    }
+  }
+
+  return resizedPixels;
+}
+
+function syncGridToConnectedDisplay(reason) {
+  const targetWidth = state.connectedDisplayWidth;
+  const targetHeight = state.connectedDisplayHeight;
+  if (!Number.isInteger(targetWidth) || targetWidth <= 0 || !Number.isInteger(targetHeight) || targetHeight <= 0) {
+    return false;
+  }
+  if (state.width === targetWidth && state.height === targetHeight) {
+    return false;
+  }
+
+  const previousWidth = state.width;
+  const previousHeight = state.height;
+  const resizedPixels = resizePixelBuffer(
+    state.pixels,
+    previousWidth,
+    previousHeight,
+    targetWidth,
+    targetHeight,
+  );
+  const normalizedWorkspace = normalizePersistedBoardWorkspace(
+    targetWidth,
+    targetHeight,
+    resizedPixels,
+    serializeBoardLayout(state.boardLayout),
+    [...state.boardGroups],
+  );
+  applyBoardFrame(normalizedWorkspace.boardLayout, normalizedWorkspace.boardGroups);
+  elements.gridWidth.value = String(state.width);
+  elements.gridHeight.value = String(state.height);
+  renderGrid();
+  pushHistorySnapshot(reason);
+  log(
+    `Synced the editor grid to the Pi display (${state.width}x${state.height}) after ${reason}. `
+    + "Preserved overlapping pixels.",
+  );
+  return true;
+}
+
+function fitFrameToConnectedDisplay(frame) {
+  const targetWidth = state.connectedDisplayWidth;
+  const targetHeight = state.connectedDisplayHeight;
+  if (!Number.isInteger(targetWidth) || targetWidth <= 0 || !Number.isInteger(targetHeight) || targetHeight <= 0) {
+    return {
+      width: frame.width,
+      height: frame.height,
+      pixels: [...frame.pixels],
+      resized: false,
+    };
+  }
+  if (frame.width === targetWidth && frame.height === targetHeight) {
+    return {
+      width: frame.width,
+      height: frame.height,
+      pixels: [...frame.pixels],
+      resized: false,
+    };
+  }
+
+  return {
+    width: targetWidth,
+    height: targetHeight,
+    pixels: resizePixelBuffer(frame.pixels, frame.width, frame.height, targetWidth, targetHeight),
+    resized: true,
+  };
 }
 
 function indexForDimensions(x, y, width) {
@@ -1053,6 +1273,7 @@ function buildLayoutMessage() {
     rotate: state.layout.rotate,
     block_orientation: state.layout.blockOrientation,
     reverse_order: state.layout.reverseOrder,
+    panel_order: state.layout.panelOrder,
   };
 }
 
@@ -1063,6 +1284,7 @@ function buildSaveLayoutMessage() {
     rotate: state.layout.rotate,
     block_orientation: state.layout.blockOrientation,
     reverse_order: state.layout.reverseOrder,
+    panel_order: state.layout.panelOrder,
   };
 }
 
@@ -1147,15 +1369,16 @@ function createEditorSnapshot() {
 
 function restoreSnapshot(snapshot, reason, options = {}) {
   stopPatternPlayback(`for ${reason}`);
-  const pixelsChanged = state.width !== snapshot.width
-    || state.height !== snapshot.height
-    || state.pixels.length !== snapshot.pixels.length
-    || state.pixels.some((value, index) => value !== snapshot.pixels[index]);
+  const fittedSnapshot = fitFrameToConnectedDisplay(snapshot);
+  const pixelsChanged = state.width !== fittedSnapshot.width
+    || state.height !== fittedSnapshot.height
+    || state.pixels.length !== fittedSnapshot.pixels.length
+    || state.pixels.some((value, index) => value !== fittedSnapshot.pixels[index]);
   state.drawingName = sanitizeDrawingName(snapshot.drawingName);
   const normalizedWorkspace = normalizePersistedBoardWorkspace(
-    snapshot.width,
-    snapshot.height,
-    snapshot.pixels,
+    fittedSnapshot.width,
+    fittedSnapshot.height,
+    fittedSnapshot.pixels,
     snapshot.boardLayout,
     snapshot.boardGroups,
   );
@@ -1165,6 +1388,12 @@ function restoreSnapshot(snapshot, reason, options = {}) {
   elements.drawingName.value = state.drawingName;
   renderGrid();
   saveAutosave();
+  if (fittedSnapshot.resized) {
+    log(
+      `Adjusted the restored editor snapshot to the connected Pi display `
+      + `(${state.width}x${state.height}) so live updates stay in sync.`,
+    );
+  }
   if (options.syncFrame !== false && pixelsChanged) {
     scheduleFrameSend(reason, options);
   }
@@ -1515,6 +1744,23 @@ function resizeGrid() {
     return;
   }
 
+  if (
+    Number.isInteger(state.connectedDisplayWidth)
+    && Number.isInteger(state.connectedDisplayHeight)
+    && (width !== state.connectedDisplayWidth || height !== state.connectedDisplayHeight)
+  ) {
+    elements.gridWidth.value = String(state.connectedDisplayWidth);
+    elements.gridHeight.value = String(state.connectedDisplayHeight);
+    log(
+      `Connected Pi display is ${state.connectedDisplayWidth}x${state.connectedDisplayHeight}. `
+      + "The editor grid stays synced to that size while connected.",
+    );
+    if (syncGridToConnectedDisplay("Pi display sync")) {
+      scheduleFrameSend("Pi display sync", { immediate: true, logSend: false });
+    }
+    return;
+  }
+
   state.width = width;
   state.height = height;
   state.pixels = Array(width * height).fill(0);
@@ -1528,10 +1774,11 @@ function resizeGrid() {
 
 function applyDrawing(frame, reason) {
   stopPatternPlayback(`for ${reason}`);
+  const fittedFrame = fitFrameToConnectedDisplay(frame);
   const normalizedWorkspace = normalizePersistedBoardWorkspace(
-    frame.width,
-    frame.height,
-    frame.pixels,
+    fittedFrame.width,
+    fittedFrame.height,
+    fittedFrame.pixels,
     frame.boardLayout,
     frame.boardGroups,
   );
@@ -1540,6 +1787,12 @@ function applyDrawing(frame, reason) {
   elements.gridHeight.value = String(state.height);
   renderGrid();
   pushHistorySnapshot(reason);
+  if (fittedFrame.resized) {
+    log(
+      `Adjusted the loaded drawing to the connected Pi display `
+      + `(${state.width}x${state.height}) so live updates stay in sync.`,
+    );
+  }
   scheduleFrameSend(reason);
 }
 
@@ -1637,18 +1890,23 @@ function buildPanelIndexTestPixels(frameIndex) {
     setPixelInArray(pixels, endX - 1, y);
   }
 
-  const localBits = Math.min(6, Math.max(0, endX - startX - 2));
-  for (let bit = 0; bit < localBits; bit += 1) {
-    if ((activePanel >> bit) & 1) {
-      setPixelInArray(pixels, startX + 1 + bit, startY + 1);
+  const digit = String((activePanel + 1) % 10);
+  const glyph = PANEL_INDEX_DIGITS[digit] || PANEL_INDEX_DIGITS["0"];
+  const glyphHeight = glyph.length;
+  const glyphWidth = glyph[0].length;
+  const interiorWidth = Math.max(0, endX - startX - 2);
+  const interiorHeight = Math.max(0, endY - startY - 2);
+  const offsetX = startX + 1 + Math.max(0, Math.floor((interiorWidth - glyphWidth) / 2));
+  const offsetY = startY + 1 + Math.max(0, Math.floor((interiorHeight - glyphHeight) / 2));
+
+  for (let row = 0; row < glyphHeight; row += 1) {
+    for (let column = 0; column < glyphWidth; column += 1) {
+      if (glyph[row][column] !== "1") {
+        continue;
+      }
+      setPixelInArray(pixels, offsetX + column, offsetY + row);
     }
   }
-
-  setPixelInArray(
-    pixels,
-    Math.min(endX - 1, startX + Math.floor((endX - startX) / 2)),
-    Math.min(endY - 1, startY + Math.floor((endY - startY) / 2)),
-  );
 
   return pixels;
 }
@@ -1696,6 +1954,10 @@ function syncBrightnessInputs() {
 }
 
 function findMatchingLayoutPreset(layout = state.layout) {
+  if (layout.panelOrder) {
+    return "custom";
+  }
+
   return Object.entries(LAYOUT_PRESETS).find(([, preset]) => (
     preset
     && preset.rotate === layout.rotate
@@ -1708,6 +1970,7 @@ function syncLayoutInputs() {
   elements.rotateSelect.value = String(state.layout.rotate);
   elements.blockOrientationSelect.value = String(state.layout.blockOrientation);
   elements.reverseOrderInput.checked = state.layout.reverseOrder;
+  syncPanelOrderInput();
   elements.layoutPreset.value = findMatchingLayoutPreset();
 }
 
@@ -1716,6 +1979,7 @@ function applyLayoutState(layout) {
     rotate: clampRotate(layout.rotate),
     blockOrientation: normalizeBlockOrientation(layout.blockOrientation),
     reverseOrder: Boolean(layout.reverseOrder),
+    panelOrder: normalizePanelOrder(layout.panelOrder),
   };
   syncLayoutInputs();
 }
@@ -1785,14 +2049,25 @@ function requestPiState(reason) {
 }
 
 function setLayout(reason) {
+  let panelOrder = state.layout.panelOrder;
+  try {
+    panelOrder = parsePanelOrderInput(elements.panelOrderInput.value);
+  } catch (error) {
+    syncLayoutInputs();
+    log(error instanceof Error ? error.message : "Panel order is invalid.");
+    return;
+  }
+
   const nextLayout = {
     rotate: clampRotate(Number(elements.rotateSelect.value)),
     blockOrientation: normalizeBlockOrientation(elements.blockOrientationSelect.value),
     reverseOrder: elements.reverseOrderInput.checked,
+    panelOrder,
   };
   const changed = state.layout.rotate !== nextLayout.rotate
     || state.layout.blockOrientation !== nextLayout.blockOrientation
-    || state.layout.reverseOrder !== nextLayout.reverseOrder;
+    || state.layout.reverseOrder !== nextLayout.reverseOrder
+    || JSON.stringify(state.layout.panelOrder) !== JSON.stringify(nextLayout.panelOrder);
 
   applyLayoutState(nextLayout);
 
@@ -1806,7 +2081,9 @@ function setLayout(reason) {
     log(
       `Applied layout after ${reason}: rotate ${state.layout.rotate * 90} degrees, `
       + `block orientation ${state.layout.blockOrientation} degrees, `
-      + `reverse order ${state.layout.reverseOrder ? "on" : "off"}, and re-sent the current frame.`,
+      + `reverse order ${state.layout.reverseOrder ? "on" : "off"}, `
+      + `panel order ${formatPanelOrder(state.layout.panelOrder) || getDefaultPanelOrderLabel()}, `
+      + `and re-sent the current frame.`,
     );
     return;
   }
@@ -1822,7 +2099,10 @@ function applyLayoutPreset() {
     return;
   }
 
-  applyLayoutState(preset);
+  applyLayoutState({
+    ...preset,
+    panelOrder: null,
+  });
   const sent = sendMessage(buildLayoutMessage());
   if (sent) {
     sendMessage(buildFrameMessage());
@@ -2030,13 +2310,16 @@ function handleServerMessage(message) {
     && Number.isInteger(message.block_orientation)
     && typeof message.reverse_order === "boolean"
   ) {
+    setConnectedDisplaySize(message.width, message.height);
     state.brightness = clampBrightness(message.brightness);
     syncBrightnessInputs();
     applyLayoutState({
       rotate: message.rotate,
       blockOrientation: message.block_orientation,
       reverseOrder: message.reverse_order,
+      panelOrder: message.panel_order ?? null,
     });
+    const syncedGrid = syncGridToConnectedDisplay("Pi state sync");
     if (Array.isArray(message.drawings)) {
       state.piDrawings = message.drawings
         .filter((value) => typeof value === "string")
@@ -2047,6 +2330,13 @@ function handleServerMessage(message) {
       `Pi state synced: ${message.width}x${message.height}, brightness ${state.brightness}, `
       + `${state.piDrawings.length} saved drawing${state.piDrawings.length === 1 ? "" : "s"}.`,
     );
+    if (sendMessage(buildFrameMessage())) {
+      log(
+        syncedGrid
+          ? "Sent the current frame after syncing the editor grid to the Pi display."
+          : "Sent the current frame after Pi state sync.",
+      );
+    }
     if (message.layout_persisted === false) {
       log("Pi layout has live changes that are not saved to config yet.");
     }
@@ -2059,16 +2349,22 @@ function handleServerMessage(message) {
     && Number.isInteger(message.block_orientation)
     && typeof message.reverse_order === "boolean"
   ) {
+    setConnectedDisplaySize(message.width, message.height);
     applyLayoutState({
       rotate: message.rotate,
       blockOrientation: message.block_orientation,
       reverseOrder: message.reverse_order,
+      panelOrder: message.panel_order ?? null,
     });
+    const syncedGrid = syncGridToConnectedDisplay("Pi layout sync");
     log(
       message.type === "layout_saved"
         ? "Pi layout was saved to config."
         : "Pi layout is now in sync with the desktop controls.",
     );
+    if (syncedGrid && sendMessage(buildFrameMessage())) {
+      log("Sent the current frame after syncing the editor grid to the Pi display.");
+    }
     return;
   }
 
@@ -2134,13 +2430,13 @@ function connect() {
   socket.addEventListener("open", () => {
     setStatus("Connected", "connected");
     log(`Connected to ${endpoint}.`);
-    sendMessage(buildFrameMessage());
-    log("Sent initial frame after connect.");
     requestPiState("connect");
   });
 
   socket.addEventListener("close", () => {
     setStatus("Disconnected", "idle");
+    clearConnectedDisplaySize();
+    syncLayoutInputs();
     log("Connection closed.");
     if (state.socket === socket) {
       state.socket = null;
@@ -2232,6 +2528,9 @@ function bindEvents() {
   });
   elements.reverseOrderInput.addEventListener("change", () => {
     setLayout("reverse order change");
+  });
+  elements.panelOrderInput.addEventListener("change", () => {
+    setLayout("panel order change");
   });
   elements.pixelColor.addEventListener("input", () => {
     state.pixelColor = normalizeHexColor(elements.pixelColor.value);

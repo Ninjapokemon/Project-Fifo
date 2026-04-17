@@ -20,9 +20,14 @@ from protocol import (
 from storage import DrawingStore
 
 
-def build_layout_state_message(display: MatrixDisplay, message_type: str = "layout_state") -> dict[str, int | bool | str]:
+def build_layout_state_message(
+    display: MatrixDisplay,
+    message_type: str = "layout_state",
+) -> dict[str, int | bool | str | list[int] | None]:
     return {
         "type": message_type,
+        "width": display.width,
+        "height": display.height,
         **display.get_layout(),
     }
 
@@ -31,11 +36,12 @@ def build_state_message(
     display: MatrixDisplay,
     drawing_store: DrawingStore,
     config: dict,
-) -> dict[str, int | bool | str | list[str] | None]:
+) -> dict[str, int | bool | str | list[str] | list[int] | None]:
     persisted_layout = {
         "rotate": config.get("rotate", 0),
         "block_orientation": config.get("block_orientation", 90),
         "reverse_order": config.get("reverse_order", False),
+        "panel_order": config.get("panel_order"),
     }
     live_state = display.get_state()
 
@@ -45,7 +51,8 @@ def build_state_message(
         "drawings": drawing_store.list_names(),
         "layout_persisted": live_state["rotate"] == persisted_layout["rotate"]
         and live_state["block_orientation"] == persisted_layout["block_orientation"]
-        and live_state["reverse_order"] == persisted_layout["reverse_order"],
+        and live_state["reverse_order"] == persisted_layout["reverse_order"]
+        and live_state["panel_order"] == persisted_layout["panel_order"],
         "active_project": None,
         "boot_project": None,
         "connection_status": "connected",
@@ -132,18 +139,14 @@ async def handle_connection(
                 continue
             if message.get("type") == "layout":
                 layout = validate_layout_message(message, "layout")
-                applied_layout = display.set_layout(
+                display.set_layout(
                     layout["rotate"],
                     layout["block_orientation"],
                     layout["reverse_order"],
+                    layout.get("panel_order"),
                 )
                 await websocket.send(
-                    json.dumps(
-                        {
-                            "type": "layout_state",
-                            **applied_layout,
-                        }
-                    )
+                    json.dumps(build_layout_state_message(display))
                 )
                 continue
             if message.get("type") == "save_layout":
@@ -152,16 +155,12 @@ async def handle_connection(
                     layout["rotate"],
                     layout["block_orientation"],
                     layout["reverse_order"],
+                    layout.get("panel_order"),
                 )
                 config.update(applied_layout)
                 save_config(config)
                 await websocket.send(
-                    json.dumps(
-                        {
-                            "type": "layout_saved",
-                            **applied_layout,
-                        }
-                    )
+                    json.dumps(build_layout_state_message(display, "layout_saved"))
                 )
                 continue
 

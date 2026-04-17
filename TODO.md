@@ -20,15 +20,24 @@ This is the running list of what would make the project nicer to use and easier 
 
 ### Next
 
-- [ ] Add a protocol state message
+- [ ] Finish the protocol state message and desktop sync
 - [ ] Add Pi project storage and boot project management
 - [ ] Add a Pi install script
 - [ ] Add unit tests for protocol and mapping
 - [ ] Add animation and face-runtime groundwork
+- [ ] Review and reconcile the LED layout branches
 
 ### Future Goal
 
 - build toward a standalone protogen face runtime where the Pi can boot, load a primary project, play animations locally, and react to inputs like buttons or microphone activity
+
+## Branch Notes
+
+- `development` is the current integration branch
+- `development` is currently `4` commits ahead of `main`
+- `LED-Layout-Tests` is currently `1` commit ahead of `development`
+- `origin/led-layout` also exists separately and is not yet reconciled with `development` or `main`
+- the LED board arrangement work should be reviewed and folded back into one clear branch path before more UI work stacks up
 
 ## Active Items
 
@@ -80,15 +89,16 @@ Done when:
 ### 5. Add a protocol state message
 
 Status:
-- [ ] add request and response messages for `brightness`, `width`, `height`, and `connection status`
-- [ ] include runtime-facing fields such as current layout, active project, active animation or state, and whether settings are persisted
-- [ ] decide how the Pi reports live temporary state versus reboot-persisted state
-- [ ] use that information to keep the desktop UI in sync
+- [x] add request and response messages for `brightness`, `width`, `height`, layout data, saved drawing list, and basic `connection_status`
+- [x] use that information to keep brightness, layout controls, and Pi drawing lists in sync in the desktop UI
+- [ ] decide whether desktop `width` and `height` should auto-sync from Pi state or stay local unless the user chooses to resize
+- [ ] include fuller runtime-facing fields such as active project, active animation or state, and a clearer persisted-versus-live model
+- [ ] decide how the Pi reports live temporary state versus reboot-persisted state once projects and runtime playback exist
 
 Done when:
 - connect from the desktop app
 - request state
-- show the current Pi settings in the UI
+- show the current Pi settings and runtime-facing state in the UI
 
 Notes:
 - this should grow into runtime state, not stay limited to transport connection details
@@ -174,6 +184,18 @@ Notes:
 - microphone or button input should be able to trigger animation or state changes later
 - desktop-driven playback is a stepping stone, not the final architecture
 
+### 11. Review and reconcile LED layout branches
+
+Status:
+- [ ] compare `LED-Layout-Tests` and `origin/led-layout` against `development`
+- [ ] decide whether the draggable `8x8` board arrangement belongs in the main editor, a separate setup mode, or should be dropped
+- [ ] merge or cherry-pick the accepted LED layout work into `development`
+- [ ] merge the cleaned-up result from `development` to `main` once it is stable
+
+Done when:
+- the accepted work lives on `development`
+- `main` only receives the LED layout changes after they have been validated
+
 ## Completed Work
 
 ### Desktop editor refresh
@@ -245,3 +267,4 @@ Status:
 8. Pi install script
 9. Unit tests
 10. Animation and face-runtime groundwork
+11. Review and reconcile LED layout branches

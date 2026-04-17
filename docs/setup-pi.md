@@ -57,6 +57,7 @@ The main fields to care about are:
 - `block_orientation`: panel orientation used by `luma`
 - `reverse_order`: whether the matrix chain order is reversed
 - `serpentine`: reserved for later custom mapping logic
+- `panel_order`: optional row-major list of logical panel indexes in physical display order
 
 Example for three matrices in one horizontal row:
 
@@ -70,9 +71,24 @@ Example for three matrices in one horizontal row:
   "brightness": 3,
   "block_orientation": 90,
   "reverse_order": false,
-  "serpentine": false
+  "serpentine": false,
+  "panel_order": null
 }
 ```
+
+Leave `panel_order` as `null` for a normal row-major layout. If your physical chain is not simply left-to-right or right-to-left, set it to the logical panel indexes you want to appear in each physical position.
+
+Example for a three-panel row where the physical left-to-right order comes out as panel 2, panel 1, panel 3 during the index test:
+
+```json
+"panel_order": [1, 0, 2]
+```
+
+That example is zero-based, so the list means:
+
+- physical position `0` should show logical panel `1`
+- physical position `1` should show logical panel `0`
+- physical position `2` should show logical panel `2`
 
 ## 6. Run the server
 
@@ -186,6 +202,8 @@ There are two main places to adjust things:
 2. `apps/pi-controller/src/mapping.py`
 
 Start with `rotate`, `block_orientation`, and `reverse_order`. You can now tune those live from the desktop app and save them back to the Pi config once they look right. If the image is still scrambled after that, `mapping.py` is where the custom fixes belong.
+
+If the panel order is neither normal nor fully reversed, use `panel_order` in `apps/pi-controller/config.json` for the remaining panel swap.
 
 ## Common Issues And Fixes
 

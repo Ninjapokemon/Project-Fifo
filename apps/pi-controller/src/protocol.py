@@ -22,6 +22,7 @@ def validate_layout_message(message: dict[str, Any], expected_type: str) -> dict
     rotate = message.get("rotate")
     block_orientation = message.get("block_orientation")
     reverse_order = message.get("reverse_order")
+    panel_order = message.get("panel_order")
 
     if rotate not in ALLOWED_ROTATE_VALUES:
         raise ProtocolError("rotate must be one of 0, 1, 2, or 3")
@@ -29,6 +30,11 @@ def validate_layout_message(message: dict[str, Any], expected_type: str) -> dict
         raise ProtocolError("block_orientation must be one of -90, 0, 90, or 180")
     if not isinstance(reverse_order, bool):
         raise ProtocolError("reverse_order must be a boolean")
+    if panel_order is not None:
+        if not isinstance(panel_order, list):
+            raise ProtocolError("panel_order must be a list or null")
+        if any(not isinstance(value, int) for value in panel_order):
+            raise ProtocolError("panel_order entries must be integers")
 
     return {
         "type": expected_type,
@@ -36,6 +42,7 @@ def validate_layout_message(message: dict[str, Any], expected_type: str) -> dict
         "rotate": rotate,
         "block_orientation": block_orientation,
         "reverse_order": reverse_order,
+        "panel_order": panel_order,
     }
 
 
