@@ -23,6 +23,7 @@ const DEFAULT_LAYOUT = {
   rotate: 0,
   blockOrientation: 90,
   reverseOrder: false,
+  panelOrder: null,
 };
 const LAYOUT_PRESETS = {
   custom: null,
@@ -74,6 +75,8 @@ const state = {
   savedEndpoints: [],
   brightness: DEFAULT_BRIGHTNESS,
   layout: { ...DEFAULT_LAYOUT },
+  connectedDisplayWidth: null,
+  connectedDisplayHeight: null,
   pixelColor: DEFAULT_PIXEL_COLOR,
   drawValue: 1,
   socket: null,
@@ -114,6 +117,7 @@ const elements = {
   rotateSelect: document.querySelector("#rotateSelect"),
   blockOrientationSelect: document.querySelector("#blockOrientationSelect"),
   reverseOrderInput: document.querySelector("#reverseOrderInput"),
+  panelOrderInput: document.querySelector("#panelOrderInput"),
   pixelColor: document.querySelector("#pixelColor"),
   pixelColorValue: document.querySelector("#pixelColorValue"),
   paintModeButton: document.querySelector("#paintModeButton"),
@@ -213,6 +217,127 @@ function updateGridMeta() {
 
 function createEmptyPixels() {
   return Array(state.width * state.height).fill(0);
+}
+
+function getLayoutWidth() {
+  return Math.max(1, state.connectedDisplayWidth || state.width);
+}
+
+function getLayoutHeight() {
+  return Math.max(1, state.connectedDisplayHeight || state.height);
+}
+
+function getPanelColumnCount(width = getLayoutWidth()) {
+  return Math.max(1, Math.ceil(width / PANEL_SIZE));
+}
+
+function getPanelRowCount(height = getLayoutHeight()) {
+  return Math.max(1, Math.ceil(height / PANEL_SIZE));
+}
+
+function getPanelCount(width = getLayoutWidth(), height = getLayoutHeight()) {
+  return getPanelColumnCount(width) * getPanelRowCount(height);
+}
+
+function getDefaultPanelOrderLabel(width = getLayoutWidth(), height = getLayoutHeight()) {
+  return Array.from({ length: getPanelCount(width, height) }, (_, index) => String(index + 1)).join(", ");
+}
+
+function normalizePanelOrder(panelOrder, width = getLayoutWidth(), height = getLayoutHeight()) {
+  if (panelOrder == null) {
+    return null;
+  }
+  if (!Array.isArray(panelOrder)) {
+    throw new Error("panel_order must be a list or null.");
+  }
+
+  const panelCount = getPanelCount(width, height);
+  if (panelOrder.length !== panelCount) {
+    throw new Error(`panel_order must contain exactly ${panelCount} entries.`);
+  }
+
+  const normalized = [];
+  const seenIndexes = new Set();
+  panelOrder.forEach((value) => {
+    if (!Number.isInteger(value)) {
+      throw new Error("panel_order entries must be integers.");
+    }
+    if (value < 0 || value >= panelCount) {
+      throw new Error(`panel_order entries must be between 0 and ${panelCount - 1}.`);
+    }
+    if (seenIndexes.has(value)) {
+      throw new Error("panel_order entries must be unique.");
+    }
+
+    seenIndexes.add(value);
+    normalized.push(value);
+  });
+
+  return normalized.every((value, index) => value === index) ? null : normalized;
+}
+
+function formatPanelOrder(panelOrder, width = getLayoutWidth(), height = getLayoutHeight()) {
+  const normalized = normalizePanelOrder(panelOrder, width, height);
+  if (!normalized) {
+    return "";
+  }
+
+  return normalized.map((value) => String(value + 1)).join(", ");
+}
+
+function parsePanelOrderInput(value, width = getLayoutWidth(), height = getLayoutHeight()) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const panelCount = getPanelCount(width, height);
+  const tokens = trimmed.split(/[\s,]+/).filter(Boolean);
+  if (tokens.length !== panelCount) {
+    throw new Error(`Panel order needs ${panelCount} numbers for a ${width}x${height} display.`);
+  }
+
+  const usesZeroBasedIndexes = tokens.some((token) => token === "0");
+  const parsedOrder = tokens.map((token) => {
+    if (!/^-?\d+$/.test(token)) {
+      throw new Error("Panel order must use whole numbers separated by commas or spaces.");
+    }
+
+    const rawValue = Number(token);
+    const normalizedValue = usesZeroBasedIndexes ? rawValue : rawValue - 1;
+    const minimumValue = usesZeroBasedIndexes ? 0 : 1;
+    const maximumValue = usesZeroBasedIndexes ? panelCount - 1 : panelCount;
+    if (normalizedValue < 0 || normalizedValue >= panelCount) {
+      throw new Error(`Panel order entries must be between ${minimumValue} and ${maximumValue}.`);
+    }
+
+    return normalizedValue;
+  });
+
+  return normalizePanelOrder(parsedOrder, width, height);
+}
+
+function syncPanelOrderInput() {
+  elements.panelOrderInput.placeholder = getDefaultPanelOrderLabel();
+  elements.panelOrderInput.value = formatPanelOrder(state.layout.panelOrder);
+}
+
+function setConnectedDisplaySize(width, height) {
+  if (Number.isInteger(width) && width > 0 && Number.isInteger(height) && height > 0) {
+    state.connectedDisplayWidth = width;
+    state.connectedDisplayHeight = height;
+  }
+}
+
+function clearConnectedDisplaySize() {
+  state.connectedDisplayWidth = null;
+  state.connectedDisplayHeight = null;
+
+  try {
+    state.layout.panelOrder = normalizePanelOrder(state.layout.panelOrder, state.width, state.height);
+  } catch (error) {
+    state.layout.panelOrder = null;
+  }
 }
 
 function indexFor(x, y) {
@@ -320,6 +445,7 @@ function buildLayoutMessage() {
     rotate: state.layout.rotate,
     block_orientation: state.layout.blockOrientation,
     reverse_order: state.layout.reverseOrder,
+    panel_order: state.layout.panelOrder,
   };
 }
 
@@ -330,6 +456,7 @@ function buildSaveLayoutMessage() {
     rotate: state.layout.rotate,
     block_orientation: state.layout.blockOrientation,
     reverse_order: state.layout.reverseOrder,
+    panel_order: state.layout.panelOrder,
   };
 }
 
@@ -923,6 +1050,10 @@ function syncBrightnessInputs() {
 }
 
 function findMatchingLayoutPreset(layout = state.layout) {
+  if (layout.panelOrder) {
+    return "custom";
+  }
+
   return Object.entries(LAYOUT_PRESETS).find(([, preset]) => (
     preset
     && preset.rotate === layout.rotate
@@ -935,6 +1066,7 @@ function syncLayoutInputs() {
   elements.rotateSelect.value = String(state.layout.rotate);
   elements.blockOrientationSelect.value = String(state.layout.blockOrientation);
   elements.reverseOrderInput.checked = state.layout.reverseOrder;
+  syncPanelOrderInput();
   elements.layoutPreset.value = findMatchingLayoutPreset();
 }
 
@@ -943,6 +1075,7 @@ function applyLayoutState(layout) {
     rotate: clampRotate(layout.rotate),
     blockOrientation: normalizeBlockOrientation(layout.blockOrientation),
     reverseOrder: Boolean(layout.reverseOrder),
+    panelOrder: normalizePanelOrder(layout.panelOrder),
   };
   syncLayoutInputs();
 }
@@ -1012,14 +1145,25 @@ function requestPiState(reason) {
 }
 
 function setLayout(reason) {
+  let panelOrder = state.layout.panelOrder;
+  try {
+    panelOrder = parsePanelOrderInput(elements.panelOrderInput.value);
+  } catch (error) {
+    syncLayoutInputs();
+    log(error instanceof Error ? error.message : "Panel order is invalid.");
+    return;
+  }
+
   const nextLayout = {
     rotate: clampRotate(Number(elements.rotateSelect.value)),
     blockOrientation: normalizeBlockOrientation(elements.blockOrientationSelect.value),
     reverseOrder: elements.reverseOrderInput.checked,
+    panelOrder,
   };
   const changed = state.layout.rotate !== nextLayout.rotate
     || state.layout.blockOrientation !== nextLayout.blockOrientation
-    || state.layout.reverseOrder !== nextLayout.reverseOrder;
+    || state.layout.reverseOrder !== nextLayout.reverseOrder
+    || JSON.stringify(state.layout.panelOrder) !== JSON.stringify(nextLayout.panelOrder);
 
   applyLayoutState(nextLayout);
 
@@ -1033,7 +1177,9 @@ function setLayout(reason) {
     log(
       `Applied layout after ${reason}: rotate ${state.layout.rotate * 90} degrees, `
       + `block orientation ${state.layout.blockOrientation} degrees, `
-      + `reverse order ${state.layout.reverseOrder ? "on" : "off"}, and re-sent the current frame.`,
+      + `reverse order ${state.layout.reverseOrder ? "on" : "off"}, `
+      + `panel order ${formatPanelOrder(state.layout.panelOrder) || getDefaultPanelOrderLabel()}, `
+      + `and re-sent the current frame.`,
     );
     return;
   }
@@ -1049,7 +1195,10 @@ function applyLayoutPreset() {
     return;
   }
 
-  applyLayoutState(preset);
+  applyLayoutState({
+    ...preset,
+    panelOrder: null,
+  });
   const sent = sendMessage(buildLayoutMessage());
   if (sent) {
     sendMessage(buildFrameMessage());
@@ -1235,12 +1384,14 @@ function handleServerMessage(message) {
     && Number.isInteger(message.block_orientation)
     && typeof message.reverse_order === "boolean"
   ) {
+    setConnectedDisplaySize(message.width, message.height);
     state.brightness = clampBrightness(message.brightness);
     syncBrightnessInputs();
     applyLayoutState({
       rotate: message.rotate,
       blockOrientation: message.block_orientation,
       reverseOrder: message.reverse_order,
+      panelOrder: message.panel_order ?? null,
     });
     if (Array.isArray(message.drawings)) {
       state.piDrawings = message.drawings
@@ -1264,10 +1415,12 @@ function handleServerMessage(message) {
     && Number.isInteger(message.block_orientation)
     && typeof message.reverse_order === "boolean"
   ) {
+    setConnectedDisplaySize(message.width, message.height);
     applyLayoutState({
       rotate: message.rotate,
       blockOrientation: message.block_orientation,
       reverseOrder: message.reverse_order,
+      panelOrder: message.panel_order ?? null,
     });
     log(
       message.type === "layout_saved"
@@ -1346,6 +1499,8 @@ function connect() {
 
   socket.addEventListener("close", () => {
     setStatus("Disconnected", "idle");
+    clearConnectedDisplaySize();
+    syncLayoutInputs();
     log("Connection closed.");
     if (state.socket === socket) {
       state.socket = null;
@@ -1437,6 +1592,9 @@ function bindEvents() {
   });
   elements.reverseOrderInput.addEventListener("change", () => {
     setLayout("reverse order change");
+  });
+  elements.panelOrderInput.addEventListener("change", () => {
+    setLayout("panel order change");
   });
   elements.pixelColor.addEventListener("input", () => {
     state.pixelColor = normalizeHexColor(elements.pixelColor.value);

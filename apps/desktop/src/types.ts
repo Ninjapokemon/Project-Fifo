@@ -28,6 +28,7 @@ export type LayoutMessage = {
   rotate: number;
   block_orientation: number;
   reverse_order: boolean;
+  panel_order: number[] | null;
 };
 
 export type SaveLayoutMessage = {
@@ -36,6 +37,7 @@ export type SaveLayoutMessage = {
   rotate: number;
   block_orientation: number;
   reverse_order: boolean;
+  panel_order: number[] | null;
 };
 
 export type SavedDrawing = FrameMessage & {

@@ -88,3 +88,4 @@ Click `Read From Pi` after connecting to pull the current layout, then use `Save
 - If the browser shows `Disconnected`, confirm the Pi server is running.
 - If `Connect` fails, check the endpoint and firewall rules.
 - If the pattern is mirrored or rotated on the LEDs, the next thing to adjust is `apps/pi-controller/src/mapping.py` and the Pi config options.
+- If `Panel Index Test` lights two panels at the same time, that is usually a hardware wiring mirror such as two chains fed in parallel. `Panel Order` can fix swapped positions, but it cannot separate duplicated panels that share the same signal path.
