@@ -340,15 +340,75 @@ function clearConnectedDisplaySize() {
   }
 }
 
-function logDisplaySizeMismatch(sourceLabel) {
-  if (state.width === getLayoutWidth() && state.height === getLayoutHeight()) {
-    return;
+function resizePixelBuffer(pixels, sourceWidth, sourceHeight, targetWidth, targetHeight) {
+  const resizedPixels = Array(targetWidth * targetHeight).fill(0);
+  const copyWidth = Math.min(sourceWidth, targetWidth);
+  const copyHeight = Math.min(sourceHeight, targetHeight);
+
+  for (let y = 0; y < copyHeight; y += 1) {
+    const sourceRowOffset = y * sourceWidth;
+    const targetRowOffset = y * targetWidth;
+
+    for (let x = 0; x < copyWidth; x += 1) {
+      resizedPixels[targetRowOffset + x] = pixels[sourceRowOffset + x] === 1 ? 1 : 0;
+    }
   }
 
+  return resizedPixels;
+}
+
+function syncGridToConnectedDisplay(reason) {
+  const targetWidth = state.connectedDisplayWidth;
+  const targetHeight = state.connectedDisplayHeight;
+  if (!Number.isInteger(targetWidth) || targetWidth <= 0 || !Number.isInteger(targetHeight) || targetHeight <= 0) {
+    return false;
+  }
+  if (state.width === targetWidth && state.height === targetHeight) {
+    return false;
+  }
+
+  const previousWidth = state.width;
+  const previousHeight = state.height;
+  state.pixels = resizePixelBuffer(state.pixels, previousWidth, previousHeight, targetWidth, targetHeight);
+  state.width = targetWidth;
+  state.height = targetHeight;
+  elements.gridWidth.value = String(targetWidth);
+  elements.gridHeight.value = String(targetHeight);
+  renderGrid();
+  pushHistorySnapshot(reason);
   log(
-    `${sourceLabel} is ${getLayoutWidth()}x${getLayoutHeight()}, but the editor grid is `
-    + `${state.width}x${state.height}. Resize the grid to match before using panel tests or live drawing.`,
+    `Synced the editor grid to the Pi display (${targetWidth}x${targetHeight}) after ${reason}. `
+    + "Preserved overlapping pixels.",
   );
+  return true;
+}
+
+function fitFrameToConnectedDisplay(frame) {
+  const targetWidth = state.connectedDisplayWidth;
+  const targetHeight = state.connectedDisplayHeight;
+  if (!Number.isInteger(targetWidth) || targetWidth <= 0 || !Number.isInteger(targetHeight) || targetHeight <= 0) {
+    return {
+      width: frame.width,
+      height: frame.height,
+      pixels: [...frame.pixels],
+      resized: false,
+    };
+  }
+  if (frame.width === targetWidth && frame.height === targetHeight) {
+    return {
+      width: frame.width,
+      height: frame.height,
+      pixels: [...frame.pixels],
+      resized: false,
+    };
+  }
+
+  return {
+    width: targetWidth,
+    height: targetHeight,
+    pixels: resizePixelBuffer(frame.pixels, frame.width, frame.height, targetWidth, targetHeight),
+    resized: true,
+  };
 }
 
 function indexFor(x, y) {
@@ -550,15 +610,22 @@ function createEditorSnapshot() {
 
 function restoreSnapshot(snapshot, reason, options = {}) {
   stopPatternPlayback(`for ${reason}`);
-  state.width = snapshot.width;
-  state.height = snapshot.height;
-  state.pixels = [...snapshot.pixels];
+  const fittedSnapshot = fitFrameToConnectedDisplay(snapshot);
+  state.width = fittedSnapshot.width;
+  state.height = fittedSnapshot.height;
+  state.pixels = fittedSnapshot.pixels;
   state.drawingName = sanitizeDrawingName(snapshot.drawingName);
   elements.gridWidth.value = String(state.width);
   elements.gridHeight.value = String(state.height);
   elements.drawingName.value = state.drawingName;
   renderGrid();
   saveAutosave();
+  if (fittedSnapshot.resized) {
+    log(
+      `Adjusted the restored editor snapshot to the connected Pi display `
+      + `(${state.width}x${state.height}) so live updates stay in sync.`,
+    );
+  }
   scheduleFrameSend(reason, options);
 }
 
@@ -886,6 +953,23 @@ function resizeGrid() {
     return;
   }
 
+  if (
+    Number.isInteger(state.connectedDisplayWidth)
+    && Number.isInteger(state.connectedDisplayHeight)
+    && (width !== state.connectedDisplayWidth || height !== state.connectedDisplayHeight)
+  ) {
+    elements.gridWidth.value = String(state.connectedDisplayWidth);
+    elements.gridHeight.value = String(state.connectedDisplayHeight);
+    log(
+      `Connected Pi display is ${state.connectedDisplayWidth}x${state.connectedDisplayHeight}. `
+      + "The editor grid stays synced to that size while connected.",
+    );
+    if (syncGridToConnectedDisplay("Pi display sync")) {
+      scheduleFrameSend("Pi display sync", { immediate: true, logSend: false });
+    }
+    return;
+  }
+
   state.width = width;
   state.height = height;
   state.pixels = Array(width * height).fill(0);
@@ -897,13 +981,20 @@ function resizeGrid() {
 
 function applyDrawing(frame, reason) {
   stopPatternPlayback(`for ${reason}`);
-  state.width = frame.width;
-  state.height = frame.height;
-  state.pixels = [...frame.pixels];
-  elements.gridWidth.value = String(frame.width);
-  elements.gridHeight.value = String(frame.height);
+  const fittedFrame = fitFrameToConnectedDisplay(frame);
+  state.width = fittedFrame.width;
+  state.height = fittedFrame.height;
+  state.pixels = fittedFrame.pixels;
+  elements.gridWidth.value = String(state.width);
+  elements.gridHeight.value = String(state.height);
   renderGrid();
   pushHistorySnapshot(reason);
+  if (fittedFrame.resized) {
+    log(
+      `Adjusted the loaded drawing to the connected Pi display `
+      + `(${state.width}x${state.height}) so live updates stay in sync.`,
+    );
+  }
   scheduleFrameSend(reason);
 }
 
@@ -1404,6 +1495,7 @@ function handleServerMessage(message) {
       reverseOrder: message.reverse_order,
       panelOrder: message.panel_order ?? null,
     });
+    const syncedGrid = syncGridToConnectedDisplay("Pi state sync");
     if (Array.isArray(message.drawings)) {
       state.piDrawings = message.drawings
         .filter((value) => typeof value === "string")
@@ -1414,7 +1506,13 @@ function handleServerMessage(message) {
       `Pi state synced: ${message.width}x${message.height}, brightness ${state.brightness}, `
       + `${state.piDrawings.length} saved drawing${state.piDrawings.length === 1 ? "" : "s"}.`,
     );
-    logDisplaySizeMismatch("Pi display");
+    if (sendMessage(buildFrameMessage())) {
+      log(
+        syncedGrid
+          ? "Sent the current frame after syncing the editor grid to the Pi display."
+          : "Sent the current frame after Pi state sync.",
+      );
+    }
     if (message.layout_persisted === false) {
       log("Pi layout has live changes that are not saved to config yet.");
     }
@@ -1434,12 +1532,15 @@ function handleServerMessage(message) {
       reverseOrder: message.reverse_order,
       panelOrder: message.panel_order ?? null,
     });
+    const syncedGrid = syncGridToConnectedDisplay("Pi layout sync");
     log(
       message.type === "layout_saved"
         ? "Pi layout was saved to config."
         : "Pi layout is now in sync with the desktop controls.",
     );
-    logDisplaySizeMismatch("Pi display");
+    if (syncedGrid && sendMessage(buildFrameMessage())) {
+      log("Sent the current frame after syncing the editor grid to the Pi display.");
+    }
     return;
   }
 
@@ -1505,8 +1606,6 @@ function connect() {
   socket.addEventListener("open", () => {
     setStatus("Connected", "connected");
     log(`Connected to ${endpoint}.`);
-    sendMessage(buildFrameMessage());
-    log("Sent initial frame after connect.");
     requestPiState("connect");
   });
 
