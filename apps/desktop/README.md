@@ -58,8 +58,8 @@ Then open `http://localhost:4173`.
 5. Use `Brightness` to update LED intensity without editing Pi config.
 6. Use `Layout + Orientation` to live-tune `rotate`, `block_orientation`, `reverse_order`, and panel order, then use the per-board rotation and mirror controls when one real module needs its own correction.
 7. Use `Save To Pi` in the layout section if you want those display settings to survive a reboot.
-8. Use `Save JSON` and `Load JSON` to move drawings in and out as files.
-9. Use `Save To Pi`, `Refresh Pi List`, and `Load From Pi` to keep single drawings on the connected Pi while iterating.
+8. Use `Save JSON` and `Load JSON` to move drawings in and out as files. These saves include the board workspace layout and any empty or used board groups.
+9. Use `Save To Pi`, `Refresh Pi List`, and `Load From Pi` to keep single drawings on the connected Pi while iterating. Pi saves now preserve that board workspace metadata too.
 
 Left click paints. Right click erases. `Clear`, `Fill`, `Checker`, and `Panel Index Test` are included for quick testing.
 

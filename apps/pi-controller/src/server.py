@@ -115,6 +115,8 @@ async def handle_connection(
                         "width": stored_drawing.get("width"),
                         "height": stored_drawing.get("height"),
                         "pixels": stored_drawing.get("pixels"),
+                        "boardLayout": stored_drawing.get("boardLayout"),
+                        "boardGroups": stored_drawing.get("boardGroups"),
                     }
                 )
                 await websocket.send(
@@ -125,6 +127,8 @@ async def handle_connection(
                             "width": drawing["width"],
                             "height": drawing["height"],
                             "pixels": drawing["pixels"],
+                            "boardLayout": drawing.get("boardLayout"),
+                            "boardGroups": drawing.get("boardGroups"),
                         }
                     )
                 )

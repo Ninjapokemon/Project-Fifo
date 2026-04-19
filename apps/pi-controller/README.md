@@ -46,7 +46,7 @@ If your chain order is more unusual than a simple reverse, `apps/pi-controller/c
 
 If one physical `8x8` module is mounted differently from the others, `apps/pi-controller/config.json` also supports an optional `panel_rotations` list of `0`, `90`, `180`, or `270` values in row-major physical order and an optional `panel_mirrors` list of booleans for horizontal mirroring. That lets you correct one panel without changing the browser drawing.
 
-Saved drawings are stored on the Pi under `apps/pi-controller/data/drawings` as JSON files. The desktop app can save to that directory, ask for the drawing list, and load a stored drawing back over WebSocket.
+Saved drawings are stored on the Pi under `apps/pi-controller/data/drawings` as JSON files. The desktop app can save to that directory, ask for the drawing list, and load a stored drawing back over WebSocket. Those saved drawing files preserve the browser's board workspace layout metadata and board groups alongside the frame pixels.
 
 That drawing store is a short-term editing convenience, not the final standalone runtime content model. The longer-term Pi runtime should store validated face projects, know which project is active, and know which project should load automatically on boot.
 

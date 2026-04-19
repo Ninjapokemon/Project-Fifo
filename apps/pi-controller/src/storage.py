@@ -31,6 +31,10 @@ class DrawingStore:
             "height": drawing["height"],
             "pixels": drawing["pixels"],
         }
+        if "boardLayout" in drawing:
+            payload["boardLayout"] = drawing["boardLayout"]
+        if "boardGroups" in drawing:
+            payload["boardGroups"] = drawing["boardGroups"]
         path = self.drawing_path(safe_name)
         with path.open("w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2)

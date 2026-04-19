@@ -1715,6 +1715,8 @@ function buildSaveDrawingMessage() {
     width: state.width,
     height: state.height,
     pixels: state.pixels,
+    boardLayout: serializeBoardLayout(),
+    boardGroups: [...state.boardGroups],
   };
 }
 

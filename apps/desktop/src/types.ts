@@ -6,6 +6,18 @@ export type FrameMessage = {
   pixels: number[];
 };
 
+export type SavedBoardLayoutEntry = {
+  id: string;
+  chainIndex: number;
+  visualGridX: number;
+  visualGridY: number;
+  viewRotation: number;
+  viewMirror: boolean;
+  groupId: string;
+  width: number;
+  height: number;
+};
+
 export type ClearMessage = {
   type: "clear";
   version: 1;
@@ -48,6 +60,8 @@ export type SaveLayoutMessage = {
 
 export type SavedDrawing = FrameMessage & {
   name: string;
+  boardLayout?: SavedBoardLayoutEntry[];
+  boardGroups?: string[];
 };
 
 export type SaveDrawingMessage = SavedDrawing & {

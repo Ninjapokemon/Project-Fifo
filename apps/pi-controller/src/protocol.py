@@ -10,6 +10,7 @@ class ProtocolError(ValueError):
 ALLOWED_ROTATE_VALUES = {0, 1, 2, 3}
 ALLOWED_BLOCK_ORIENTATION_VALUES = {-90, 0, 90, 180}
 ALLOWED_PANEL_ROTATION_VALUES = {0, 90, 180, 270}
+ALLOWED_VIEW_ROTATION_VALUES = {0, 90, 180, 270}
 
 
 def clamp_brightness_value(value: int) -> int:
@@ -147,6 +148,89 @@ def validate_named_drawing(message: dict[str, Any], expected_type: str = "save_d
             "pixels": message.get("pixels"),
         }
     )
+
+    board_layout = message.get("boardLayout")
+    if board_layout is not None:
+        if not isinstance(board_layout, list):
+            raise ProtocolError("boardLayout must be a list or null")
+
+        normalized_board_layout: list[dict[str, Any]] = []
+        for board in board_layout:
+            if not isinstance(board, dict):
+                raise ProtocolError("Each boardLayout entry must be an object")
+
+            normalized_board: dict[str, Any] = {}
+            if "id" in board:
+                if not isinstance(board["id"], str) or not board["id"].strip():
+                    raise ProtocolError("boardLayout id must be a non-empty string when provided")
+                normalized_board["id"] = board["id"].strip()
+
+            chain_index = board.get("chainIndex")
+            if chain_index is not None:
+                if isinstance(chain_index, bool) or not isinstance(chain_index, int) or chain_index < 0:
+                    raise ProtocolError("boardLayout chainIndex must be a non-negative integer when provided")
+                normalized_board["chainIndex"] = chain_index
+
+            visual_grid_x = board.get("visualGridX", board.get("gridX"))
+            if visual_grid_x is not None:
+                if isinstance(visual_grid_x, bool) or not isinstance(visual_grid_x, int) or visual_grid_x < 0:
+                    raise ProtocolError("boardLayout visualGridX must be a non-negative integer when provided")
+                normalized_board["visualGridX"] = visual_grid_x
+
+            visual_grid_y = board.get("visualGridY", board.get("gridY"))
+            if visual_grid_y is not None:
+                if isinstance(visual_grid_y, bool) or not isinstance(visual_grid_y, int) or visual_grid_y < 0:
+                    raise ProtocolError("boardLayout visualGridY must be a non-negative integer when provided")
+                normalized_board["visualGridY"] = visual_grid_y
+
+            view_rotation = board.get("viewRotation")
+            if view_rotation is not None:
+                if (
+                    isinstance(view_rotation, bool)
+                    or not isinstance(view_rotation, int)
+                    or view_rotation not in ALLOWED_VIEW_ROTATION_VALUES
+                ):
+                    raise ProtocolError("boardLayout viewRotation must be 0, 90, 180, or 270 when provided")
+                normalized_board["viewRotation"] = view_rotation
+
+            view_mirror = board.get("viewMirror")
+            if view_mirror is not None:
+                if not isinstance(view_mirror, bool):
+                    raise ProtocolError("boardLayout viewMirror must be a boolean when provided")
+                normalized_board["viewMirror"] = view_mirror
+
+            group_id = board.get("groupId")
+            if group_id is not None:
+                if not isinstance(group_id, str) or not group_id.strip():
+                    raise ProtocolError("boardLayout groupId must be a non-empty string when provided")
+                normalized_board["groupId"] = group_id.strip()
+
+            width = board.get("width")
+            if width is not None:
+                if isinstance(width, bool) or not isinstance(width, int) or width <= 0:
+                    raise ProtocolError("boardLayout width must be a positive integer when provided")
+                normalized_board["width"] = width
+
+            height = board.get("height")
+            if height is not None:
+                if isinstance(height, bool) or not isinstance(height, int) or height <= 0:
+                    raise ProtocolError("boardLayout height must be a positive integer when provided")
+                normalized_board["height"] = height
+
+            normalized_board_layout.append(normalized_board)
+        frame["boardLayout"] = normalized_board_layout
+
+    board_groups = message.get("boardGroups")
+    if board_groups is not None:
+        if not isinstance(board_groups, list):
+            raise ProtocolError("boardGroups must be a list or null")
+        normalized_board_groups: list[str] = []
+        for group_id in board_groups:
+            if not isinstance(group_id, str) or not group_id.strip():
+                raise ProtocolError("boardGroups entries must be non-empty strings")
+            normalized_board_groups.append(group_id.strip())
+        frame["boardGroups"] = normalized_board_groups
+
     frame["name"] = name.strip()
     return frame
 
