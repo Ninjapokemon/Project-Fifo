@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Project Fifo Editor</title>
-    <link rel="stylesheet" href="./src/styles.css?v=board-layout-11" />
+    <link rel="stylesheet" href="./src/styles.css?v=layout-resizer-12" />
   </head>
   <body>
     <main class="app-shell">
@@ -54,8 +54,8 @@
         </div>
       </section>
 
-      <section class="panel studio-shell">
-        <aside class="controls-sidebar">
+      <section class="panel studio-shell" id="studioShell">
+        <aside class="controls-sidebar" id="controlsSidebar">
           <details class="control-group" open>
             <summary>
               <div>
@@ -258,7 +258,18 @@
           <input id="loadInput" type="file" accept="application/json,.json" hidden />
         </aside>
 
-        <div class="studio-main">
+        <div
+          id="studioResizer"
+          class="studio-resizer"
+          role="separator"
+          tabindex="0"
+          aria-label="Resize editor panels"
+          aria-orientation="vertical"
+          aria-controls="controlsSidebar studioMain"
+          title="Drag to resize the editor panels. Arrow keys also work."
+        ></div>
+
+        <div class="studio-main" id="studioMain">
           <section class="workspace-panel">
             <div class="grid-header">
               <div>
@@ -292,6 +303,6 @@
       </section>
     </main>
 
-    <script type="module" src="./src/main.js?v=board-layout-11"></script>
+    <script type="module" src="./src/main.js?v=layout-resizer-12"></script>
   </body>
 </html>

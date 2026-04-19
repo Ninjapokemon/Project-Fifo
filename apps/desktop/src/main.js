@@ -17,8 +17,15 @@ const HISTORY_LIMIT = 48;
 const AUTOSAVE_STORAGE_KEY = "project-fifo.autosave";
 const PI_ENDPOINTS_STORAGE_KEY = "project-fifo.pi-endpoints";
 const PIXEL_COLOR_STORAGE_KEY = "project-fifo.pixel-color";
+const STUDIO_SIDEBAR_WIDTH_STORAGE_KEY = "project-fifo.studio-sidebar-width";
 const DEFAULT_ENDPOINT_NAME = "Workshop Pi";
 const DEFAULT_PIXEL_COLOR = "#7CF7D4";
+const DEFAULT_STUDIO_SIDEBAR_WIDTH = 330;
+const MIN_STUDIO_SIDEBAR_WIDTH = 280;
+const MAX_STUDIO_SIDEBAR_WIDTH = 920;
+const MIN_STUDIO_MAIN_WIDTH = 560;
+const STUDIO_RESIZER_WIDTH = 18;
+const STUDIO_SIDEBAR_RESIZE_STEP = 24;
 const PIXEL_CELL_SIZE = 28;
 const BOARD_GRID_COLUMN_GAP = 7;
 const BOARD_GRID_ROW_GAP = 1;
@@ -109,6 +116,7 @@ const state = {
   boardLayout: [],
   boardGroups: [DEFAULT_BOARD_GROUP_ID],
   boardDrag: null,
+  sidebarResize: null,
   drawValue: 1,
   socket: null,
   sendTimer: null,
@@ -126,6 +134,10 @@ const state = {
 };
 
 const elements = {
+  studioShell: document.querySelector("#studioShell"),
+  controlsSidebar: document.querySelector("#controlsSidebar"),
+  studioMain: document.querySelector("#studioMain"),
+  studioResizer: document.querySelector("#studioResizer"),
   savedEndpointSelect: document.querySelector("#savedEndpointSelect"),
   applySavedEndpointButton: document.querySelector("#applySavedEndpointButton"),
   deleteSavedEndpointButton: document.querySelector("#deleteSavedEndpointButton"),
@@ -241,6 +253,148 @@ function savePixelColorPreference() {
 function loadPixelColorPreference() {
   const savedColor = window.localStorage.getItem(PIXEL_COLOR_STORAGE_KEY);
   state.pixelColor = normalizeHexColor(savedColor || DEFAULT_PIXEL_COLOR);
+}
+
+function getStudioSidebarWidthLimits() {
+  const minimum = MIN_STUDIO_SIDEBAR_WIDTH;
+  if (!elements.studioShell || window.matchMedia("(max-width: 900px)").matches) {
+    return { minimum, maximum: minimum };
+  }
+
+  const shellWidth = elements.studioShell.clientWidth;
+  const maximum = Math.max(
+    minimum,
+    Math.min(MAX_STUDIO_SIDEBAR_WIDTH, shellWidth - MIN_STUDIO_MAIN_WIDTH - STUDIO_RESIZER_WIDTH),
+  );
+  return { minimum, maximum };
+}
+
+function getStoredStudioSidebarWidth() {
+  const rawValue = window.localStorage.getItem(STUDIO_SIDEBAR_WIDTH_STORAGE_KEY);
+  const parsedValue = Number.parseFloat(rawValue || "");
+  return Number.isFinite(parsedValue) ? parsedValue : DEFAULT_STUDIO_SIDEBAR_WIDTH;
+}
+
+function getCurrentStudioSidebarWidth() {
+  if (!elements.studioShell) {
+    return DEFAULT_STUDIO_SIDEBAR_WIDTH;
+  }
+
+  const rawValue = window.getComputedStyle(elements.studioShell).getPropertyValue("--studio-sidebar-width");
+  const parsedValue = Number.parseFloat(rawValue);
+  return Number.isFinite(parsedValue) ? parsedValue : DEFAULT_STUDIO_SIDEBAR_WIDTH;
+}
+
+function updateStudioResizerAccessibility(width = getCurrentStudioSidebarWidth()) {
+  if (!elements.studioResizer) {
+    return;
+  }
+
+  const { minimum, maximum } = getStudioSidebarWidthLimits();
+  elements.studioResizer.setAttribute("aria-valuemin", String(minimum));
+  elements.studioResizer.setAttribute("aria-valuemax", String(maximum));
+  elements.studioResizer.setAttribute("aria-valuenow", String(width));
+  elements.studioResizer.setAttribute("aria-valuetext", `${width}px sidebar width`);
+}
+
+function applyStudioSidebarWidth(width, options = {}) {
+  if (!elements.studioShell) {
+    return DEFAULT_STUDIO_SIDEBAR_WIDTH;
+  }
+
+  const { minimum, maximum } = getStudioSidebarWidthLimits();
+  const fallback = clampNumber(DEFAULT_STUDIO_SIDEBAR_WIDTH, minimum, maximum, minimum);
+  const clampedWidth = clampNumber(width, minimum, maximum, fallback);
+  elements.studioShell.style.setProperty("--studio-sidebar-width", `${clampedWidth}px`);
+  updateStudioResizerAccessibility(clampedWidth);
+
+  if (options.persist) {
+    window.localStorage.setItem(STUDIO_SIDEBAR_WIDTH_STORAGE_KEY, String(clampedWidth));
+  }
+
+  return clampedWidth;
+}
+
+function loadStudioSidebarWidthPreference() {
+  applyStudioSidebarWidth(getStoredStudioSidebarWidth());
+}
+
+function resetStudioSidebarWidth() {
+  applyStudioSidebarWidth(DEFAULT_STUDIO_SIDEBAR_WIDTH, { persist: true });
+}
+
+function cleanupStudioSidebarResize() {
+  if (!state.sidebarResize) {
+    return;
+  }
+
+  const pointerId = state.sidebarResize.pointerId;
+  if (
+    elements.studioResizer
+    && typeof elements.studioResizer.hasPointerCapture === "function"
+    && typeof elements.studioResizer.releasePointerCapture === "function"
+  ) {
+    try {
+      if (elements.studioResizer.hasPointerCapture(pointerId)) {
+        elements.studioResizer.releasePointerCapture(pointerId);
+      }
+    } catch (error) {
+      // Pointer capture cleanup is optional here, so ignore failures.
+    }
+  }
+
+  state.sidebarResize = null;
+  elements.studioShell?.classList.remove("is-resizing");
+  document.body.classList.remove("sidebar-resizing");
+}
+
+function startStudioSidebarResize(event) {
+  if (!elements.studioResizer || window.matchMedia("(max-width: 900px)").matches) {
+    return;
+  }
+
+  event.preventDefault();
+  state.isPointerDown = false;
+  state.strokeHasChanges = false;
+  state.sidebarResize = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startWidth: getCurrentStudioSidebarWidth(),
+  };
+  elements.studioShell?.classList.add("is-resizing");
+  document.body.classList.add("sidebar-resizing");
+
+  if (typeof elements.studioResizer.setPointerCapture === "function") {
+    try {
+      elements.studioResizer.setPointerCapture(event.pointerId);
+    } catch (error) {
+      // Pointer capture is helpful but not required for the resize interaction.
+    }
+  }
+}
+
+function updateStudioSidebarResize(event) {
+  if (!state.sidebarResize || event.pointerId !== state.sidebarResize.pointerId) {
+    return false;
+  }
+
+  const nextWidth = state.sidebarResize.startWidth + (event.clientX - state.sidebarResize.startX);
+  applyStudioSidebarWidth(nextWidth);
+  return true;
+}
+
+function finishStudioSidebarResize(event) {
+  if (!state.sidebarResize) {
+    return false;
+  }
+
+  if (event?.pointerId != null && event.pointerId !== state.sidebarResize.pointerId) {
+    return false;
+  }
+
+  applyStudioSidebarWidth(getCurrentStudioSidebarWidth(), { persist: true });
+  cleanupStudioSidebarResize();
+  return true;
 }
 
 function updateGridMeta() {
@@ -2922,6 +3076,47 @@ function sendCurrentFrame() {
 }
 
 function bindEvents() {
+  elements.studioResizer.addEventListener("pointerdown", startStudioSidebarResize);
+  elements.studioResizer.addEventListener("dblclick", () => {
+    resetStudioSidebarWidth();
+  });
+  elements.studioResizer.addEventListener("keydown", (event) => {
+    if (window.matchMedia("(max-width: 900px)").matches) {
+      return;
+    }
+
+    const { minimum, maximum } = getStudioSidebarWidthLimits();
+    const currentWidth = getCurrentStudioSidebarWidth();
+
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      applyStudioSidebarWidth(currentWidth - STUDIO_SIDEBAR_RESIZE_STEP, { persist: true });
+      return;
+    }
+
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      applyStudioSidebarWidth(currentWidth + STUDIO_SIDEBAR_RESIZE_STEP, { persist: true });
+      return;
+    }
+
+    if (event.key === "Home") {
+      event.preventDefault();
+      applyStudioSidebarWidth(minimum, { persist: true });
+      return;
+    }
+
+    if (event.key === "End") {
+      event.preventDefault();
+      applyStudioSidebarWidth(maximum, { persist: true });
+      return;
+    }
+
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      resetStudioSidebarWidth();
+    }
+  });
   elements.applySavedEndpointButton.addEventListener("click", applySavedEndpoint);
   elements.deleteSavedEndpointButton.addEventListener("click", deleteSavedEndpoint);
   elements.saveEndpointButton.addEventListener("click", () => {
@@ -3063,9 +3258,17 @@ function bindEvents() {
   });
 
   window.addEventListener("pointermove", (event) => {
+    if (updateStudioSidebarResize(event)) {
+      return;
+    }
+
     updateBoardDrag(event);
   });
-  window.addEventListener("pointerup", () => {
+  window.addEventListener("pointerup", (event) => {
+    if (finishStudioSidebarResize(event)) {
+      return;
+    }
+
     if (finishBoardDrag()) {
       state.isPointerDown = false;
       state.strokeHasChanges = false;
@@ -3079,13 +3282,17 @@ function bindEvents() {
     }
   });
   window.addEventListener("pointerleave", () => {
-    if (state.boardDrag) {
+    if (state.sidebarResize || state.boardDrag) {
       return;
     }
 
     state.isPointerDown = false;
   });
-  window.addEventListener("pointercancel", () => {
+  window.addEventListener("pointercancel", (event) => {
+    if (finishStudioSidebarResize(event)) {
+      return;
+    }
+
     if (state.boardDrag) {
       state.boardDrag = null;
       renderGrid();
@@ -3097,6 +3304,9 @@ function bindEvents() {
       pushHistorySnapshot("drawing stroke");
       state.strokeHasChanges = false;
     }
+  });
+  window.addEventListener("resize", () => {
+    loadStudioSidebarWidthPreference();
   });
   window.addEventListener("keydown", (event) => {
     const isUndo = (event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z";
@@ -3125,6 +3335,7 @@ function bindEvents() {
 function init() {
   loadSavedEndpoints();
   loadPixelColorPreference();
+  loadStudioSidebarWidthPreference();
   state.boardLayout = createBoardLayoutFromFrame(state.width, state.height, state.pixels);
   syncBoardGroups(state.boardLayout, [DEFAULT_BOARD_GROUP_ID]);
   elements.gridWidth.value = String(state.width);
