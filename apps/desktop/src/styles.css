@@ -60,22 +60,27 @@ select {
 }
 
 .hero {
-  padding: 20px 24px;
+  padding: 16px 20px;
   display: grid;
-  gap: 18px;
-  grid-template-columns: minmax(0, 1.5fr) minmax(560px, 760px);
-  align-items: start;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 620px);
+  align-items: center;
 }
 
 .hero-copy {
-  max-width: 760px;
+  min-width: 0;
+  max-width: 920px;
+  display: grid;
+  gap: 10px;
+  align-content: center;
+  padding-right: 12px;
 }
 
 .eyebrow {
-  margin: 0 0 8px;
+  margin: 0;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   color: var(--accent-strong);
 }
 
@@ -86,9 +91,9 @@ h2 {
 }
 
 h1 {
-  font-size: clamp(2.4rem, 4vw, 4.2rem);
-  line-height: 0.94;
-  max-width: 9ch;
+  font-size: clamp(2.2rem, 3.2vw, 3.65rem);
+  line-height: 0.9;
+  max-width: 13ch;
 }
 
 h2 {
@@ -105,8 +110,8 @@ h2 {
 }
 
 .subtitle {
-  margin: 12px 0 0;
-  max-width: 54ch;
+  margin: 0;
+  max-width: 60ch;
   line-height: 1.5;
 }
 
@@ -119,11 +124,17 @@ h2 {
 }
 
 .connection-card {
-  padding: 20px;
+  min-width: 0;
+  padding: 18px;
   border-radius: 22px;
   background: linear-gradient(180deg, rgba(24, 32, 42, 0.92), rgba(18, 24, 31, 0.82));
   border: 1px solid rgba(134, 160, 185, 0.13);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition:
+    padding 180ms ease,
+    border-color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease;
 }
 
 .studio-shell,
@@ -137,18 +148,156 @@ h2 {
   align-items: start;
   justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
+}
+
+.card-title-toggle {
+  display: inline-grid;
+  grid-template-columns: minmax(0, auto) 12px;
+  align-items: start;
+  gap: 12px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  box-shadow: none;
+  text-align: left;
+}
+
+.card-title-toggle:hover {
+  transform: none;
+}
+
+.card-title-toggle:focus-visible {
+  outline: 2px solid rgba(255, 122, 61, 0.4);
+  outline-offset: 6px;
+}
+
+.card-title-toggle::after {
+  content: "";
+  width: 9px;
+  height: 9px;
+  margin-top: 8px;
+  border-right: 1.5px solid rgba(151, 167, 184, 0.92);
+  border-bottom: 1.5px solid rgba(151, 167, 184, 0.92);
+  transform: rotate(45deg);
+  transform-origin: center;
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease;
+}
+
+.card-title-toggle:hover::after,
+.card-title-toggle:focus-visible::after {
+  border-color: var(--accent-strong);
+}
+
+.card-title-toggle[aria-expanded="false"]::after {
+  transform: rotate(-45deg) translate(-1px, 1px);
+}
+
+.card-title-toggle-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.collapsible-card-body {
+  min-width: 0;
+}
+
+.collapsible-card-body[hidden] {
+  display: none !important;
+}
+
+.connection-card-body {
+  margin-top: 12px;
 }
 
 .connection-copy {
-  margin: 12px 0 18px;
+  margin: 0 0 14px;
   color: var(--muted);
   line-height: 1.45;
+}
+
+.connection-card .field {
+  margin-bottom: 12px;
+}
+
+.connection-card .field input,
+.connection-card .field select {
+  padding: 10px 12px;
 }
 
 .header-endpoint-tools {
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(0, 1.35fr) minmax(220px, 0.9fr);
+  grid-template-columns: minmax(0, 1.2fr) minmax(200px, 0.88fr);
+}
+
+.connection-card-summary {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding-top: 10px;
+  border-top: 1px solid rgba(134, 160, 185, 0.12);
+}
+
+.connection-summary-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.connection-summary-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent-strong);
+}
+
+.connection-summary-text {
+  min-width: 0;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hero.is-connection-collapsed {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: 12px;
+}
+
+.hero.is-connection-collapsed .hero-copy {
+  gap: 8px;
+}
+
+.hero.is-connection-collapsed h1 {
+  font-size: clamp(2rem, 2.7vw, 3.15rem);
+  max-width: 15ch;
+}
+
+.hero.is-connection-collapsed .connection-card {
+  width: min(100%, 360px);
+  justify-self: end;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, rgba(20, 28, 36, 0.95), rgba(16, 22, 29, 0.92));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.connection-card.is-collapsed .card-heading {
+  align-items: center;
+}
+
+.connection-card.is-collapsed .card-title-toggle::after {
+  margin-top: 5px;
+}
+
+.connection-card.is-collapsed h2 {
+  font-size: 1.06rem;
 }
 
 .field {
@@ -462,12 +611,48 @@ body.workspace-pane-resizing * {
   align-items: start;
   justify-content: space-between;
   gap: 12px;
+  position: relative;
   padding: 16px 18px;
+  padding-right: 42px;
   cursor: pointer;
+}
+
+.control-group summary > div {
+  min-width: 0;
 }
 
 .control-group summary::-webkit-details-marker {
   display: none;
+}
+
+.control-group summary::after {
+  content: "";
+  position: absolute;
+  top: 22px;
+  right: 18px;
+  width: 9px;
+  height: 9px;
+  border-right: 1.5px solid rgba(151, 167, 184, 0.92);
+  border-bottom: 1.5px solid rgba(151, 167, 184, 0.92);
+  transform: rotate(45deg);
+  transform-origin: center;
+  transition:
+    transform 140ms ease,
+    border-color 140ms ease;
+}
+
+.control-group:not([open]) summary::after {
+  transform: rotate(-45deg) translate(-1px, 1px);
+}
+
+.control-group summary:hover::after,
+.control-group summary:focus-visible::after {
+  border-color: var(--accent-strong);
+}
+
+.control-group summary:focus-visible {
+  outline: 2px solid rgba(255, 122, 61, 0.4);
+  outline-offset: -2px;
 }
 
 .summary-meta {
@@ -654,7 +839,11 @@ body.workspace-pane-resizing * {
 }
 
 .workspace-header {
+  display: grid;
+  grid-template-columns: minmax(280px, 46ch) minmax(0, 1fr);
   align-items: start;
+  justify-content: stretch;
+  gap: 18px;
 }
 
 .workspace-header-copy-block {
@@ -664,6 +853,7 @@ body.workspace-pane-resizing * {
 
 .workspace-header-side {
   min-width: 0;
+  width: 100%;
   display: grid;
   gap: 14px;
   align-content: start;
@@ -674,10 +864,12 @@ body.workspace-pane-resizing * {
   display: grid;
   gap: 14px;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  align-items: start;
 }
 
 .workspace-header-card {
-  height: 100%;
+  height: auto;
+  align-self: start;
   padding: 16px;
   gap: 12px;
 }
@@ -755,16 +947,31 @@ body.workspace-pane-resizing * {
     linear-gradient(180deg, rgba(20, 28, 37, 0.82), rgba(12, 18, 24, 0.74));
 }
 
+.animation-studio-card .collapsible-card-body {
+  display: grid;
+  gap: 14px;
+}
+
+.animation-studio-card.is-collapsed {
+  padding-bottom: 16px;
+}
+
 .animation-studio-card-header {
   display: flex;
   align-items: start;
   justify-content: space-between;
   gap: 14px;
+  flex-wrap: wrap;
 }
 
 .animation-studio-card-header h3 {
   margin: 0;
   font-size: 1.04rem;
+}
+
+.animation-studio-card-header .button-row,
+.console-header > button.secondary {
+  flex: 0 0 auto;
 }
 
 .animation-studio-copy {
@@ -1073,6 +1280,23 @@ code {
     grid-template-columns: 1fr;
   }
 
+  .hero.is-connection-collapsed {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-copy {
+    padding-right: 0;
+  }
+
+  .hero.is-connection-collapsed .connection-card {
+    width: 100%;
+    justify-self: stretch;
+  }
+
+  .connection-card-summary {
+    align-items: start;
+  }
+
   .header-endpoint-tools {
     grid-template-columns: 1fr;
   }
@@ -1100,7 +1324,6 @@ code {
   }
 
   .button-row,
-  .workspace-header,
   .grid-header,
   .console-header,
   .control-group summary {
@@ -1117,6 +1340,10 @@ code {
     gap: 18px;
   }
 
+  .workspace-header {
+    grid-template-columns: 1fr;
+  }
+
   .workspace-header-side {
     justify-items: stretch;
   }
@@ -1124,6 +1351,10 @@ code {
   .workspace-header-actions {
     width: 100%;
     grid-template-columns: 1fr;
+  }
+
+  .workspace-mode-label {
+    justify-self: start;
   }
 
   .legend {

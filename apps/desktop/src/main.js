@@ -119,6 +119,7 @@ const state = {
   pixels: Array(DEFAULT_WIDTH * DEFAULT_HEIGHT).fill(0),
   drawingName: "fifo-drawing",
   endpointName: DEFAULT_ENDPOINT_NAME,
+  connectionPanelCollapsed: false,
   piDrawings: [],
   piProjects: [],
   savedEndpoints: [],
@@ -175,6 +176,11 @@ const state = {
 };
 
 const elements = {
+  heroPanel: document.querySelector("#heroPanel"),
+  connectionCard: document.querySelector("#connectionCard"),
+  connectionCardBody: document.querySelector("#connectionCardBody"),
+  connectionCardSummary: document.querySelector("#connectionCardSummary"),
+  connectionSummaryText: document.querySelector("#connectionSummaryText"),
   studioShell: document.querySelector("#studioShell"),
   controlsSidebar: document.querySelector("#controlsSidebar"),
   studioMain: document.querySelector("#studioMain"),
@@ -280,6 +286,72 @@ function log(message) {
 function setStatus(label, variant) {
   elements.connectionStatus.textContent = label;
   elements.connectionStatus.className = `status-pill ${variant}`;
+}
+
+function syncConnectionSummary() {
+  if (!elements.connectionSummaryText) {
+    return;
+  }
+
+  const endpoint = elements.endpoint?.value.trim() || "";
+  const fallbackName = endpoint ? inferEndpointName(endpoint) : (state.endpointName || DEFAULT_ENDPOINT_NAME);
+  const name = sanitizeEndpointName(elements.endpointName?.value || fallbackName);
+  elements.connectionSummaryText.textContent = endpoint
+    ? `${name} - ${endpoint}`
+    : `${name} - No endpoint set`;
+}
+
+function getCollapsibleCardParts(card) {
+  if (!card) {
+    return { toggle: null, body: null };
+  }
+
+  const toggle = card.querySelector(".card-title-toggle[aria-controls]");
+  const bodyId = toggle?.getAttribute("aria-controls");
+  const body = bodyId ? document.getElementById(bodyId) : null;
+  return { toggle, body };
+}
+
+function applyConnectionCollapseState(collapsed) {
+  const nextCollapsed = Boolean(collapsed);
+  state.connectionPanelCollapsed = nextCollapsed;
+  syncConnectionSummary();
+  elements.heroPanel?.classList.toggle("is-connection-collapsed", nextCollapsed);
+  elements.connectionCard?.classList.toggle("is-collapsed", nextCollapsed);
+
+  if (elements.connectionCardSummary) {
+    elements.connectionCardSummary.hidden = !nextCollapsed;
+  }
+}
+
+function setCollapsibleCardState(card, collapsed) {
+  const { toggle, body } = getCollapsibleCardParts(card);
+  if (!card || !toggle || !body) {
+    return;
+  }
+
+  const nextCollapsed = Boolean(collapsed);
+  card.classList.toggle("is-collapsed", nextCollapsed);
+  body.hidden = nextCollapsed;
+  toggle.setAttribute("aria-expanded", String(!nextCollapsed));
+
+  if (card === elements.connectionCard) {
+    applyConnectionCollapseState(nextCollapsed);
+  }
+}
+
+function initializeCollapsibleCards() {
+  document.querySelectorAll("[data-collapsible-card]").forEach((card) => {
+    const { toggle, body } = getCollapsibleCardParts(card);
+    if (!toggle || !body) {
+      return;
+    }
+
+    setCollapsibleCardState(card, card.classList.contains("is-collapsed"));
+    toggle.addEventListener("click", () => {
+      setCollapsibleCardState(card, !card.classList.contains("is-collapsed"));
+    });
+  });
 }
 
 function updateModeButtons() {
@@ -3575,6 +3647,7 @@ function upsertSavedEndpoint(reason) {
     .slice(0, 8);
   saveSavedEndpoints();
   syncSavedEndpointOptions(url);
+  syncConnectionSummary();
   log(`Saved Pi endpoint "${state.endpointName}" after ${reason}.`);
   return true;
 }
@@ -3597,6 +3670,7 @@ function applySavedEndpoint() {
   state.endpointName = savedEndpoint.name;
   elements.endpointName.value = savedEndpoint.name;
   syncSavedEndpointOptions(savedEndpoint.url);
+  syncConnectionSummary();
   log(`Loaded saved endpoint "${savedEndpoint.name}".`);
 }
 
@@ -3611,6 +3685,7 @@ function deleteSavedEndpoint() {
   const [removedEntry] = state.savedEndpoints.splice(existingIndex, 1);
   saveSavedEndpoints();
   syncSavedEndpointOptions();
+  syncConnectionSummary();
   log(`Deleted saved endpoint "${removedEntry.name}".`);
 }
 
@@ -4795,6 +4870,7 @@ function connect() {
 
   state.endpointName = sanitizeEndpointName(elements.endpointName.value || inferEndpointName(endpoint));
   elements.endpointName.value = state.endpointName;
+  syncConnectionSummary();
   upsertSavedEndpoint("connect");
 
   setStatus("Connecting", "connecting");
@@ -4956,18 +5032,23 @@ function bindEvents() {
   elements.saveEndpointButton.addEventListener("click", () => {
     upsertSavedEndpoint("manual save");
   });
+  elements.endpoint.addEventListener("input", syncConnectionSummary);
+  elements.endpointName.addEventListener("input", syncConnectionSummary);
   elements.savedEndpointSelect.addEventListener("change", () => {
     const selectedUrl = elements.savedEndpointSelect.value;
     if (!selectedUrl) {
+      syncConnectionSummary();
       return;
     }
 
     const savedEndpoint = state.savedEndpoints.find((entry) => entry.url === selectedUrl);
     if (!savedEndpoint) {
+      syncConnectionSummary();
       return;
     }
 
     elements.endpointName.value = savedEndpoint.name;
+    syncConnectionSummary();
   });
   elements.connectButton.addEventListener("click", connect);
   elements.disconnectButton.addEventListener("click", disconnect);
@@ -5297,6 +5378,8 @@ function init() {
     elements.endpointName.value = state.savedEndpoints[0].name;
     state.endpointName = state.savedEndpoints[0].name;
   }
+  initializeCollapsibleCards();
+  syncConnectionSummary();
   syncBrightnessInputs();
   syncLayoutInputs();
   applyPixelColor();

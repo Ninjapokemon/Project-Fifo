@@ -4,11 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Project Fifo Editor</title>
-    <link rel="stylesheet" href="./src/styles.css?v=layout-resizer-13" />
+    <link rel="stylesheet" href="./src/styles.css?v=layout-resizer-15" />
   </head>
   <body>
     <main class="app-shell">
-      <section class="panel hero">
+      <section class="panel hero" id="heroPanel">
         <div class="hero-copy">
           <p class="eyebrow">Project Fifo</p>
           <h1>Draw on your PC. Stream to your Pi.</h1>
@@ -17,39 +17,57 @@
             controller that drives your MAX7219 chain with <code>luma</code>.
           </p>
         </div>
-        <div class="connection-card">
+        <div class="connection-card collapsible-card" id="connectionCard" data-collapsible-card>
           <div class="card-heading">
-            <div>
-              <p class="section-label">Connection</p>
-              <h2>Pi Link</h2>
-            </div>
+            <button
+              id="connectionCardToggle"
+              type="button"
+              class="card-title-toggle"
+              aria-expanded="true"
+              aria-controls="connectionCardBody"
+            >
+              <span class="card-title-toggle-copy">
+                <span class="section-label">Connection</span>
+                <h2>Pi Link</h2>
+              </span>
+            </button>
             <span id="connectionStatus" class="status-pill idle">Disconnected</span>
           </div>
-          <p class="connection-copy">Keep endpoint management nearby, but out of the way of the drawing surface.</p>
-          <label class="field">
-            <span>Pi Endpoint</span>
-            <input id="endpoint" type="text" value="ws://raspberrypi.local:8765" />
-          </label>
-          <div class="header-endpoint-tools">
-            <label class="field">
-              <span>Saved Pi Endpoints</span>
-              <select id="savedEndpointSelect">
-                <option value="">No saved endpoints</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>Endpoint Name</span>
-              <input id="endpointName" type="text" value="Workshop Pi" maxlength="80" />
-            </label>
+          <div id="connectionCardSummary" class="connection-card-summary" hidden>
+            <div class="connection-summary-copy">
+              <span class="connection-summary-label">Current endpoint</span>
+              <span id="connectionSummaryText" class="connection-summary-text">
+                Workshop Pi - ws://raspberrypi.local:8765
+              </span>
+            </div>
           </div>
-          <div class="button-row wrap">
-            <button id="applySavedEndpointButton" type="button" class="secondary">Use Saved</button>
-            <button id="deleteSavedEndpointButton" type="button" class="secondary">Delete Saved</button>
-            <button id="saveEndpointButton" type="button" class="secondary">Save Endpoint</button>
-          </div>
-          <div class="button-row">
-            <button id="connectButton" type="button">Connect</button>
-            <button id="disconnectButton" type="button" class="secondary">Disconnect</button>
+          <div id="connectionCardBody" class="connection-card-body">
+            <p class="connection-copy">Keep endpoint management nearby, but out of the way of the drawing surface.</p>
+            <label class="field">
+              <span>Pi Endpoint</span>
+              <input id="endpoint" type="text" value="ws://raspberrypi.local:8765" />
+            </label>
+            <div class="header-endpoint-tools">
+              <label class="field">
+                <span>Saved Pi Endpoints</span>
+                <select id="savedEndpointSelect">
+                  <option value="">No saved endpoints</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Endpoint Name</span>
+                <input id="endpointName" type="text" value="Workshop Pi" maxlength="80" />
+              </label>
+            </div>
+            <div class="button-row wrap">
+              <button id="applySavedEndpointButton" type="button" class="secondary">Use Saved</button>
+              <button id="deleteSavedEndpointButton" type="button" class="secondary">Delete Saved</button>
+              <button id="saveEndpointButton" type="button" class="secondary">Save Endpoint</button>
+            </div>
+            <div class="button-row">
+              <button id="connectButton" type="button">Connect</button>
+              <button id="disconnectButton" type="button" class="secondary">Disconnect</button>
+            </div>
           </div>
         </div>
       </section>
@@ -273,13 +291,97 @@
                       preview timing in the panel beside it.
                     </p>
                   </div>
+
+                  <div class="workspace-header-side">
+                    <p class="workspace-mode-label">Draw + animate at the same time</p>
+                    <div class="workspace-header-actions">
+                      <section class="animation-studio-card workspace-header-card workspace-header-storage collapsible-card" data-collapsible-card>
+                        <div class="animation-studio-card-header">
+                          <button
+                            type="button"
+                            class="card-title-toggle"
+                            aria-expanded="true"
+                            aria-controls="workspaceStorageCardBody"
+                          >
+                            <span class="card-title-toggle-copy">
+                              <span class="section-label">Files</span>
+                              <h3>Save + Load</h3>
+                            </span>
+                          </button>
+                        </div>
+                        <div id="workspaceStorageCardBody" class="collapsible-card-body">
+                          <p id="saveWorkflowStatus" class="animation-studio-copy">
+                            Save the current drawing or project as JSON, or keep single-frame snapshots on the Pi.
+                          </p>
+                          <div class="button-row wrap">
+                            <button id="saveButton" type="button" class="secondary">Save JSON</button>
+                            <button id="loadButton" type="button" class="secondary">Load JSON</button>
+                          </div>
+                          <div class="animation-studio-divider"></div>
+                          <label class="field">
+                            <span>Saved Frames on Pi</span>
+                            <select id="piDrawingSelect">
+                              <option value="">No Pi drawings loaded</option>
+                            </select>
+                          </label>
+                          <div class="button-row wrap">
+                            <button id="refreshPiDrawingsButton" type="button" class="secondary">Refresh Frames</button>
+                            <button id="saveToPiButton" type="button" class="secondary">Save Current Frame</button>
+                            <button id="loadFromPiButton" type="button" class="secondary">Load Saved Frame</button>
+                          </div>
+                        </div>
+                      </section>
+
+                      <section class="animation-studio-card workspace-header-card workspace-header-deploy collapsible-card" data-collapsible-card>
+                        <div class="animation-studio-card-header">
+                          <button
+                            type="button"
+                            class="card-title-toggle"
+                            aria-expanded="true"
+                            aria-controls="workspaceDeployCardBody"
+                          >
+                            <span class="card-title-toggle-copy">
+                              <span class="section-label">Deploy</span>
+                              <h3>Run On Pi</h3>
+                            </span>
+                          </button>
+                        </div>
+                        <div id="workspaceDeployCardBody" class="collapsible-card-body">
+                          <p id="piRuntimeStatus" class="field-hint animation-studio-status">
+                            Connect to a Pi to manage bootable projects and temporary live control.
+                          </p>
+                          <p id="projectDeployStatus" class="animation-studio-copy">
+                            Save the whole project to the Pi here, then load it, run it, or set it as boot.
+                          </p>
+                          <label class="field">
+                            <span>Saved Projects on Pi</span>
+                            <select id="piProjectSelect">
+                              <option value="">No Pi projects loaded</option>
+                            </select>
+                          </label>
+                          <div class="button-row wrap">
+                            <button id="refreshPiProjectsButton" type="button" class="secondary">Refresh Projects</button>
+                            <button id="saveProjectToPiButton" type="button" class="secondary">Save Project To Pi</button>
+                            <button id="loadProjectFromPiButton" type="button" class="secondary">Load Project To Editor</button>
+                          </div>
+                          <div class="button-row wrap">
+                            <button id="activateProjectButton" type="button" class="secondary">Run On Pi</button>
+                            <button id="setBootProjectButton" type="button" class="secondary">Set As Boot</button>
+                            <button id="clearBootProjectButton" type="button" class="secondary">Clear Boot</button>
+                          </div>
+                          <div class="button-row wrap">
+                            <button id="resumeProjectButton" type="button" class="secondary">Resume Saved Project</button>
+                            <button id="deleteProjectButton" type="button" class="secondary">Delete From Pi</button>
+                          </div>
+                        </div>
+                      </section>
+                    </div>
+                  </div>
                 </div>
 
                 <div class="workspace-grid-pane" id="workspaceGridPane">
                   <div class="grid-header">
                     <div>
-                      <p id="gridMeta" class="grid-meta">24 x 8</p>
-                      <p class="board-layout-hint">Drag chain boards anywhere in the workspace, use groups to split eyes, nose, and mouth visually, then use the <code>LED</code> controls for hardware output and the <code>View</code> controls to make the website match real-world panel orientation without changing the LEDs.</p>
                       <div class="workspace-tools">
                         <button id="newBoardGroupButton" type="button" class="secondary">New Group</button>
                       </div>
@@ -305,178 +407,155 @@
               ></div>
 
               <div class="workspace-side-column">
-                <div class="workspace-header-side">
-                  <p class="workspace-mode-label">Draw + animate at the same time</p>
-                  <div class="workspace-header-actions">
-                    <section class="animation-studio-card workspace-header-card workspace-header-storage">
-                      <div class="animation-studio-card-header">
-                        <div>
-                          <p class="section-label">Files</p>
-                          <h3>Save + Load</h3>
-                        </div>
-                      </div>
-                      <p id="saveWorkflowStatus" class="animation-studio-copy">
-                        Save the current drawing or project as JSON, or keep single-frame snapshots on the Pi.
-                      </p>
-                      <div class="button-row wrap">
-                        <button id="saveButton" type="button" class="secondary">Save JSON</button>
-                        <button id="loadButton" type="button" class="secondary">Load JSON</button>
-                      </div>
-                      <div class="animation-studio-divider"></div>
-                      <label class="field">
-                        <span>Saved Frames on Pi</span>
-                        <select id="piDrawingSelect">
-                          <option value="">No Pi drawings loaded</option>
-                        </select>
-                      </label>
-                      <div class="button-row wrap">
-                        <button id="refreshPiDrawingsButton" type="button" class="secondary">Refresh Frames</button>
-                        <button id="saveToPiButton" type="button" class="secondary">Save Current Frame</button>
-                        <button id="loadFromPiButton" type="button" class="secondary">Load Saved Frame</button>
-                      </div>
-                    </section>
-
-                    <section class="animation-studio-card workspace-header-card workspace-header-deploy">
-                      <div class="animation-studio-card-header">
-                        <div>
-                          <p class="section-label">Deploy</p>
-                          <h3>Run On Pi</h3>
-                        </div>
-                      </div>
-                      <p id="piRuntimeStatus" class="field-hint animation-studio-status">
-                        Connect to a Pi to manage bootable projects and temporary live control.
-                      </p>
-                      <p id="projectDeployStatus" class="animation-studio-copy">
-                        Save the whole project to the Pi here, then load it, run it, or set it as boot.
-                      </p>
-                      <label class="field">
-                        <span>Saved Projects on Pi</span>
-                        <select id="piProjectSelect">
-                          <option value="">No Pi projects loaded</option>
-                        </select>
-                      </label>
-                      <div class="button-row wrap">
-                        <button id="refreshPiProjectsButton" type="button" class="secondary">Refresh Projects</button>
-                        <button id="saveProjectToPiButton" type="button" class="secondary">Save Project To Pi</button>
-                        <button id="loadProjectFromPiButton" type="button" class="secondary">Load Project To Editor</button>
-                      </div>
-                      <div class="button-row wrap">
-                        <button id="activateProjectButton" type="button" class="secondary">Run On Pi</button>
-                        <button id="setBootProjectButton" type="button" class="secondary">Set As Boot</button>
-                        <button id="clearBootProjectButton" type="button" class="secondary">Clear Boot</button>
-                      </div>
-                      <div class="button-row wrap">
-                        <button id="resumeProjectButton" type="button" class="secondary">Resume Saved Project</button>
-                        <button id="deleteProjectButton" type="button" class="secondary">Delete From Pi</button>
-                      </div>
-                    </section>
-                  </div>
-                </div>
-
                 <aside class="workspace-animation-pane" id="workspaceAnimationPane" aria-label="Animation editor">
                   <div class="animation-studio-shell">
-                    <section class="animation-studio-card animation-studio-overview">
+                    <section class="animation-studio-card animation-studio-overview collapsible-card" data-collapsible-card>
                       <div class="animation-studio-card-header">
-                        <div>
-                          <p class="section-label">Project</p>
-                          <h3>Frames + Runtime Start</h3>
-                        </div>
+                        <button
+                          type="button"
+                          class="card-title-toggle"
+                          aria-expanded="true"
+                          aria-controls="projectOverviewCardBody"
+                        >
+                          <span class="card-title-toggle-copy">
+                            <span class="section-label">Project</span>
+                            <h3>Frames + Runtime Start</h3>
+                          </span>
+                        </button>
                       </div>
-                      <p id="projectSummary" class="field-hint project-summary">
-                        1 frame ready for editing. Add more frames to start building motion.
-                      </p>
-                      <label class="field">
-                        <span>Default Start</span>
-                        <select id="defaultTargetSelect">
-                          <option value="__auto__">Auto choose first animation or frame</option>
-                        </select>
-                      </label>
+                      <div id="projectOverviewCardBody" class="collapsible-card-body">
+                        <p id="projectSummary" class="field-hint project-summary">
+                          1 frame ready for editing. Add more frames to start building motion.
+                        </p>
+                        <label class="field">
+                          <span>Default Start</span>
+                          <select id="defaultTargetSelect">
+                            <option value="__auto__">Auto choose first animation or frame</option>
+                          </select>
+                        </label>
+                      </div>
                     </section>
 
-                    <section class="animation-studio-card animation-studio-frames">
+                    <section class="animation-studio-card animation-studio-frames collapsible-card" data-collapsible-card>
                       <div class="animation-studio-card-header">
-                        <div>
-                          <p class="section-label">Frames</p>
-                          <h3>Frame Strip</h3>
+                        <button
+                          type="button"
+                          class="card-title-toggle"
+                          aria-expanded="true"
+                          aria-controls="frameStripCardBody"
+                        >
+                          <span class="card-title-toggle-copy">
+                            <span class="section-label">Frames</span>
+                            <h3>Frame Strip</h3>
+                          </span>
+                        </button>
+                      </div>
+                      <div id="frameStripCardBody" class="collapsible-card-body">
+                        <div class="button-row wrap">
+                          <button id="newFrameButton" type="button" class="secondary">New Frame</button>
+                          <button id="duplicateFrameButton" type="button" class="secondary">Duplicate Frame</button>
+                          <button id="deleteFrameButton" type="button" class="secondary">Delete Frame</button>
                         </div>
+                        <div class="button-row wrap">
+                          <button id="moveFrameLeftButton" type="button" class="secondary">Move Left</button>
+                          <button id="moveFrameRightButton" type="button" class="secondary">Move Right</button>
+                        </div>
+                        <div id="frameStrip" class="frame-strip" aria-label="Project frames"></div>
+                        <label class="field">
+                          <span>Current Frame Name</span>
+                          <input id="frameName" type="text" value="Frame 1" maxlength="80" />
+                        </label>
                       </div>
-                      <div class="button-row wrap">
-                        <button id="newFrameButton" type="button" class="secondary">New Frame</button>
-                        <button id="duplicateFrameButton" type="button" class="secondary">Duplicate Frame</button>
-                        <button id="deleteFrameButton" type="button" class="secondary">Delete Frame</button>
-                      </div>
-                      <div class="button-row wrap">
-                        <button id="moveFrameLeftButton" type="button" class="secondary">Move Left</button>
-                        <button id="moveFrameRightButton" type="button" class="secondary">Move Right</button>
-                      </div>
-                      <div id="frameStrip" class="frame-strip" aria-label="Project frames"></div>
-                      <label class="field">
-                        <span>Current Frame Name</span>
-                        <input id="frameName" type="text" value="Frame 1" maxlength="80" />
-                      </label>
                     </section>
 
-                    <section class="animation-studio-card animation-studio-controls">
+                    <section class="animation-studio-card animation-studio-controls collapsible-card" data-collapsible-card>
                       <div class="animation-studio-card-header">
-                        <div>
-                          <p class="section-label">Animation</p>
-                          <h3>Clip Setup</h3>
-                        </div>
+                        <button
+                          type="button"
+                          class="card-title-toggle"
+                          aria-expanded="true"
+                          aria-controls="animationSetupCardBody"
+                        >
+                          <span class="card-title-toggle-copy">
+                            <span class="section-label">Animation</span>
+                            <h3>Clip Setup</h3>
+                          </span>
+                        </button>
                       </div>
-                      <label class="field">
-                        <span>Animation</span>
-                        <select id="animationSelect">
-                          <option value="">No animation selected</option>
-                        </select>
-                      </label>
-                      <div class="button-row wrap">
-                        <button id="newAnimationButton" type="button" class="secondary">New Animation</button>
-                        <button id="deleteAnimationButton" type="button" class="secondary">Delete Animation</button>
-                      </div>
-                      <label class="field">
-                        <span>Animation Name</span>
-                        <input id="animationName" type="text" value="" maxlength="80" />
-                      </label>
-                      <label class="toggle-field" for="animationLoopInput">
-                        <div>
-                          <span>Loop Animation</span>
-                          <p>Use the same loop behavior for browser preview and Pi project playback.</p>
+                      <div id="animationSetupCardBody" class="collapsible-card-body">
+                        <label class="field">
+                          <span>Animation</span>
+                          <select id="animationSelect">
+                            <option value="">No animation selected</option>
+                          </select>
+                        </label>
+                        <div class="button-row wrap">
+                          <button id="newAnimationButton" type="button" class="secondary">New Animation</button>
+                          <button id="deleteAnimationButton" type="button" class="secondary">Delete Animation</button>
                         </div>
-                        <input id="animationLoopInput" type="checkbox" />
-                      </label>
+                        <label class="field">
+                          <span>Animation Name</span>
+                          <input id="animationName" type="text" value="" maxlength="80" />
+                        </label>
+                        <label class="toggle-field" for="animationLoopInput">
+                          <div>
+                            <span>Loop Animation</span>
+                            <p>Use the same loop behavior for browser preview and Pi project playback.</p>
+                          </div>
+                          <input id="animationLoopInput" type="checkbox" />
+                        </label>
+                      </div>
                     </section>
 
-                    <section class="animation-studio-card animation-studio-preview">
+                    <section class="animation-studio-card animation-studio-preview collapsible-card" data-collapsible-card>
                       <div class="animation-studio-card-header">
-                        <div>
-                          <p class="section-label">Preview</p>
-                          <h3>Playback Preview</h3>
-                        </div>
+                        <button
+                          type="button"
+                          class="card-title-toggle"
+                          aria-expanded="true"
+                          aria-controls="animationPreviewCardBody"
+                        >
+                          <span class="card-title-toggle-copy">
+                            <span class="section-label">Preview</span>
+                            <h3>Playback Preview</h3>
+                          </span>
+                        </button>
                         <div class="button-row wrap">
                           <button id="previewAnimationButton" type="button" class="secondary">Play Preview</button>
                           <button id="stopAnimationPreviewButton" type="button" class="secondary">Stop Preview</button>
                         </div>
                       </div>
-                      <div class="animation-preview-shell">
-                        <div class="animation-preview-header">
-                          <span>Browser Playback</span>
-                          <span id="animationPreviewStatus" class="animation-preview-status">Preview idle.</span>
-                        </div>
-                        <div class="animation-preview-canvas">
-                          <div id="animationPreviewGrid" class="animation-preview-grid" aria-label="Animation preview"></div>
+                      <div id="animationPreviewCardBody" class="collapsible-card-body">
+                        <div class="animation-preview-shell">
+                          <div class="animation-preview-header">
+                            <span>Browser Playback</span>
+                            <span id="animationPreviewStatus" class="animation-preview-status">Preview idle.</span>
+                          </div>
+                          <div class="animation-preview-canvas">
+                            <div id="animationPreviewGrid" class="animation-preview-grid" aria-label="Animation preview"></div>
+                          </div>
                         </div>
                       </div>
                     </section>
 
-                    <section class="animation-studio-card animation-studio-steps">
+                    <section class="animation-studio-card animation-studio-steps collapsible-card" data-collapsible-card>
                       <div class="animation-studio-card-header">
-                        <div>
-                          <p class="section-label">Steps</p>
-                          <h3>Sequence Builder</h3>
-                        </div>
+                        <button
+                          type="button"
+                          class="card-title-toggle"
+                          aria-expanded="true"
+                          aria-controls="animationStepsCardBody"
+                        >
+                          <span class="card-title-toggle-copy">
+                            <span class="section-label">Steps</span>
+                            <h3>Sequence Builder</h3>
+                          </span>
+                        </button>
                         <button id="addAnimationStepButton" type="button" class="secondary">Add Current Frame</button>
                       </div>
-                      <div id="animationStepList" class="animation-step-list" aria-label="Animation steps"></div>
+                      <div id="animationStepsCardBody" class="collapsible-card-body">
+                        <div id="animationStepList" class="animation-step-list" aria-label="Animation steps"></div>
+                      </div>
                     </section>
                   </div>
                 </aside>
@@ -484,20 +563,29 @@
             </div>
           </section>
 
-          <section class="console-panel">
+          <section class="console-panel collapsible-card" data-collapsible-card>
             <div class="console-header">
-              <div>
-                <p class="section-label">Console</p>
-                <h2>Event Log</h2>
-              </div>
+              <button
+                type="button"
+                class="card-title-toggle"
+                aria-expanded="true"
+                aria-controls="consolePanelBody"
+              >
+                <span class="card-title-toggle-copy">
+                  <span class="section-label">Console</span>
+                  <h2>Event Log</h2>
+                </span>
+              </button>
               <button id="clearLogButton" type="button" class="secondary">Clear Log</button>
             </div>
-            <pre id="logOutput" class="log-output"></pre>
+            <div id="consolePanelBody" class="collapsible-card-body">
+              <pre id="logOutput" class="log-output"></pre>
+            </div>
           </section>
         </div>
       </section>
     </main>
 
-    <script type="module" src="./src/main.js?v=layout-resizer-13"></script>
+    <script type="module" src="./src/main.js?v=layout-resizer-15"></script>
   </body>
 </html>
