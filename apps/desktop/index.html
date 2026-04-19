@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Project Fifo Editor</title>
-    <link rel="stylesheet" href="./src/styles.css?v=board-layout-9" />
+    <link rel="stylesheet" href="./src/styles.css?v=board-layout-10" />
   </head>
   <body>
     <main class="app-shell">
@@ -164,9 +164,8 @@
                 rather than a panel-order setting.
               </p>
               <p class="field-hint">
-                Use the per-board rotation button in the workspace below when one physical
-                <code>8x8</code> panel needs its own <code>0</code>, <code>90</code>,
-                <code>180</code>, or <code>270</code> degree correction.
+                Use the per-board rotation and mirror buttons in the workspace below when one
+                physical <code>8x8</code> panel needs its own correction.
               </p>
             </div>
           </details>
@@ -266,7 +265,7 @@
                 <p class="section-label">Workspace</p>
                 <h2>Pixel Grid</h2>
                 <p id="gridMeta" class="grid-meta">24 x 8</p>
-                <p class="board-layout-hint">Drag chain boards anywhere in the workspace, use groups to split eyes, nose, and mouth visually, and use each board's rotation button to correct real-world panel orientation without changing the browser preview.</p>
+                <p class="board-layout-hint">Drag chain boards anywhere in the workspace, use groups to split eyes, nose, and mouth visually, and use each board's rotation and mirror controls to correct real-world panel orientation without changing the browser preview.</p>
                 <div class="workspace-tools">
                   <button id="newBoardGroupButton" type="button" class="secondary">New Group</button>
                 </div>
@@ -293,6 +292,6 @@
       </section>
     </main>
 
-    <script type="module" src="./src/main.js?v=board-layout-9"></script>
+    <script type="module" src="./src/main.js?v=board-layout-10"></script>
   </body>
 </html>

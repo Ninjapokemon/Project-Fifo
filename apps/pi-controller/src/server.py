@@ -23,7 +23,7 @@ from storage import DrawingStore
 def build_layout_state_message(
     display: MatrixDisplay,
     message_type: str = "layout_state",
-) -> dict[str, int | bool | str | list[int] | None]:
+) -> dict[str, int | bool | str | list[int] | list[bool] | None]:
     return {
         "type": message_type,
         "width": display.width,
@@ -36,13 +36,14 @@ def build_state_message(
     display: MatrixDisplay,
     drawing_store: DrawingStore,
     config: dict,
-) -> dict[str, int | bool | str | list[str] | list[int] | None]:
+) -> dict[str, int | bool | str | list[str] | list[int] | list[bool] | None]:
     persisted_layout = {
         "rotate": config.get("rotate", 0),
         "block_orientation": config.get("block_orientation", 90),
         "reverse_order": config.get("reverse_order", False),
         "panel_order": config.get("panel_order"),
         "panel_rotations": config.get("panel_rotations"),
+        "panel_mirrors": config.get("panel_mirrors"),
     }
     live_state = display.get_state()
 
@@ -54,7 +55,8 @@ def build_state_message(
         and live_state["block_orientation"] == persisted_layout["block_orientation"]
         and live_state["reverse_order"] == persisted_layout["reverse_order"]
         and live_state["panel_order"] == persisted_layout["panel_order"]
-        and live_state["panel_rotations"] == persisted_layout["panel_rotations"],
+        and live_state["panel_rotations"] == persisted_layout["panel_rotations"]
+        and live_state["panel_mirrors"] == persisted_layout["panel_mirrors"],
         "active_project": None,
         "boot_project": None,
         "connection_status": "connected",
@@ -147,6 +149,7 @@ async def handle_connection(
                     layout["reverse_order"],
                     layout.get("panel_order"),
                     layout.get("panel_rotations"),
+                    layout.get("panel_mirrors"),
                     layout.get("panel_flips"),
                 )
                 await websocket.send(
@@ -161,6 +164,7 @@ async def handle_connection(
                     layout["reverse_order"],
                     layout.get("panel_order"),
                     layout.get("panel_rotations"),
+                    layout.get("panel_mirrors"),
                     layout.get("panel_flips"),
                 )
                 config.update(applied_layout)

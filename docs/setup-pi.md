@@ -59,6 +59,7 @@ The main fields to care about are:
 - `serpentine`: reserved for later custom mapping logic
 - `panel_order`: optional row-major list of logical panel indexes in physical display order
 - `panel_rotations`: optional row-major list of `0`, `90`, `180`, or `270` values for physical panels that need their own rotation
+- `panel_mirrors`: optional row-major list of booleans for physical panels that need horizontal mirroring
 
 Example for three matrices in one horizontal row:
 
@@ -74,7 +75,8 @@ Example for three matrices in one horizontal row:
   "reverse_order": false,
   "serpentine": false,
   "panel_order": null,
-  "panel_rotations": null
+  "panel_rotations": null,
+  "panel_mirrors": null
 }
 ```
 
@@ -98,6 +100,12 @@ Example for a three-panel row where only the left panel needs a `180` degree cor
 
 ```json
 "panel_rotations": [180, 0, 0]
+```
+
+If a module needs horizontal mirroring, set the matching row-major position in `panel_mirrors` to `true`.
+
+```json
+"panel_mirrors": [true, false, false]
 ```
 
 ## 6. Run the server
@@ -215,7 +223,7 @@ Start with `rotate`, `block_orientation`, and `reverse_order`. You can now tune 
 
 If the panel order is neither normal nor fully reversed, use `panel_order` in `apps/pi-controller/config.json` for the remaining panel swap.
 
-If the whole image is correct except one panel needs its own rotation, use the per-board rotation button in the desktop workspace or set `panel_rotations` directly in `apps/pi-controller/config.json`.
+If the whole image is correct except one panel needs its own correction, use the per-board rotation or mirror button in the desktop workspace or set `panel_rotations` and `panel_mirrors` directly in `apps/pi-controller/config.json`.
 
 ## Common Issues And Fixes
 
@@ -271,7 +279,7 @@ Fix in `apps/pi-controller/config.json`:
 "panel_rotations": [180, 0, 0]
 ```
 
-Or use the per-board rotation control in the desktop app and then click `Save To Pi`.
+Or use the per-board rotation or mirror control in the desktop app and then click `Save To Pi`.
 
 ### The desktop app connects, but the LEDs stay dark
 

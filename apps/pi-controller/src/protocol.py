@@ -25,6 +25,7 @@ def validate_layout_message(message: dict[str, Any], expected_type: str) -> dict
     reverse_order = message.get("reverse_order")
     panel_order = message.get("panel_order")
     panel_rotations = message.get("panel_rotations")
+    panel_mirrors = message.get("panel_mirrors")
     panel_flips = message.get("panel_flips")
 
     if rotate not in ALLOWED_ROTATE_VALUES:
@@ -48,6 +49,11 @@ def validate_layout_message(message: dict[str, Any], expected_type: str) -> dict
             for value in panel_rotations
         ):
             raise ProtocolError("panel_rotations entries must be 0, 90, 180, or 270")
+    if panel_mirrors is not None:
+        if not isinstance(panel_mirrors, list):
+            raise ProtocolError("panel_mirrors must be a list or null")
+        if any(not isinstance(value, bool) for value in panel_mirrors):
+            raise ProtocolError("panel_mirrors entries must be booleans")
     if panel_flips is not None:
         if not isinstance(panel_flips, list):
             raise ProtocolError("panel_flips must be a list or null")
@@ -62,6 +68,7 @@ def validate_layout_message(message: dict[str, Any], expected_type: str) -> dict
         "reverse_order": reverse_order,
         "panel_order": panel_order,
         "panel_rotations": panel_rotations,
+        "panel_mirrors": panel_mirrors,
         "panel_flips": panel_flips,
     }
 

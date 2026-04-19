@@ -79,6 +79,28 @@ def normalize_panel_rotations(
     return normalized if any(value != 0 for value in normalized) else None
 
 
+def normalize_panel_mirrors(
+    panel_mirrors: list[bool] | None,
+    panel_columns: int,
+    panel_rows: int,
+) -> list[bool] | None:
+    panel_count = panel_columns * panel_rows
+    if panel_mirrors is None:
+        return None
+    if not isinstance(panel_mirrors, list):
+        raise ValueError("panel_mirrors must be a list of booleans or null")
+    if len(panel_mirrors) != panel_count:
+        raise ValueError(f"panel_mirrors must contain exactly {panel_count} entries")
+
+    normalized: list[bool] = []
+    for raw_value in panel_mirrors:
+        if not isinstance(raw_value, bool):
+            raise ValueError("panel_mirrors entries must be booleans")
+        normalized.append(raw_value)
+
+    return normalized if any(normalized) else None
+
+
 def resolve_panel_rotations(
     panel_columns: int,
     panel_rows: int,
@@ -201,6 +223,7 @@ def compose_physical_frame(
     panel_rows: int,
     panel_positions: list[int] | None = None,
     panel_rotations: list[int] | None = None,
+    panel_mirrors: list[bool] | None = None,
 ) -> list[int]:
     """
     Assemble 8x8 logical panel slices into a physical row-major framebuffer.
@@ -213,6 +236,8 @@ def compose_physical_frame(
         raise ValueError(f"panel_positions must contain exactly {panel_count} entries")
     if panel_rotations is not None and len(panel_rotations) != panel_count:
         raise ValueError(f"panel_rotations must contain exactly {panel_count} entries")
+    if panel_mirrors is not None and len(panel_mirrors) != panel_count:
+        raise ValueError(f"panel_mirrors must contain exactly {panel_count} entries")
 
     frame_width = panel_columns * PANEL_SIZE
     frame_height = panel_rows * PANEL_SIZE
@@ -228,7 +253,8 @@ def compose_physical_frame(
             else logical_panel_index
         )
         rotation = panel_rotations[physical_panel_index] if panel_rotations is not None else 0
-        rendered_panel_slice = rotate_panel_slice(panel_slice, rotation)
+        mirrored = panel_mirrors[physical_panel_index] if panel_mirrors is not None else False
+        rendered_panel_slice = transform_panel_slice(panel_slice, rotation, mirrored)
         physical_panel_x = (physical_panel_index % panel_columns) * PANEL_SIZE
         physical_panel_y = (physical_panel_index // panel_columns) * PANEL_SIZE
 
@@ -268,6 +294,22 @@ def rotate_panel_slice(panel_slice: list[int], rotation: int) -> list[int]:
     return rotated_slice
 
 
+def mirror_panel_slice(panel_slice: list[int]) -> list[int]:
+    mirrored_slice = [0] * (PANEL_SIZE * PANEL_SIZE)
+    for source_y in range(PANEL_SIZE):
+        source_offset = source_y * PANEL_SIZE
+        row = panel_slice[source_offset:source_offset + PANEL_SIZE]
+        mirrored_slice[source_offset:source_offset + PANEL_SIZE] = list(reversed(row))
+    return mirrored_slice
+
+
+def transform_panel_slice(panel_slice: list[int], rotation: int, mirrored: bool) -> list[int]:
+    transformed_slice = rotate_panel_slice(panel_slice, rotation)
+    if mirrored:
+        return mirror_panel_slice(transformed_slice)
+    return transformed_slice
+
+
 def build_physical_frame(
     pixels: list[int],
     frame_width: int,
@@ -276,6 +318,7 @@ def build_physical_frame(
     display_height: int,
     panel_positions: list[int] | None = None,
     panel_rotations: list[int] | None = None,
+    panel_mirrors: list[bool] | None = None,
 ) -> list[int]:
     """
     Convert a logical frame into the exact physical framebuffer sent to luma.
@@ -296,4 +339,5 @@ def build_physical_frame(
         panel_rows,
         panel_positions,
         panel_rotations,
+        panel_mirrors,
     )

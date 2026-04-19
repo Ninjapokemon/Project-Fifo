@@ -142,6 +142,32 @@ class MappingTests(unittest.TestCase):
         self.assertEqual(sum(physical_slices[1]), 1)
         self.assertEqual(physical_slices[1][(3 * PANEL_SIZE) + 2], 1)
 
+    def test_build_physical_frame_mirrors_selected_physical_panel_horizontally(self) -> None:
+        pixels = build_pixels(
+            16,
+            8,
+            [
+                (1, 2),
+                (8 + 2, 3),
+            ],
+        )
+
+        physical_pixels = build_physical_frame(
+            pixels,
+            16,
+            8,
+            16,
+            8,
+            panel_mirrors=[True, False],
+        )
+        physical_slices = split_frame_into_panel_slices(physical_pixels, 16, 8, 2, 1)
+
+        self.assertEqual(sum(physical_slices[0]), 1)
+        self.assertEqual(physical_slices[0][(2 * PANEL_SIZE) + 6], 1)
+
+        self.assertEqual(sum(physical_slices[1]), 1)
+        self.assertEqual(physical_slices[1][(3 * PANEL_SIZE) + 2], 1)
+
     def test_build_physical_frame_keeps_rotations_attached_to_physical_positions_after_reorder(self) -> None:
         pixels = build_pixels(
             16,
@@ -166,6 +192,35 @@ class MappingTests(unittest.TestCase):
 
         self.assertEqual(sum(physical_slices[0]), 1)
         self.assertEqual(physical_slices[0][(2 * PANEL_SIZE) + 4], 1)
+
+        self.assertEqual(sum(physical_slices[1]), 1)
+        self.assertEqual(physical_slices[1][(2 * PANEL_SIZE) + 1], 1)
+
+    def test_build_physical_frame_keeps_mirrors_attached_to_physical_positions_after_reorder(self) -> None:
+        pixels = build_pixels(
+            16,
+            8,
+            [
+                (1, 2),
+                (8 + 2, 3),
+            ],
+        )
+        panel_positions = build_panel_positions(2, 1, [1, 0])
+
+        physical_pixels = build_physical_frame(
+            pixels,
+            16,
+            8,
+            16,
+            8,
+            panel_positions,
+            None,
+            [True, False],
+        )
+        physical_slices = split_frame_into_panel_slices(physical_pixels, 16, 8, 2, 1)
+
+        self.assertEqual(sum(physical_slices[0]), 1)
+        self.assertEqual(physical_slices[0][(3 * PANEL_SIZE) + 5], 1)
 
         self.assertEqual(sum(physical_slices[1]), 1)
         self.assertEqual(physical_slices[1][(2 * PANEL_SIZE) + 1], 1)

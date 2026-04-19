@@ -7,6 +7,7 @@ from luma.led_matrix.device import max7219
 from mapping import (
     build_panel_positions,
     build_physical_frame,
+    normalize_panel_mirrors,
     normalize_panel_order,
     resolve_panel_rotations,
 )
@@ -22,11 +23,13 @@ class MatrixDisplay:
         self.height = config["matrices_high"] * 8
         self.panel_positions = None
         self.panel_rotations = None
+        self.panel_mirrors = None
         self._set_panel_order(config.get("panel_order"))
         self._set_panel_rotations(
             config.get("panel_rotations"),
             config.get("panel_flips"),
         )
+        self._set_panel_mirrors(config.get("panel_mirrors"))
         self.device = None
         self.brightness = 0
         self._rebuild_device()
@@ -66,6 +69,20 @@ class MatrixDisplay:
         )
         return normalized_rotations
 
+    def _set_panel_mirrors(self, panel_mirrors: list[bool] | None) -> list[bool] | None:
+        normalized_mirrors = normalize_panel_mirrors(
+            panel_mirrors,
+            self.config["matrices_wide"],
+            self.config["matrices_high"],
+        )
+        self.config["panel_mirrors"] = normalized_mirrors
+        self.panel_mirrors = (
+            list(normalized_mirrors)
+            if isinstance(normalized_mirrors, list)
+            else None
+        )
+        return normalized_mirrors
+
     def _rebuild_device(self) -> None:
         if self.device is not None:
             self.clear()
@@ -84,9 +101,10 @@ class MatrixDisplay:
             blocks_arranged_in_reverse_order=self.config.get("reverse_order", False),
         )
 
-    def get_layout(self) -> dict[str, int | bool | list[int] | None]:
+    def get_layout(self) -> dict[str, int | bool | list[int] | list[bool] | None]:
         panel_order = self.config.get("panel_order")
         panel_rotations = self.config.get("panel_rotations")
+        panel_mirrors = self.config.get("panel_mirrors")
         return {
             "rotate": self.config.get("rotate", 0),
             "block_orientation": self.config.get("block_orientation", 90),
@@ -97,9 +115,14 @@ class MatrixDisplay:
                 if isinstance(panel_rotations, list)
                 else None
             ),
+            "panel_mirrors": (
+                list(panel_mirrors)
+                if isinstance(panel_mirrors, list)
+                else None
+            ),
         }
 
-    def get_state(self) -> dict[str, int | bool | list[int] | None]:
+    def get_state(self) -> dict[str, int | bool | list[int] | list[bool] | None]:
         return {
             "width": self.width,
             "height": self.height,
@@ -114,8 +137,9 @@ class MatrixDisplay:
         reverse_order: bool,
         panel_order: list[int] | None = None,
         panel_rotations: list[int] | None = None,
+        panel_mirrors: list[bool] | None = None,
         panel_flips: list[bool] | None = None,
-    ) -> dict[str, int | bool | list[int] | None]:
+    ) -> dict[str, int | bool | list[int] | list[bool] | None]:
         normalized_panel_order = normalize_panel_order(
             panel_order,
             self.config["matrices_wide"],
@@ -127,12 +151,18 @@ class MatrixDisplay:
             panel_rotations,
             panel_flips,
         )
+        normalized_panel_mirrors = normalize_panel_mirrors(
+            panel_mirrors,
+            self.config["matrices_wide"],
+            self.config["matrices_high"],
+        )
         next_layout = {
             "rotate": rotate,
             "block_orientation": block_orientation,
             "reverse_order": reverse_order,
             "panel_order": normalized_panel_order,
             "panel_rotations": normalized_panel_rotations,
+            "panel_mirrors": normalized_panel_mirrors,
         }
         current_layout = self.get_layout()
         if current_layout == next_layout:
@@ -148,6 +178,11 @@ class MatrixDisplay:
         self.panel_rotations = (
             list(normalized_panel_rotations)
             if isinstance(normalized_panel_rotations, list)
+            else None
+        )
+        self.panel_mirrors = (
+            list(normalized_panel_mirrors)
+            if isinstance(normalized_panel_mirrors, list)
             else None
         )
         if (
@@ -180,6 +215,7 @@ class MatrixDisplay:
             self.height,
             self.panel_positions,
             self.panel_rotations,
+            self.panel_mirrors,
         )
 
         with canvas(self.device) as draw:

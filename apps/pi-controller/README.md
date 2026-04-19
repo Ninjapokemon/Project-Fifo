@@ -40,11 +40,11 @@ Once the basics are solid, this is also the place to add `systemd` startup and a
 
 Brightness messages use the same WebSocket connection as frames and are clamped to the MAX7219 `0-15` range on the Pi before being applied.
 
-Layout messages use the same WebSocket connection and can update `rotate`, `block_orientation`, `reverse_order`, and per-panel `panel_rotations` on the active `luma` device without restarting the server. A separate save action writes those values to `apps/pi-controller/config.json` so they survive reboot.
+Layout messages use the same WebSocket connection and can update `rotate`, `block_orientation`, `reverse_order`, per-panel `panel_rotations`, and per-panel `panel_mirrors` on the active `luma` device without restarting the server. A separate save action writes those values to `apps/pi-controller/config.json` so they survive reboot.
 
 If your chain order is more unusual than a simple reverse, `apps/pi-controller/config.json` also supports an optional `panel_order` list for remapping whole `8x8` panels in row-major physical order.
 
-If one physical `8x8` module is mounted differently from the others, `apps/pi-controller/config.json` also supports an optional `panel_rotations` list of `0`, `90`, `180`, or `270` values in row-major physical order. That lets you rotate one panel without changing the browser drawing.
+If one physical `8x8` module is mounted differently from the others, `apps/pi-controller/config.json` also supports an optional `panel_rotations` list of `0`, `90`, `180`, or `270` values in row-major physical order and an optional `panel_mirrors` list of booleans for horizontal mirroring. That lets you correct one panel without changing the browser drawing.
 
 Saved drawings are stored on the Pi under `apps/pi-controller/data/drawings` as JSON files. The desktop app can save to that directory, ask for the drawing list, and load a stored drawing back over WebSocket.
 
@@ -122,7 +122,7 @@ The desktop app can change those settings live, which makes it much easier to di
 
 ### One module is rotated differently, but the rest are correct
 
-If only one or two physical modules are mounted differently, leave the browser drawing alone and rotate just those hardware panels.
+If only one or two physical modules are mounted differently, leave the browser drawing alone and rotate or mirror just those hardware panels.
 
 Fix in `config.json`:
 
@@ -131,6 +131,12 @@ Fix in `config.json`:
 ```
 
 That example rotates only the leftmost physical panel by `180` degrees.
+
+If the module also needs horizontal mirroring, use:
+
+```json
+"panel_mirrors": [true, false, false]
+```
 
 ### Stopping with `Ctrl+C` clears the display and exits cleanly
 

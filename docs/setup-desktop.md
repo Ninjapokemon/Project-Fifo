@@ -82,7 +82,7 @@ Use the `Layout + Orientation` section to adjust:
 - `Reverse Panel Order` when the chain starts from the opposite side
 - `Layout Preset` as a quick starting point for common horizontal arrangements
 
-Then use the per-board rotation button in the workspace when a single physical `8x8` module needs its own `0`, `90`, `180`, or `270` degree correction.
+Then use the per-board rotation and mirror controls in the workspace when a single physical `8x8` module needs its own correction.
 
 Click `Read From Pi` after connecting to pull the current layout, then use `Save To Pi` once the LEDs look correct so the settings survive reboot.
 
@@ -92,4 +92,4 @@ Click `Read From Pi` after connecting to pull the current layout, then use `Save
 - If `Connect` fails, check the endpoint and firewall rules.
 - If the pattern is mirrored or rotated on the LEDs, the next thing to adjust is `apps/pi-controller/src/mapping.py` and the Pi config options.
 - If `Panel Index Test` lights two panels at the same time, that is usually a hardware wiring mirror such as two chains fed in parallel. `Panel Order` can fix swapped positions, but it cannot separate duplicated panels that share the same signal path.
-- If only one board is rotated differently while the rest look correct, click that board's rotation control until it looks right and then save the layout back to the Pi.
+- If only one board needs its own correction while the rest look right, click that board's rotation or mirror control until it looks right and then save the layout back to the Pi.
