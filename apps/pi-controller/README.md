@@ -36,7 +36,7 @@ This project uses:
 - `spidev`
 - `websockets`
 
-Once the basics are solid, this is also the place to add `systemd` startup and any Pi-specific setup helpers.
+Pi-specific setup helpers now live in `scripts/`, and the full install and update flow is documented in `docs/setup-pi.md`.
 
 Brightness messages use the same WebSocket connection as frames and are clamped to the MAX7219 `0-15` range on the Pi before being applied.
 

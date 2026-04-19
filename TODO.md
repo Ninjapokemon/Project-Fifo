@@ -20,10 +20,10 @@ This is the running list of what would make the project nicer to use and easier 
 
 ### Next
 
-- [ ] Finish the protocol state message and desktop sync
+- [ ] Extend the protocol state message with runtime-facing fields and clearer persisted-versus-live state
 - [ ] Add Pi project storage and boot project management
 - [ ] Add a Pi install script
-- [ ] Add unit tests for protocol and mapping
+- [ ] Expand unit tests for protocol, mapping, and storage coverage
 - [ ] Add animation and face-runtime groundwork
 - [ ] Review and reconcile the LED layout branches
 
@@ -33,11 +33,10 @@ This is the running list of what would make the project nicer to use and easier 
 
 ## Branch Notes
 
-- `development` is the current integration branch
-- `development` is currently `4` commits ahead of `main`
-- `LED-Layout-Tests` is currently `1` commit ahead of `development`
-- `origin/led-layout` also exists separately and is not yet reconciled with `development` or `main`
-- the LED board arrangement work should be reviewed and folded back into one clear branch path before more UI work stacks up
+- `main` currently contains LED layout and editor changes that are not reflected on `development`
+- `LED-Layout-Tests` currently points at the same tip as `main`
+- `origin/led-layout` still exists separately and has not yet been reconciled with the current branch flow
+- the accepted LED board arrangement path should be reviewed and simplified before more layout work stacks up
 
 ## Active Items
 
@@ -91,7 +90,7 @@ Done when:
 Status:
 - [x] add request and response messages for `brightness`, `width`, `height`, layout data, saved drawing list, and basic `connection_status`
 - [x] use that information to keep brightness, layout controls, and Pi drawing lists in sync in the desktop UI
-- [ ] decide whether desktop `width` and `height` should auto-sync from Pi state or stay local unless the user chooses to resize
+- [x] keep desktop `width` and `height` synced to the connected Pi display while connected
 - [ ] include fuller runtime-facing fields such as active project, active animation or state, and a clearer persisted-versus-live model
 - [ ] decide how the Pi reports live temporary state versus reboot-persisted state once projects and runtime playback exist
 
@@ -153,7 +152,8 @@ Done when:
 
 Status:
 - [ ] test frame validation success and failure cases
-- [ ] test mapping for common panel layouts
+- [x] test mapping for common panel layouts
+- [x] test drawing storage and board workspace metadata round-tripping
 - [ ] test brightness clamping once brightness control is added
 
 Done when:
@@ -219,7 +219,6 @@ Status:
 - [x] store drawings as JSON files containing `name`, `width`, `height`, and `pixels`
 - [x] use browser file download/upload first for a simple implementation
 - [x] add a Pi-side save/load path so drawings can live on the Pi itself
-- [ ] optionally add local browser storage later for quick autosave
 
 Notes:
 - [x] use the existing frame message shape to keep the format simple

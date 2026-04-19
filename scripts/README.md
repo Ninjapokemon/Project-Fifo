@@ -1,9 +1,6 @@
 # Scripts
 
-This folder is reserved for helper scripts such as:
+This folder currently contains helper scripts for:
 
-- syncing Pi configs
-- launching local dev services
-- deploying the Pi controller
-- installing the Pi `systemd` service
-- updating the Pi checkout and restarting the service
+- installing the Pi `systemd` service with `install-pi-service.sh`
+- updating the Pi checkout, reinstalling Python dependencies, and restarting the service with `update-pi.sh`
