@@ -45,11 +45,16 @@ The current version is enough to:
 2. connect to the Pi over WebSocket
 3. draw live on the matrix display
 4. save single drawings locally or on the Pi for authoring and testing
-5. tune layout, panel order, per-panel rotation, and per-panel mirroring from the desktop app or Pi config
+5. save the current website drawing as a Pi project that the Pi can activate and load on boot
+6. let temporary live website frames override the active Pi project without deleting it
+7. tune layout, panel order, per-panel rotation, and per-panel mirroring from the desktop app or Pi config
 
-That Pi-side drawing storage is useful right now, but it is not the final standalone deployment model. The long-term runtime will need Pi-owned project storage, boot selection, and runtime state beyond individual saved frames.
+That means the project now has two useful modes:
 
-There is still more to build, especially around persistence rules, project deployment, and boot-time runtime behavior on the Pi.
+- temporary live website control for fast editing and bring-up
+- Pi-owned projects for content that should survive disconnects and reboot
+
+There is still more to build, especially around multi-frame authoring in the website, richer runtime state rules, and boot-time behavior beyond a single default project.
 
 ## Future Direction
 

@@ -1,0 +1,40 @@
+{
+  "type": "save_project",
+  "version": 1,
+  "name": "protogen-face",
+  "width": 8,
+  "height": 8,
+  "boardLayout": [
+    {
+      "id": "board-1",
+      "chainIndex": 0,
+      "visualGridX": 0,
+      "visualGridY": 0,
+      "groupId": "eyes",
+      "width": 8,
+      "height": 8
+    }
+  ],
+  "boardGroups": [
+    "eyes"
+  ],
+  "frames": [
+    {
+      "id": "idle-open",
+      "name": "Idle Open",
+      "pixels": [
+        0, 0, 1, 1, 1, 1, 0, 0,
+        0, 1, 0, 0, 0, 0, 1, 0,
+        1, 0, 1, 0, 0, 1, 0, 1,
+        1, 0, 0, 0, 0, 0, 0, 1,
+        1, 0, 1, 0, 0, 1, 0, 1,
+        1, 0, 0, 1, 1, 0, 0, 1,
+        0, 1, 0, 0, 0, 0, 1, 0,
+        0, 0, 1, 1, 1, 1, 0, 0
+      ]
+    }
+  ],
+  "animations": [],
+  "defaultFrameId": "idle-open",
+  "defaultAnimationId": null
+}

@@ -54,6 +54,7 @@ The main fields to care about are:
 - `matrices_high`: number of `8x8` modules down
 - `rotate`: display rotation passed to `luma`
 - `brightness`: rough brightness level from `0` to `15`
+- `boot_project`: optional Pi project name to load automatically on boot
 - `block_orientation`: panel orientation used by `luma`
 - `reverse_order`: whether the matrix chain order is reversed
 - `serpentine`: reserved for later custom mapping logic

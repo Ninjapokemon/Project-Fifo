@@ -1,8 +1,8 @@
 # Pi Controller
 
-This is the Raspberry Pi side of the project. It listens for frames from the desktop app and pushes them to the MAX7219 chain through `luma.led_matrix`.
+This is the Raspberry Pi side of the project. It listens for frames from the desktop app, stores Pi-owned projects, and pushes pixels to the MAX7219 chain through `luma.led_matrix`.
 
-Today it is mostly a networked renderer. The longer-term goal is for it to become the standalone runtime for a protogen face.
+Today it can already run a saved default project on boot while still allowing the website to take temporary live control. The longer-term goal is for it to grow into the richer standalone runtime for a protogen face.
 
 ## What Lives Here
 
@@ -10,11 +10,12 @@ Today it is mostly a networked renderer. The longer-term goal is for it to becom
 - accept brightness messages from the desktop app
 - accept live layout/orientation messages and optionally save them to config
 - store saved drawings on the Pi and send them back on request for simple iteration
+- store saved projects on the Pi and let the website activate, resume, delete, and pick a boot project
 - validate payload shape
 - map logical pixels to the physical panel arrangement
 - render frames to the hardware device
-- eventually load saved face projects from disk
-- eventually play animations locally on boot without needing a browser connection
+- load a saved boot project from disk on startup
+- play saved default frames or animations locally without needing a browser connection
 - eventually react to inputs such as GPIO buttons or microphone activity
 
 ## Main Files
@@ -24,6 +25,8 @@ Today it is mostly a networked renderer. The longer-term goal is for it to becom
 - `src/display.py`: `luma` device wrapper
 - `src/mapping.py`: logical-to-physical coordinate translation
 - `src/storage.py`: Pi-side drawing library storage
+- `src/project_store.py`: Pi-side project storage
+- `src/runtime.py`: project runtime and live-override handoff
 - `config.example.json`: template for local hardware settings
 - `project-fifo.service`: `systemd` unit template for boot-time startup
 
@@ -48,7 +51,9 @@ If one physical `8x8` module is mounted differently from the others, `apps/pi-co
 
 Saved drawings are stored on the Pi under `apps/pi-controller/data/drawings` as JSON files. The desktop app can save to that directory, ask for the drawing list, and load a stored drawing back over WebSocket. Those saved drawing files preserve the browser's board workspace layout metadata and board groups alongside the frame pixels.
 
-That drawing store is a short-term editing convenience, not the final standalone runtime content model. The longer-term Pi runtime should store validated face projects, know which project is active, and know which project should load automatically on boot.
+Saved projects are stored on the Pi under `apps/pi-controller/data/projects` as JSON files. A project can contain one or more named frames, optional named animations, and a default frame or animation target. The desktop app can save the current drawing as a Pi project, activate it, and choose which project should load automatically on boot.
+
+Live website frames are now treated as a temporary override on top of that project runtime. If the website disconnects and a Pi project was active, the Pi can resume the project instead of staying stuck in the temporary live frame state.
 
 ## Future Runtime Direction
 
@@ -64,7 +69,7 @@ That future runtime will likely need to add:
 - runtime rules that map input events to animation or state changes
 - protocol endpoints for project loading, playback control, persistence decisions, and runtime state queries
 
-The current frame transport is still useful because it keeps the renderer easy to test while those larger runtime pieces are added.
+The current frame transport is still useful because it gives the website a fast live-edit path without replacing the Pi-owned runtime model.
 
 ## Common Issues
 

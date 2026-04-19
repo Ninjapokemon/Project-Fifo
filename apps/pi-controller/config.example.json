@@ -5,6 +5,7 @@
   "matrices_high": 1,
   "rotate": 0,
   "brightness": 3,
+  "boot_project": null,
   "block_orientation": 90,
   "reverse_order": false,
   "serpentine": false,

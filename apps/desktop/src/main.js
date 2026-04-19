@@ -107,9 +107,19 @@ const state = {
   drawingName: "fifo-drawing",
   endpointName: DEFAULT_ENDPOINT_NAME,
   piDrawings: [],
+  piProjects: [],
   savedEndpoints: [],
   brightness: DEFAULT_BRIGHTNESS,
   layout: { ...DEFAULT_LAYOUT },
+  runtime: {
+    mode: "idle",
+    liveOverrideActive: false,
+    activeProject: null,
+    bootProject: null,
+    activeTargetType: null,
+    activeTargetName: null,
+    activeProjectPersisted: false,
+  },
   connectedDisplayWidth: null,
   connectedDisplayHeight: null,
   pixelColor: DEFAULT_PIXEL_COLOR,
@@ -185,6 +195,16 @@ const elements = {
   piDrawingSelect: document.querySelector("#piDrawingSelect"),
   refreshPiDrawingsButton: document.querySelector("#refreshPiDrawingsButton"),
   loadFromPiButton: document.querySelector("#loadFromPiButton"),
+  piRuntimeStatus: document.querySelector("#piRuntimeStatus"),
+  saveProjectToPiButton: document.querySelector("#saveProjectToPiButton"),
+  piProjectSelect: document.querySelector("#piProjectSelect"),
+  refreshPiProjectsButton: document.querySelector("#refreshPiProjectsButton"),
+  loadProjectFromPiButton: document.querySelector("#loadProjectFromPiButton"),
+  activateProjectButton: document.querySelector("#activateProjectButton"),
+  setBootProjectButton: document.querySelector("#setBootProjectButton"),
+  clearBootProjectButton: document.querySelector("#clearBootProjectButton"),
+  resumeProjectButton: document.querySelector("#resumeProjectButton"),
+  deleteProjectButton: document.querySelector("#deleteProjectButton"),
   loadInput: document.querySelector("#loadInput"),
   sendButton: document.querySelector("#sendButton"),
   grid: document.querySelector("#grid"),
@@ -1889,6 +1909,82 @@ function buildLoadDrawingMessage(name) {
   };
 }
 
+function buildSaveProjectMessage() {
+  const frameId = "frame-1";
+  return {
+    type: "save_project",
+    version: 1,
+    name: state.drawingName,
+    width: state.width,
+    height: state.height,
+    boardLayout: serializeBoardLayout(),
+    boardGroups: [...state.boardGroups],
+    frames: [
+      {
+        id: frameId,
+        name: state.drawingName,
+        pixels: [...state.pixels],
+      },
+    ],
+    animations: [],
+    defaultFrameId: frameId,
+    defaultAnimationId: null,
+  };
+}
+
+function buildListProjectsMessage() {
+  return {
+    type: "list_projects",
+    version: 1,
+  };
+}
+
+function buildGetProjectMessage(name) {
+  return {
+    type: "get_project",
+    version: 1,
+    name,
+  };
+}
+
+function buildActivateProjectMessage(name) {
+  return {
+    type: "activate_project",
+    version: 1,
+    name,
+  };
+}
+
+function buildSetBootProjectMessage(name) {
+  return {
+    type: "set_boot_project",
+    version: 1,
+    name,
+  };
+}
+
+function buildClearBootProjectMessage() {
+  return {
+    type: "clear_boot_project",
+    version: 1,
+  };
+}
+
+function buildResumeProjectMessage() {
+  return {
+    type: "resume_project",
+    version: 1,
+  };
+}
+
+function buildDeleteProjectMessage(name) {
+  return {
+    type: "delete_project",
+    version: 1,
+    name,
+  };
+}
+
 function clampNumber(value, minimum, maximum, fallback) {
   if (!Number.isFinite(value)) {
     return fallback;
@@ -2771,6 +2867,85 @@ function syncPiDrawingOptions() {
   }
 }
 
+function applyPiRuntimeState(data) {
+  state.runtime = {
+    mode: typeof data.runtime_mode === "string" ? data.runtime_mode : "idle",
+    liveOverrideActive: data.live_override_active === true,
+    activeProject: typeof data.active_project === "string" ? sanitizeDrawingName(data.active_project) : null,
+    bootProject: typeof data.boot_project === "string" ? sanitizeDrawingName(data.boot_project) : null,
+    activeTargetType: typeof data.active_target_type === "string" ? data.active_target_type : null,
+    activeTargetName: typeof data.active_target_name === "string" ? data.active_target_name : null,
+    activeProjectPersisted: data.active_project_persisted === true,
+  };
+  updatePiRuntimeStatus();
+}
+
+function getPiRuntimeStatusText() {
+  if (!state.socket || state.socket.readyState !== WebSocket.OPEN) {
+    return "Connect to a Pi to manage bootable projects and temporary live control.";
+  }
+
+  if (state.runtime.mode === "project" && state.runtime.activeProject) {
+    const targetLabel = state.runtime.activeTargetType && state.runtime.activeTargetName
+      ? ` running ${state.runtime.activeTargetType} "${state.runtime.activeTargetName}"`
+      : "";
+    const bootLabel = state.runtime.bootProject
+      ? ` Boot project: "${state.runtime.bootProject}".`
+      : " No boot project is set yet.";
+    return `Pi is running project "${state.runtime.activeProject}"${targetLabel}.${bootLabel} Drawing on the website temporarily overrides it until you resume the project or disconnect.`;
+  }
+
+  if (state.runtime.mode === "live" && state.runtime.activeProject) {
+    return `Website live control is temporarily overriding project "${state.runtime.activeProject}". Use Resume Project to hand control back to the Pi runtime, or disconnect to let the Pi resume it automatically.`;
+  }
+
+  if (state.runtime.mode === "live") {
+    return "Pi is currently showing temporary live website frames. No Pi project is active yet.";
+  }
+
+  if (state.runtime.bootProject) {
+    return `Pi is idle right now. Boot project "${state.runtime.bootProject}" is saved and can be started from the website or on reboot.`;
+  }
+
+  return "Pi is ready for live website editing. Save the current drawing as a project when you want the Pi to run it on its own.";
+}
+
+function updatePiRuntimeStatus() {
+  elements.piRuntimeStatus.textContent = getPiRuntimeStatusText();
+}
+
+function syncPiProjectOptions() {
+  const previousValue = elements.piProjectSelect.value;
+  elements.piProjectSelect.innerHTML = "";
+
+  if (state.piProjects.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No Pi projects loaded";
+    elements.piProjectSelect.appendChild(option);
+    elements.piProjectSelect.value = "";
+    return;
+  }
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Select a Pi project";
+  elements.piProjectSelect.appendChild(placeholder);
+
+  state.piProjects.forEach((name) => {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    elements.piProjectSelect.appendChild(option);
+  });
+
+  if (state.piProjects.includes(previousValue)) {
+    elements.piProjectSelect.value = previousValue;
+  } else {
+    elements.piProjectSelect.value = "";
+  }
+}
+
 function requestPiDrawingList(reason) {
   const sent = sendMessage(buildListDrawingsMessage());
   if (sent) {
@@ -2804,6 +2979,105 @@ function loadDrawingFromPi() {
     log(`Requested drawing "${drawingName}" from the Pi.`);
   } else {
     log("Not connected. Could not load drawing from the Pi.");
+  }
+}
+
+function requestPiProjectList(reason) {
+  const sent = sendMessage(buildListProjectsMessage());
+  if (sent) {
+    log(`Requested Pi project list after ${reason}.`);
+  } else {
+    log("Not connected. Could not request Pi project list.");
+  }
+}
+
+function saveProjectToPi() {
+  state.drawingName = sanitizeDrawingName(elements.drawingName.value);
+  elements.drawingName.value = state.drawingName;
+
+  const sent = sendMessage(buildSaveProjectMessage());
+  if (sent) {
+    log(`Sent "${state.drawingName}" to the Pi as a bootable project.`);
+  } else {
+    log("Not connected. Could not save a project to the Pi.");
+  }
+}
+
+function loadProjectFromPi() {
+  const projectName = elements.piProjectSelect.value;
+  if (!projectName) {
+    log("Pick a Pi project first.");
+    return;
+  }
+
+  const sent = sendMessage(buildGetProjectMessage(projectName));
+  if (sent) {
+    log(`Requested project "${projectName}" from the Pi.`);
+  } else {
+    log("Not connected. Could not load a project from the Pi.");
+  }
+}
+
+function activateProjectOnPi() {
+  const projectName = elements.piProjectSelect.value;
+  if (!projectName) {
+    log("Pick a Pi project first.");
+    return;
+  }
+
+  const sent = sendMessage(buildActivateProjectMessage(projectName));
+  if (sent) {
+    log(`Asked the Pi to run project "${projectName}".`);
+  } else {
+    log("Not connected. Could not activate a Pi project.");
+  }
+}
+
+function setBootProjectOnPi() {
+  const projectName = elements.piProjectSelect.value;
+  if (!projectName) {
+    log("Pick a Pi project first.");
+    return;
+  }
+
+  const sent = sendMessage(buildSetBootProjectMessage(projectName));
+  if (sent) {
+    log(`Asked the Pi to use "${projectName}" as the boot project.`);
+  } else {
+    log("Not connected. Could not update the boot project.");
+  }
+}
+
+function clearBootProjectOnPi() {
+  const sent = sendMessage(buildClearBootProjectMessage());
+  if (sent) {
+    log("Asked the Pi to clear its boot project.");
+  } else {
+    log("Not connected. Could not clear the boot project.");
+  }
+}
+
+function resumeProjectOnPi() {
+  const sent = sendMessage(buildResumeProjectMessage());
+  if (sent) {
+    log("Asked the Pi to resume its active project runtime.");
+  } else {
+    log("Not connected. Could not resume the Pi project.");
+  }
+}
+
+function deleteProjectFromPi() {
+  const projectName = elements.piProjectSelect.value;
+  if (!projectName) {
+    log("Pick a Pi project first.");
+    return;
+  }
+
+  const sent = sendMessage(buildDeleteProjectMessage(projectName));
+  if (sent) {
+    log(`Asked the Pi to delete project "${projectName}".`);
+  } else {
+    log("Not connected. Could not delete the Pi project.");
   }
 }
 
@@ -2859,6 +3133,166 @@ function validateLoadedDrawing(data) {
     boardLayout: normalizedWorkspace.boardLayout,
     boardGroups: normalizedWorkspace.boardGroups,
   };
+}
+
+function validateLoadedProject(data) {
+  if (!data || typeof data !== "object") {
+    throw new Error("Project payload must contain a JSON object.");
+  }
+
+  const width = data.width;
+  const height = data.height;
+  if (!Number.isInteger(width) || width <= 0) {
+    throw new Error("Project width must be a positive integer.");
+  }
+  if (!Number.isInteger(height) || height <= 0) {
+    throw new Error("Project height must be a positive integer.");
+  }
+  if (!Array.isArray(data.frames) || data.frames.length === 0) {
+    throw new Error("Project frames must be a non-empty array.");
+  }
+
+  const frames = data.frames.map((frame) => {
+    if (!frame || typeof frame !== "object") {
+      throw new Error("Each project frame must be an object.");
+    }
+
+    const id = typeof frame.id === "string" ? frame.id.trim() : "";
+    if (!id) {
+      throw new Error("Each project frame needs a non-empty id.");
+    }
+    if (!Array.isArray(frame.pixels) || frame.pixels.length !== width * height) {
+      throw new Error(`Project frame "${id}" pixels must match width * height.`);
+    }
+
+    const pixels = frame.pixels.map((value) => {
+      if (value !== 0 && value !== 1) {
+        throw new Error(`Project frame "${id}" pixels must contain only 0 or 1.`);
+      }
+      return value;
+    });
+
+    return {
+      id,
+      name: typeof frame.name === "string" && frame.name.trim() ? frame.name.trim() : id,
+      pixels,
+    };
+  });
+
+  const frameIds = new Set(frames.map((frame) => frame.id));
+  const animations = Array.isArray(data.animations)
+    ? data.animations.map((animation) => {
+      if (!animation || typeof animation !== "object") {
+        throw new Error("Each project animation must be an object.");
+      }
+
+      const id = typeof animation.id === "string" ? animation.id.trim() : "";
+      if (!id) {
+        throw new Error("Each project animation needs a non-empty id.");
+      }
+      if (!Array.isArray(animation.steps) || animation.steps.length === 0) {
+        throw new Error(`Project animation "${id}" must have at least one step.`);
+      }
+
+      return {
+        id,
+        name: typeof animation.name === "string" && animation.name.trim() ? animation.name.trim() : id,
+        loop: animation.loop !== false,
+        steps: animation.steps.map((step) => {
+          if (!step || typeof step !== "object") {
+            throw new Error(`Project animation "${id}" steps must be objects.`);
+          }
+
+          const frameId = typeof step.frameId === "string" ? step.frameId.trim() : "";
+          if (!frameId || !frameIds.has(frameId)) {
+            throw new Error(`Project animation "${id}" references an unknown frame.`);
+          }
+          if (!Number.isInteger(step.durationMs) || step.durationMs <= 0) {
+            throw new Error(`Project animation "${id}" needs positive durationMs values.`);
+          }
+
+          return {
+            frameId,
+            durationMs: step.durationMs,
+          };
+        }),
+      };
+    })
+    : [];
+
+  const normalizedWorkspace = normalizePersistedBoardWorkspace(
+    width,
+    height,
+    frames[0].pixels,
+    data.boardLayout ?? null,
+    data.boardGroups ?? null,
+  );
+
+  return {
+    name: typeof data.name === "string" ? sanitizeDrawingName(data.name) : "fifo-project",
+    width,
+    height,
+    frames,
+    animations,
+    defaultFrameId: typeof data.defaultFrameId === "string" && data.defaultFrameId.trim()
+      ? data.defaultFrameId.trim()
+      : null,
+    defaultAnimationId: typeof data.defaultAnimationId === "string" && data.defaultAnimationId.trim()
+      ? data.defaultAnimationId.trim()
+      : null,
+    boardLayout: normalizedWorkspace.boardLayout,
+    boardGroups: normalizedWorkspace.boardGroups,
+  };
+}
+
+function selectProjectEditorFrame(project) {
+  const framesById = new Map(project.frames.map((frame) => [frame.id, frame]));
+
+  if (project.defaultFrameId && framesById.has(project.defaultFrameId)) {
+    return framesById.get(project.defaultFrameId);
+  }
+
+  if (project.defaultAnimationId) {
+    const animation = project.animations.find((entry) => entry.id === project.defaultAnimationId);
+    const firstStep = animation?.steps?.[0];
+    if (firstStep && framesById.has(firstStep.frameId)) {
+      return framesById.get(firstStep.frameId);
+    }
+  }
+
+  const firstAnimationStep = project.animations[0]?.steps?.[0];
+  if (firstAnimationStep && framesById.has(firstAnimationStep.frameId)) {
+    return framesById.get(firstAnimationStep.frameId);
+  }
+
+  return project.frames[0];
+}
+
+function loadProjectIntoEditor(project, sourceLabel) {
+  const frame = selectProjectEditorFrame(project);
+  state.drawingName = sanitizeDrawingName(project.name);
+  elements.drawingName.value = state.drawingName;
+  applyDrawing(
+    {
+      name: state.drawingName,
+      width: project.width,
+      height: project.height,
+      pixels: frame.pixels,
+      boardLayout: project.boardLayout,
+      boardGroups: project.boardGroups,
+    },
+    sourceLabel,
+  );
+
+  if (project.frames.length > 1 || project.animations.length > 0) {
+    log(
+      `Loaded frame "${frame.name}" from project "${project.name}" into the editor. `
+      + "The Pi keeps the full multi-frame project; the website editor is still working on one frame at a time.",
+    );
+    return;
+  }
+
+  log(`Loaded project "${project.name}" into the editor.`);
 }
 
 async function loadDrawingFromFile(file) {
@@ -2917,19 +3351,36 @@ function handleServerMessage(message) {
         .map((value) => sanitizeDrawingName(value));
       syncPiDrawingOptions();
     }
+    if (Array.isArray(message.projects)) {
+      state.piProjects = message.projects
+        .filter((value) => typeof value === "string")
+        .map((value) => sanitizeDrawingName(value));
+      syncPiProjectOptions();
+    }
+    applyPiRuntimeState(message);
     log(
       `Pi state synced: ${message.width}x${message.height}, brightness ${state.brightness}, `
-      + `${state.piDrawings.length} saved drawing${state.piDrawings.length === 1 ? "" : "s"}.`,
+      + `${state.piDrawings.length} saved drawing${state.piDrawings.length === 1 ? "" : "s"}, `
+      + `${state.piProjects.length} project${state.piProjects.length === 1 ? "" : "s"}.`,
     );
-    if (sendMessage(buildFrameMessage())) {
-      log(
-        syncedGrid
-          ? "Sent the current frame after syncing the editor grid to the Pi display."
-          : "Sent the current frame after Pi state sync.",
-      );
+    if (syncedGrid) {
+      log("Kept the local editor grid in sync with the connected Pi display.");
     }
     if (message.layout_persisted === false) {
       log("Pi layout has live changes that are not saved to config yet.");
+    }
+    if (message.brightness_persisted === false) {
+      log("Pi brightness is currently a live value and is not saved to config yet.");
+    }
+    if (state.runtime.mode === "project" && state.runtime.activeProject) {
+      log(
+        `Pi is running project "${state.runtime.activeProject}". `
+        + "Draw on the website or click Send Now when you want temporary live control.",
+      );
+    } else if (state.runtime.mode === "live") {
+      log("Pi is already in live-control mode. Resume Project or disconnect when you want the Pi runtime back.");
+    } else {
+      log("Pi is ready. Draw on the website or click Send Now to start a temporary live session.");
     }
     return;
   }
@@ -2955,8 +3406,8 @@ function handleServerMessage(message) {
         ? "Pi layout was saved to config."
         : "Pi layout is now in sync with the desktop controls.",
     );
-    if (syncedGrid && sendMessage(buildFrameMessage())) {
-      log("Sent the current frame after syncing the editor grid to the Pi display.");
+    if (syncedGrid) {
+      log("Kept the local editor grid aligned with the Pi display after the layout update.");
     }
     return;
   }
@@ -2970,6 +3421,15 @@ function handleServerMessage(message) {
     return;
   }
 
+  if (message.type === "projects_list" && Array.isArray(message.projects)) {
+    state.piProjects = message.projects
+      .filter((value) => typeof value === "string")
+      .map((value) => sanitizeDrawingName(value));
+    syncPiProjectOptions();
+    log(`Pi has ${state.piProjects.length} project${state.piProjects.length === 1 ? "" : "s"}.`);
+    return;
+  }
+
   if (message.type === "drawing_saved" && typeof message.name === "string") {
     const savedName = sanitizeDrawingName(message.name);
     if (!state.piDrawings.includes(savedName)) {
@@ -2977,6 +3437,16 @@ function handleServerMessage(message) {
       syncPiDrawingOptions();
     }
     log(`Pi saved drawing "${savedName}".`);
+    return;
+  }
+
+  if (message.type === "project_saved" && typeof message.name === "string") {
+    const savedName = sanitizeDrawingName(message.name);
+    if (!state.piProjects.includes(savedName)) {
+      state.piProjects = [...state.piProjects, savedName].sort((left, right) => left.localeCompare(right));
+      syncPiProjectOptions();
+    }
+    log(`Pi saved project "${savedName}".`);
     return;
   }
 
@@ -2993,6 +3463,46 @@ function handleServerMessage(message) {
       log(errorMessage);
       return;
     }
+  }
+
+  if (message.type === "project") {
+    try {
+      const project = validateLoadedProject(message);
+      loadProjectIntoEditor(project, "Pi project load");
+      return;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to load project from the Pi.";
+      log(errorMessage);
+      return;
+    }
+  }
+
+  if (message.type === "project_activated" && typeof message.name === "string") {
+    log(`Pi is now running project "${sanitizeDrawingName(message.name)}".`);
+    return;
+  }
+
+  if (message.type === "project_resumed" && typeof message.name === "string") {
+    log(`Pi resumed project "${sanitizeDrawingName(message.name)}".`);
+    return;
+  }
+
+  if (message.type === "project_deleted" && typeof message.name === "string") {
+    const deletedName = sanitizeDrawingName(message.name);
+    state.piProjects = state.piProjects.filter((value) => value !== deletedName);
+    syncPiProjectOptions();
+    log(`Pi deleted project "${deletedName}".`);
+    return;
+  }
+
+  if (message.type === "boot_project_updated") {
+    if (typeof message.name === "string" && message.name.trim()) {
+      log(`Pi boot project is now "${sanitizeDrawingName(message.name)}".`);
+      return;
+    }
+
+    log("Pi boot project was cleared.");
+    return;
   }
 
   log(`Pi says: ${JSON.stringify(message)}`);
@@ -3030,6 +3540,10 @@ function connect() {
     setStatus("Disconnected", "idle");
     clearConnectedDisplaySize();
     syncLayoutInputs();
+    updatePiRuntimeStatus();
+    if (state.runtime.mode === "live" && state.runtime.activeProject) {
+      log(`Connection closed. The Pi can return to project "${state.runtime.activeProject}" once the live session ends.`);
+    }
     log("Connection closed.");
     if (state.socket === socket) {
       state.socket = null;
@@ -3237,6 +3751,16 @@ function bindEvents() {
     requestPiDrawingList("manual refresh");
   });
   elements.loadFromPiButton.addEventListener("click", loadDrawingFromPi);
+  elements.saveProjectToPiButton.addEventListener("click", saveProjectToPi);
+  elements.refreshPiProjectsButton.addEventListener("click", () => {
+    requestPiProjectList("manual refresh");
+  });
+  elements.loadProjectFromPiButton.addEventListener("click", loadProjectFromPi);
+  elements.activateProjectButton.addEventListener("click", activateProjectOnPi);
+  elements.setBootProjectButton.addEventListener("click", setBootProjectOnPi);
+  elements.clearBootProjectButton.addEventListener("click", clearBootProjectOnPi);
+  elements.resumeProjectButton.addEventListener("click", resumeProjectOnPi);
+  elements.deleteProjectButton.addEventListener("click", deleteProjectFromPi);
   elements.loadInput.addEventListener("change", async () => {
     const [file] = elements.loadInput.files;
     if (!file) {
@@ -3352,7 +3876,9 @@ function init() {
   applyPixelColor();
   syncMovingDotInputs();
   syncPiDrawingOptions();
+  syncPiProjectOptions();
   syncSavedEndpointOptions();
+  updatePiRuntimeStatus();
   renderGrid();
   updateModeButtons();
   pushHistorySnapshot("startup");

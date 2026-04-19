@@ -34,6 +34,11 @@ export type GetLayoutMessage = {
   version: 1;
 };
 
+export type GetStateMessage = {
+  type: "get_state";
+  version: 1;
+};
+
 export type LayoutMessage = {
   type: "layout";
   version: 1;
@@ -80,13 +85,96 @@ export type ListDrawingsMessage = {
   version: 1;
 };
 
+export type ProjectFrame = {
+  id: string;
+  name: string;
+  pixels: number[];
+};
+
+export type ProjectAnimationStep = {
+  frameId: string;
+  durationMs: number;
+};
+
+export type ProjectAnimation = {
+  id: string;
+  name: string;
+  loop: boolean;
+  steps: ProjectAnimationStep[];
+};
+
+export type SavedProject = {
+  name: string;
+  width: number;
+  height: number;
+  boardLayout?: SavedBoardLayoutEntry[];
+  boardGroups?: string[];
+  frames: ProjectFrame[];
+  animations: ProjectAnimation[];
+  defaultFrameId: string | null;
+  defaultAnimationId: string | null;
+};
+
+export type SaveProjectMessage = SavedProject & {
+  type: "save_project";
+  version: 1;
+};
+
+export type ListProjectsMessage = {
+  type: "list_projects";
+  version: 1;
+};
+
+export type GetProjectMessage = {
+  type: "get_project";
+  version: 1;
+  name: string;
+};
+
+export type ActivateProjectMessage = {
+  type: "activate_project";
+  version: 1;
+  name: string;
+};
+
+export type SetBootProjectMessage = {
+  type: "set_boot_project";
+  version: 1;
+  name: string;
+};
+
+export type ClearBootProjectMessage = {
+  type: "clear_boot_project";
+  version: 1;
+};
+
+export type ResumeProjectMessage = {
+  type: "resume_project";
+  version: 1;
+};
+
+export type DeleteProjectMessage = {
+  type: "delete_project";
+  version: 1;
+  name: string;
+};
+
 export type ClientMessage =
   | FrameMessage
   | ClearMessage
   | BrightnessMessage
   | GetLayoutMessage
+  | GetStateMessage
   | LayoutMessage
   | SaveLayoutMessage
   | SaveDrawingMessage
   | LoadDrawingMessage
-  | ListDrawingsMessage;
+  | ListDrawingsMessage
+  | SaveProjectMessage
+  | ListProjectsMessage
+  | GetProjectMessage
+  | ActivateProjectMessage
+  | SetBootProjectMessage
+  | ClearBootProjectMessage
+  | ResumeProjectMessage
+  | DeleteProjectMessage;

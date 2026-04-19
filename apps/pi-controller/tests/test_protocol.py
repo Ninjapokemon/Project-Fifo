@@ -8,7 +8,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from protocol import ProtocolError, validate_named_drawing  # noqa: E402
+from protocol import ProtocolError, validate_named_drawing, validate_project_payload  # noqa: E402
 
 
 class ProtocolTests(unittest.TestCase):
@@ -66,6 +66,91 @@ class ProtocolTests(unittest.TestCase):
                     "height": 8,
                     "pixels": [0] * 64,
                     "boardGroups": ["group-1", ""],
+                }
+            )
+
+    def test_validate_project_payload_preserves_runtime_metadata(self) -> None:
+        project = validate_project_payload(
+            {
+                "name": "protogen-face",
+                "width": 16,
+                "height": 8,
+                "boardLayout": [
+                    {
+                        "id": "board-1",
+                        "chainIndex": 0,
+                        "visualGridX": 0,
+                        "visualGridY": 0,
+                        "groupId": "eyes",
+                        "width": 8,
+                        "height": 8,
+                    }
+                ],
+                "boardGroups": ["eyes"],
+                "frames": [
+                    {
+                        "id": "idle-open",
+                        "name": "Idle Open",
+                        "pixels": [0] * 128,
+                    },
+                    {
+                        "id": "idle-closed",
+                        "name": "Idle Closed",
+                        "pixels": [1] * 128,
+                    },
+                ],
+                "animations": [
+                    {
+                        "id": "idle",
+                        "name": "Idle",
+                        "loop": True,
+                        "steps": [
+                            {
+                                "frameId": "idle-open",
+                                "durationMs": 200,
+                            },
+                            {
+                                "frameId": "idle-closed",
+                                "durationMs": 80,
+                            },
+                        ],
+                    }
+                ],
+                "defaultAnimationId": "idle",
+                "defaultFrameId": "idle-open",
+            }
+        )
+
+        self.assertEqual(project["name"], "protogen-face")
+        self.assertEqual(project["boardGroups"], ["eyes"])
+        self.assertEqual(project["frames"][0]["id"], "idle-open")
+        self.assertEqual(project["animations"][0]["steps"][1]["durationMs"], 80)
+        self.assertEqual(project["defaultAnimationId"], "idle")
+
+    def test_validate_project_payload_rejects_unknown_animation_frame(self) -> None:
+        with self.assertRaises(ProtocolError):
+            validate_project_payload(
+                {
+                    "name": "broken-face",
+                    "width": 8,
+                    "height": 8,
+                    "frames": [
+                        {
+                            "id": "frame-1",
+                            "pixels": [0] * 64,
+                        }
+                    ],
+                    "animations": [
+                        {
+                            "id": "idle",
+                            "steps": [
+                                {
+                                    "frameId": "missing-frame",
+                                    "durationMs": 120,
+                                }
+                            ],
+                        }
+                    ],
                 }
             )
 

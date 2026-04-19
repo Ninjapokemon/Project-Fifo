@@ -249,6 +249,39 @@
             </div>
           </details>
 
+          <details class="control-group">
+            <summary>
+              <div>
+                <p class="section-label">Runtime</p>
+                <h2>Pi Projects</h2>
+              </div>
+              <span class="summary-meta">Bootable content</span>
+            </summary>
+            <div class="control-body">
+              <p id="piRuntimeStatus" class="field-hint">
+                Connect to a Pi to manage bootable projects and temporary live control.
+              </p>
+              <label class="field">
+                <span>Saved on Pi</span>
+                <select id="piProjectSelect">
+                  <option value="">No Pi projects loaded</option>
+                </select>
+              </label>
+              <div class="button-row wrap">
+                <button id="refreshPiProjectsButton" type="button" class="secondary">Refresh Projects</button>
+                <button id="saveProjectToPiButton" type="button" class="secondary">Save As Project</button>
+                <button id="loadProjectFromPiButton" type="button" class="secondary">Load To Editor</button>
+                <button id="activateProjectButton" type="button" class="secondary">Run Project</button>
+              </div>
+              <div class="button-row wrap">
+                <button id="setBootProjectButton" type="button" class="secondary">Set Boot</button>
+                <button id="clearBootProjectButton" type="button" class="secondary">Clear Boot</button>
+                <button id="resumeProjectButton" type="button" class="secondary">Resume Project</button>
+                <button id="deleteProjectButton" type="button" class="secondary">Delete Project</button>
+              </div>
+            </div>
+          </details>
+
           <div class="sidebar-footer">
             <p class="hint">
               Left click paints. Right click erases. Drag to draw continuously. Open the nested groups only when you need them.

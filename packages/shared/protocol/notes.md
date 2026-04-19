@@ -7,11 +7,15 @@
 - Keep `pixels` as a flat row-major array of `0` and `1`.
 - Support `brightness` messages with a `value` clamped to the MAX7219 `0-15` range.
 - Support `get_state` -> `state` sync so the desktop can learn the Pi's current brightness, dimensions, layout, and saved drawing list on connect.
+- Include runtime-facing state fields such as the active project, boot project, active target, runtime mode, and whether live website control is temporarily overriding the Pi runtime.
 - Support Pi drawing library messages for saving, listing, and loading stored drawings.
+- Support Pi project messages for saving, listing, loading back to the editor, activating, deleting, resuming, and choosing a boot project.
+- Treat live frame streaming as temporary control layered on top of the Pi project runtime instead of the only output mode.
+- See `save-project-message.example.json` for a minimal bootable project payload.
 
 ## Future Improvements
 
 - bit-packed payloads
 - delta updates
-- animation commands
+- richer animation commands beyond project activation
 - device health and acknowledgement messages

@@ -26,6 +26,12 @@ The long-term runtime should live on the Pi:
 - respond to inputs such as buttons and microphone activity
 - keep track of which state is live temporarily versus what is persisted for reboot
 
+The current implementation is now starting to follow that split:
+
+- the website can still stream temporary live frames for fast editing
+- the Pi can store named projects and remember a boot project
+- disconnecting the website no longer has to mean losing the Pi-owned runtime state
+
 That means the future high-level flow will look more like:
 
 ```text

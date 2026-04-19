@@ -17,15 +17,16 @@ This is the running list of what would make the project nicer to use and easier 
 - [x] Add display orientation and panel layout controls in the desktop app
 - [x] Make Pi shutdown cleaner for `Ctrl+C` and service stops
 - [x] Start the Pi server automatically on boot with `systemd`
+- [x] Extend the protocol state message with runtime-facing fields and clearer persisted-versus-live state
+- [x] Add Pi project storage and boot project management
 
 ### Next
 
-- [ ] Extend the protocol state message with runtime-facing fields and clearer persisted-versus-live state
-- [ ] Add Pi project storage and boot project management
 - [ ] Add a Pi install script
 - [ ] Expand unit tests for protocol, mapping, and storage coverage
 - [ ] Add animation and face-runtime groundwork
 - [ ] Review and reconcile the LED layout branches
+- [ ] Decide whether brightness and similar runtime values belong in project data, global Pi config, or both
 
 ### Future Goal
 
@@ -91,8 +92,8 @@ Status:
 - [x] add request and response messages for `brightness`, `width`, `height`, layout data, saved drawing list, and basic `connection_status`
 - [x] use that information to keep brightness, layout controls, and Pi drawing lists in sync in the desktop UI
 - [x] keep desktop `width` and `height` synced to the connected Pi display while connected
-- [ ] include fuller runtime-facing fields such as active project, active animation or state, and a clearer persisted-versus-live model
-- [ ] decide how the Pi reports live temporary state versus reboot-persisted state once projects and runtime playback exist
+- [x] include fuller runtime-facing fields such as active project, active animation or state, and a clearer persisted-versus-live model
+- [x] decide how the Pi reports live temporary state versus reboot-persisted state once projects and runtime playback exist
 
 Done when:
 - connect from the desktop app
@@ -136,10 +137,10 @@ Done when:
 ### 8. Add Pi project storage and boot project management
 
 Status:
-- [ ] define a Pi-side project storage format that is separate from the temporary single-drawing library
-- [ ] add protocol messages to upload, list, load, delete, and validate projects on the Pi
-- [ ] add a way to set the default boot project on the Pi
-- [ ] add a way to ask which project is currently active and which one will load on boot
+- [x] define a Pi-side project storage format that is separate from the temporary single-drawing library
+- [x] add protocol messages to upload, list, load, delete, and validate projects on the Pi
+- [x] add a way to set the default boot project on the Pi
+- [x] add a way to ask which project is currently active and which one will load on boot
 - [ ] decide whether brightness and other runtime settings belong in project data, global Pi config, or both
 
 Done when:
@@ -154,10 +155,11 @@ Status:
 - [ ] test frame validation success and failure cases
 - [x] test mapping for common panel layouts
 - [x] test drawing storage and board workspace metadata round-tripping
+- [x] test project storage and live-runtime handoff basics
 - [ ] test brightness clamping once brightness control is added
 
 Done when:
-- test suite runs locally
+- [x] test suite runs locally
 - expected failures are covered for bad messages and edge coordinates
 
 ### 10. Add animation and face-runtime groundwork
@@ -169,7 +171,7 @@ Status:
 - [ ] support named animations for future face states such as `idle`, `blink`, and `talk`
 - [ ] keep early playback available in the desktop app for iteration speed
 - [ ] design toward Pi-driven playback as the real long-term runtime
-- [ ] separate temporary live streaming from Pi-owned playback of saved projects
+- [x] separate temporary live streaming from Pi-owned playback of saved projects
 
 Done when:
 - create at least two frames in the editor
