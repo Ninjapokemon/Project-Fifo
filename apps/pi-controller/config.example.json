@@ -8,5 +8,6 @@
   "block_orientation": 90,
   "reverse_order": false,
   "serpentine": false,
-  "panel_order": null
+  "panel_order": null,
+  "panel_flips": null
 }

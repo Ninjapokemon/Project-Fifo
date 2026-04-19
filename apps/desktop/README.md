@@ -12,7 +12,7 @@ For now it is the main editing interface. Long term, it is intended to become th
 - connect to the Pi by IP or hostname
 - save and load drawings as JSON files
 - change MAX7219 brightness from the browser
-- adjust display rotation, panel orientation, and panel order from the browser
+- adjust display rotation, panel orientation, panel order, and per-panel output flips from the browser
 - send frame messages using the shared protocol
 - save individual drawings to the connected Pi and load them back later during setup or iteration
 - eventually edit named animations and preview them before sending or uploading to the Pi
@@ -56,7 +56,7 @@ Then open `http://localhost:4173`.
 3. Click `Connect`.
 4. Draw on the grid to stream frames to the Pi.
 5. Use `Brightness` to update LED intensity without editing Pi config.
-6. Use `Layout + Orientation` to live-tune `rotate`, `block_orientation`, and `reverse_order`.
+6. Use `Layout + Orientation` to live-tune `rotate`, `block_orientation`, `reverse_order`, and panel order, then use the per-board `Flip Off` or `Flip On` button when one real module is upside down.
 7. Use `Save To Pi` in the layout section if you want those display settings to survive a reboot.
 8. Use `Save JSON` and `Load JSON` to move drawings in and out as files.
 9. Use `Save To Pi`, `Refresh Pi List`, and `Load From Pi` to keep single drawings on the connected Pi while iterating.

@@ -40,9 +40,11 @@ Once the basics are solid, this is also the place to add `systemd` startup and a
 
 Brightness messages use the same WebSocket connection as frames and are clamped to the MAX7219 `0-15` range on the Pi before being applied.
 
-Layout messages use the same WebSocket connection and can update `rotate`, `block_orientation`, and `reverse_order` on the active `luma` device without restarting the server. A separate save action writes those values to `apps/pi-controller/config.json` so they survive reboot.
+Layout messages use the same WebSocket connection and can update `rotate`, `block_orientation`, `reverse_order`, and per-panel `panel_flips` on the active `luma` device without restarting the server. A separate save action writes those values to `apps/pi-controller/config.json` so they survive reboot.
 
 If your chain order is more unusual than a simple reverse, `apps/pi-controller/config.json` also supports an optional `panel_order` list for remapping whole `8x8` panels in row-major physical order.
+
+If one physical `8x8` module is mounted upside down, `apps/pi-controller/config.json` also supports an optional `panel_flips` list of booleans in row-major physical order. Set a position to `true` to rotate that one panel `180` degrees while leaving the browser drawing upright.
 
 Saved drawings are stored on the Pi under `apps/pi-controller/data/drawings` as JSON files. The desktop app can save to that directory, ask for the drawing list, and load a stored drawing back over WebSocket.
 
@@ -117,6 +119,18 @@ Fix in `config.json`:
 - if the whole display is rotated, also test `rotate`
 
 The desktop app can change those settings live, which makes it much easier to dial them in before saving them to the Pi config.
+
+### One module is upside down, but the rest are correct
+
+If only one or two physical modules are upside down, leave the browser drawing alone and flip just those hardware panels.
+
+Fix in `config.json`:
+
+```json
+"panel_flips": [true, false, false]
+```
+
+That example rotates only the leftmost physical panel `180` degrees.
 
 ### Stopping with `Ctrl+C` clears the display and exits cleanly
 

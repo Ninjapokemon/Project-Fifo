@@ -32,6 +32,28 @@ def normalize_panel_order(
     return normalized
 
 
+def normalize_panel_flips(
+    panel_flips: list[bool] | None,
+    panel_columns: int,
+    panel_rows: int,
+) -> list[bool] | None:
+    panel_count = panel_columns * panel_rows
+    if panel_flips is None:
+        return None
+    if not isinstance(panel_flips, list):
+        raise ValueError("panel_flips must be a list of booleans or null")
+    if len(panel_flips) != panel_count:
+        raise ValueError(f"panel_flips must contain exactly {panel_count} entries")
+
+    normalized: list[bool] = []
+    for raw_value in panel_flips:
+        if not isinstance(raw_value, bool):
+            raise ValueError("panel_flips entries must be booleans")
+        normalized.append(raw_value)
+
+    return normalized if any(normalized) else None
+
+
 def build_panel_positions(
     panel_columns: int,
     panel_rows: int,
@@ -128,6 +150,7 @@ def compose_physical_frame(
     panel_columns: int,
     panel_rows: int,
     panel_positions: list[int] | None = None,
+    panel_flips: list[bool] | None = None,
 ) -> list[int]:
     """
     Assemble 8x8 logical panel slices into a physical row-major framebuffer.
@@ -138,6 +161,8 @@ def compose_physical_frame(
         raise ValueError(f"panel_slices must contain exactly {panel_count} entries")
     if panel_positions is not None and len(panel_positions) != panel_count:
         raise ValueError(f"panel_positions must contain exactly {panel_count} entries")
+    if panel_flips is not None and len(panel_flips) != panel_count:
+        raise ValueError(f"panel_flips must contain exactly {panel_count} entries")
 
     frame_width = panel_columns * PANEL_SIZE
     frame_height = panel_rows * PANEL_SIZE
@@ -152,13 +177,18 @@ def compose_physical_frame(
             if panel_positions is not None
             else logical_panel_index
         )
+        rendered_panel_slice = (
+            list(reversed(panel_slice))
+            if panel_flips is not None and panel_flips[physical_panel_index]
+            else panel_slice
+        )
         physical_panel_x = (physical_panel_index % panel_columns) * PANEL_SIZE
         physical_panel_y = (physical_panel_index // panel_columns) * PANEL_SIZE
 
         for local_y in range(PANEL_SIZE):
             source_offset = local_y * PANEL_SIZE
             target_offset = ((physical_panel_y + local_y) * frame_width) + physical_panel_x
-            physical_pixels[target_offset:target_offset + PANEL_SIZE] = panel_slice[
+            physical_pixels[target_offset:target_offset + PANEL_SIZE] = rendered_panel_slice[
                 source_offset:source_offset + PANEL_SIZE
             ]
 
@@ -172,6 +202,7 @@ def build_physical_frame(
     display_width: int,
     display_height: int,
     panel_positions: list[int] | None = None,
+    panel_flips: list[bool] | None = None,
 ) -> list[int]:
     """
     Convert a logical frame into the exact physical framebuffer sent to luma.
@@ -191,4 +222,5 @@ def build_physical_frame(
         panel_columns,
         panel_rows,
         panel_positions,
+        panel_flips,
     )

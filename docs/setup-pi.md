@@ -58,6 +58,7 @@ The main fields to care about are:
 - `reverse_order`: whether the matrix chain order is reversed
 - `serpentine`: reserved for later custom mapping logic
 - `panel_order`: optional row-major list of logical panel indexes in physical display order
+- `panel_flips`: optional row-major list of booleans for physical panels that need a `180` degree flip
 
 Example for three matrices in one horizontal row:
 
@@ -72,7 +73,8 @@ Example for three matrices in one horizontal row:
   "block_orientation": 90,
   "reverse_order": false,
   "serpentine": false,
-  "panel_order": null
+  "panel_order": null,
+  "panel_flips": null
 }
 ```
 
@@ -89,6 +91,14 @@ That example is zero-based, so the list means:
 - physical position `0` should show logical panel `1`
 - physical position `1` should show logical panel `0`
 - physical position `2` should show logical panel `2`
+
+If one physical module is mounted upside down, set the matching row-major position in `panel_flips` to `true`.
+
+Example for a three-panel row where only the left panel is upside down:
+
+```json
+"panel_flips": [true, false, false]
+```
 
 ## 6. Run the server
 
@@ -205,6 +215,8 @@ Start with `rotate`, `block_orientation`, and `reverse_order`. You can now tune 
 
 If the panel order is neither normal nor fully reversed, use `panel_order` in `apps/pi-controller/config.json` for the remaining panel swap.
 
+If the whole image is correct except one panel is upside down, use the per-board `Flip Off` or `Flip On` button in the desktop workspace or set `panel_flips` directly in `apps/pi-controller/config.json`.
+
 ## Common Issues And Fixes
 
 ### Error: `ModuleNotFoundError: No module named 'spidev'`
@@ -247,6 +259,19 @@ Fix in `apps/pi-controller/config.json`:
 
 - try `block_orientation: -90` instead of `90`
 - if the whole display is turned, also try changing `rotate`
+
+### One panel is upside down, but the others look right
+
+What it usually means:
+One physical `8x8` module is rotated `180` degrees relative to the rest.
+
+Fix in `apps/pi-controller/config.json`:
+
+```json
+"panel_flips": [true, false, false]
+```
+
+Or use the per-board `Flip Off` or `Flip On` control in the desktop app and then click `Save To Pi`.
 
 ### The desktop app connects, but the LEDs stay dark
 

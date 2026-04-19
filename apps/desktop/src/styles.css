@@ -537,6 +537,14 @@ button:disabled {
   gap: 10px;
 }
 
+.pixel-board-controls {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .pixel-board.dragging {
   z-index: 5;
   transform: scale(1.02);
@@ -596,6 +604,30 @@ button:disabled {
   background: rgba(11, 17, 24, 0.82);
   color: var(--text);
   box-shadow: none;
+}
+
+.pixel-board-flip-button {
+  min-width: 76px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(134, 160, 185, 0.18);
+  background: rgba(11, 17, 24, 0.82);
+  color: var(--muted);
+  box-shadow: none;
+  font-size: 0.74rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.pixel-board-flip-button:hover {
+  transform: none;
+}
+
+.pixel-board-flip-button.active {
+  border-color: rgba(255, 122, 61, 0.42);
+  background: rgba(255, 122, 61, 0.18);
+  color: var(--accent-strong);
 }
 
 .pixel-board-grid {
