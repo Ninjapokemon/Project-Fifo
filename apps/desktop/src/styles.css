@@ -531,18 +531,20 @@ button:disabled {
 }
 
 .pixel-board-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  display: grid;
+  gap: 8px;
+  align-items: start;
+  min-height: 72px;
 }
 
 .pixel-board-controls {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  width: 100%;
+  min-width: 0;
 }
 
 .pixel-board.dragging {
@@ -595,8 +597,8 @@ button:disabled {
 }
 
 .pixel-board-group-select {
-  width: auto;
-  min-width: 90px;
+  width: 100%;
+  min-width: 0;
   height: 32px;
   padding: 0 30px 0 10px;
   border-radius: 12px;
@@ -604,10 +606,11 @@ button:disabled {
   background: rgba(11, 17, 24, 0.82);
   color: var(--text);
   box-shadow: none;
+  flex: 1 1 auto;
 }
 
-.pixel-board-flip-button {
-  min-width: 76px;
+.pixel-board-rotation-button {
+  min-width: 82px;
   height: 32px;
   padding: 0 10px;
   border-radius: 12px;
@@ -618,13 +621,14 @@ button:disabled {
   font-size: 0.74rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  flex: 0 0 auto;
 }
 
-.pixel-board-flip-button:hover {
+.pixel-board-rotation-button:hover {
   transform: none;
 }
 
-.pixel-board-flip-button.active {
+.pixel-board-rotation-button.active {
   border-color: rgba(255, 122, 61, 0.42);
   background: rgba(255, 122, 61, 0.18);
   color: var(--accent-strong);

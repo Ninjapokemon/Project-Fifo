@@ -11,6 +11,7 @@ const MAX_MOVING_DOT_SPEED = 32;
 const MIN_MOVING_DOT_FPS = 1;
 const MAX_MOVING_DOT_FPS = 60;
 const PANEL_SIZE = 8;
+const PANEL_ROTATION_VALUES = [0, 90, 180, 270];
 const PANEL_INDEX_TEST_FPS = 2;
 const HISTORY_LIMIT = 48;
 const AUTOSAVE_STORAGE_KEY = "project-fifo.autosave";
@@ -23,7 +24,7 @@ const BOARD_GRID_COLUMN_GAP = 7;
 const BOARD_GRID_ROW_GAP = 1;
 const BOARD_CARD_PADDING = 14;
 const BOARD_CARD_BORDER = 2;
-const BOARD_HEADER_HEIGHT = 32;
+const BOARD_HEADER_HEIGHT = 72;
 const BOARD_LABEL_GAP = 12;
 const BOARD_WORKSPACE_GAP = 18;
 const BOARD_SLOT_WIDTH = (PANEL_SIZE * PIXEL_CELL_SIZE)
@@ -49,7 +50,7 @@ const DEFAULT_LAYOUT = {
   blockOrientation: 90,
   reverseOrder: false,
   panelOrder: null,
-  panelFlips: null,
+  panelRotations: null,
 };
 const LAYOUT_PRESETS = {
   custom: null,
@@ -308,7 +309,7 @@ function normalizePanelOrder(panelOrder, width = getLayoutWidth(), height = getL
   return normalized.every((value, index) => value === index) ? null : normalized;
 }
 
-function normalizePanelFlips(panelFlips, width = getLayoutWidth(), height = getLayoutHeight()) {
+function normalizeLegacyPanelFlips(panelFlips, width = getLayoutWidth(), height = getLayoutHeight()) {
   if (panelFlips == null) {
     return null;
   }
@@ -329,6 +330,54 @@ function normalizePanelFlips(panelFlips, width = getLayoutWidth(), height = getL
   });
 
   return normalized.some(Boolean) ? normalized : null;
+}
+
+function normalizePanelRotations(panelRotations, width = getLayoutWidth(), height = getLayoutHeight()) {
+  if (panelRotations == null) {
+    return null;
+  }
+  if (!Array.isArray(panelRotations)) {
+    throw new Error("panel_rotations must be a list or null.");
+  }
+
+  const panelCount = getPanelCount(width, height);
+  if (panelRotations.length !== panelCount) {
+    throw new Error(`panel_rotations must contain exactly ${panelCount} entries.`);
+  }
+
+  const normalized = panelRotations.map((value) => {
+    if (!Number.isInteger(value) || !PANEL_ROTATION_VALUES.includes(value)) {
+      throw new Error("panel_rotations entries must be 0, 90, 180, or 270.");
+    }
+    return value;
+  });
+
+  return normalized.some((value) => value !== 0) ? normalized : null;
+}
+
+function panelRotationsFromFlips(panelFlips, width = getLayoutWidth(), height = getLayoutHeight()) {
+  const normalizedFlips = normalizeLegacyPanelFlips(panelFlips, width, height);
+  if (!normalizedFlips) {
+    return null;
+  }
+
+  return normalizePanelRotations(
+    normalizedFlips.map((value) => (value ? 180 : 0)),
+    width,
+    height,
+  );
+}
+
+function buildLegacyPanelFlips(panelRotations, width = getLayoutWidth(), height = getLayoutHeight()) {
+  const normalizedRotations = normalizePanelRotations(panelRotations, width, height);
+  if (!normalizedRotations) {
+    return null;
+  }
+  if (normalizedRotations.some((value) => value !== 0 && value !== 180)) {
+    return null;
+  }
+
+  return normalizedRotations.map((value) => value === 180);
 }
 
 function formatPanelOrder(panelOrder, width = getLayoutWidth(), height = getLayoutHeight()) {
@@ -395,9 +444,13 @@ function clearConnectedDisplaySize() {
   }
 
   try {
-    state.layout.panelFlips = normalizePanelFlips(state.layout.panelFlips, state.width, state.height);
+    state.layout.panelRotations = normalizePanelRotations(
+      state.layout.panelRotations,
+      state.width,
+      state.height,
+    );
   } catch (error) {
-    state.layout.panelFlips = null;
+    state.layout.panelRotations = null;
   }
 }
 
@@ -665,14 +718,17 @@ function getPhysicalPanelIndex(logicalPanelIndex, layout = state.layout, width =
   return panelPositions ? panelPositions[logicalPanelIndex] : logicalPanelIndex;
 }
 
-function isBoardOutputFlipped(board, layout = state.layout) {
-  const panelFlips = normalizePanelFlips(layout.panelFlips);
-  if (!panelFlips) {
-    return false;
+function getBoardOutputRotation(board, layout = state.layout) {
+  const panelRotations = normalizePanelRotations(layout.panelRotations);
+  if (!panelRotations) {
+    return 0;
   }
-
   const physicalPanelIndex = getPhysicalPanelIndex(board.chainIndex, layout);
-  return panelFlips[physicalPanelIndex] === true;
+  return panelRotations[physicalPanelIndex] ?? 0;
+}
+
+function formatBoardRotationLabel(rotation) {
+  return `Rot ${rotation}`;
 }
 
 function boardOriginX(board) {
@@ -1172,32 +1228,34 @@ function assignBoardToGroup(boardId, nextGroupId) {
   log(`Assigned ${getBoardChainLabel(board)} to ${getBoardGroupLabel(nextGroupId)}.`);
 }
 
-function toggleBoardOutputFlip(boardId) {
+function cycleBoardOutputRotation(boardId) {
   const board = state.boardLayout.find((entry) => entry.id === boardId);
   if (!board) {
     return;
   }
 
   const panelCount = getPanelCount();
-  const currentPanelFlips = normalizePanelFlips(state.layout.panelFlips) || Array(panelCount).fill(false);
+  const currentPanelRotations = normalizePanelRotations(state.layout.panelRotations) || Array(panelCount).fill(0);
   const physicalPanelIndex = getPhysicalPanelIndex(board.chainIndex);
-  const nextValue = !currentPanelFlips[physicalPanelIndex];
-  currentPanelFlips[physicalPanelIndex] = nextValue;
+  const currentRotation = currentPanelRotations[physicalPanelIndex] ?? 0;
+  const currentRotationIndex = PANEL_ROTATION_VALUES.indexOf(currentRotation);
+  const nextRotation = PANEL_ROTATION_VALUES[(currentRotationIndex + 1) % PANEL_ROTATION_VALUES.length];
+  currentPanelRotations[physicalPanelIndex] = nextRotation;
 
   applyLayoutState({
     ...state.layout,
-    panelFlips: normalizePanelFlips(currentPanelFlips),
+    panelRotations: normalizePanelRotations(currentPanelRotations),
   });
   renderGrid();
 
   const sent = sendMessage(buildLayoutMessage());
   if (sent) {
     sendMessage(buildFrameMessage());
-    log(`Turned ${nextValue ? "on" : "off"} output flip for ${getBoardChainLabel(board)} on physical panel ${physicalPanelIndex + 1} and re-sent the current frame.`);
+    log(`Set output rotation for ${getBoardChainLabel(board)} on physical panel ${physicalPanelIndex + 1} to ${nextRotation} degrees and re-sent the current frame.`);
     return;
   }
 
-  log(`Turned ${nextValue ? "on" : "off"} output flip for ${getBoardChainLabel(board)} on physical panel ${physicalPanelIndex + 1} locally. Connect to send it to the Pi.`);
+  log(`Set output rotation for ${getBoardChainLabel(board)} on physical panel ${physicalPanelIndex + 1} to ${nextRotation} degrees locally. Connect to send it to the Pi.`);
 }
 
 function createNewBoardGroup() {
@@ -1216,11 +1274,11 @@ function createBoard(boardData) {
   const boardLabel = document.createElement("button");
   const boardControls = document.createElement("div");
   const groupSelect = document.createElement("select");
-  const flipButton = document.createElement("button");
+  const rotationButton = document.createElement("button");
   const boardGrid = document.createElement("div");
   const dragState = state.boardDrag && state.boardDrag.boardId === boardData.id ? state.boardDrag : null;
   const physicalPanelIndex = getPhysicalPanelIndex(boardData.chainIndex);
-  const outputFlipped = isBoardOutputFlipped(boardData);
+  const outputRotation = getBoardOutputRotation(boardData);
 
   board.className = "pixel-board";
   board.setAttribute("aria-label", getBoardChainLabel(boardData));
@@ -1261,26 +1319,26 @@ function createBoard(boardData) {
     assignBoardToGroup(boardData.id, groupSelect.value);
   });
 
-  flipButton.type = "button";
-  flipButton.className = "pixel-board-flip-button";
-  flipButton.classList.toggle("active", outputFlipped);
-  flipButton.textContent = outputFlipped ? "Flip On" : "Flip Off";
-  flipButton.setAttribute("aria-pressed", outputFlipped ? "true" : "false");
-  flipButton.setAttribute(
+  rotationButton.type = "button";
+  rotationButton.className = "pixel-board-rotation-button";
+  rotationButton.classList.toggle("active", outputRotation !== 0);
+  rotationButton.textContent = formatBoardRotationLabel(outputRotation);
+  rotationButton.setAttribute("aria-pressed", outputRotation !== 0 ? "true" : "false");
+  rotationButton.setAttribute(
     "aria-label",
-    `${getBoardChainLabel(boardData)} maps to physical panel ${physicalPanelIndex + 1} and ${outputFlipped ? "has" : "does not have"} LED output flip enabled. Toggle upside-down compensation.`,
+    `${getBoardChainLabel(boardData)} maps to physical panel ${physicalPanelIndex + 1} and currently uses ${outputRotation} degrees of LED output rotation. Click to cycle 0, 90, 180, and 270 degrees.`,
   );
-  flipButton.title = `Rotate physical panel ${physicalPanelIndex + 1} by 180 degrees on the LED hardware while keeping the editor preview upright.`;
-  flipButton.addEventListener("pointerdown", (event) => {
+  rotationButton.title = `Cycle physical panel ${physicalPanelIndex + 1} through 0, 90, 180, and 270 degrees on the LED hardware while keeping the editor preview upright.`;
+  rotationButton.addEventListener("pointerdown", (event) => {
     event.stopPropagation();
   });
-  flipButton.addEventListener("click", () => {
-    toggleBoardOutputFlip(boardData.id);
+  rotationButton.addEventListener("click", () => {
+    cycleBoardOutputRotation(boardData.id);
   });
 
   boardHeader.appendChild(boardLabel);
   boardControls.appendChild(groupSelect);
-  boardControls.appendChild(flipButton);
+  boardControls.appendChild(rotationButton);
   boardHeader.appendChild(boardControls);
 
   boardGrid.className = "pixel-board-grid";
@@ -1385,7 +1443,8 @@ function buildLayoutMessage() {
     block_orientation: state.layout.blockOrientation,
     reverse_order: state.layout.reverseOrder,
     panel_order: state.layout.panelOrder,
-    panel_flips: state.layout.panelFlips,
+    panel_rotations: state.layout.panelRotations,
+    panel_flips: buildLegacyPanelFlips(state.layout.panelRotations),
   };
 }
 
@@ -1397,7 +1456,8 @@ function buildSaveLayoutMessage() {
     block_orientation: state.layout.blockOrientation,
     reverse_order: state.layout.reverseOrder,
     panel_order: state.layout.panelOrder,
-    panel_flips: state.layout.panelFlips,
+    panel_rotations: state.layout.panelRotations,
+    panel_flips: buildLegacyPanelFlips(state.layout.panelRotations),
   };
 }
 
@@ -2067,7 +2127,7 @@ function syncBrightnessInputs() {
 }
 
 function findMatchingLayoutPreset(layout = state.layout) {
-  if (layout.panelOrder) {
+  if (layout.panelOrder || layout.panelRotations) {
     return "custom";
   }
 
@@ -2093,7 +2153,11 @@ function applyLayoutState(layout) {
     blockOrientation: normalizeBlockOrientation(layout.blockOrientation),
     reverseOrder: Boolean(layout.reverseOrder),
     panelOrder: normalizePanelOrder(layout.panelOrder),
-    panelFlips: normalizePanelFlips(layout.panelFlips ?? layout.panel_flips ?? null),
+    panelRotations: normalizePanelRotations(
+      layout.panelRotations
+        ?? layout.panel_rotations
+        ?? panelRotationsFromFlips(layout.panelFlips ?? layout.panel_flips ?? null),
+    ),
   };
   syncLayoutInputs();
 }
@@ -2177,7 +2241,7 @@ function setLayout(reason) {
     blockOrientation: normalizeBlockOrientation(elements.blockOrientationSelect.value),
     reverseOrder: elements.reverseOrderInput.checked,
     panelOrder,
-    panelFlips: state.layout.panelFlips,
+    panelRotations: state.layout.panelRotations,
   };
   const changed = state.layout.rotate !== nextLayout.rotate
     || state.layout.blockOrientation !== nextLayout.blockOrientation
@@ -2217,7 +2281,7 @@ function applyLayoutPreset() {
   applyLayoutState({
     ...preset,
     panelOrder: null,
-    panelFlips: state.layout.panelFlips,
+    panelRotations: state.layout.panelRotations,
   });
   const sent = sendMessage(buildLayoutMessage());
   if (sent) {
@@ -2434,7 +2498,7 @@ function handleServerMessage(message) {
       blockOrientation: message.block_orientation,
       reverseOrder: message.reverse_order,
       panelOrder: message.panel_order ?? null,
-      panelFlips: message.panel_flips ?? null,
+      panelRotations: message.panel_rotations ?? panelRotationsFromFlips(message.panel_flips ?? null),
     });
     const syncedGrid = syncGridToConnectedDisplay("Pi state sync");
     if (Array.isArray(message.drawings)) {
@@ -2472,7 +2536,7 @@ function handleServerMessage(message) {
       blockOrientation: message.block_orientation,
       reverseOrder: message.reverse_order,
       panelOrder: message.panel_order ?? null,
-      panelFlips: message.panel_flips ?? null,
+      panelRotations: message.panel_rotations ?? panelRotationsFromFlips(message.panel_flips ?? null),
     });
     const syncedGrid = syncGridToConnectedDisplay("Pi layout sync");
     log(

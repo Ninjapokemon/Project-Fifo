@@ -58,7 +58,7 @@ The main fields to care about are:
 - `reverse_order`: whether the matrix chain order is reversed
 - `serpentine`: reserved for later custom mapping logic
 - `panel_order`: optional row-major list of logical panel indexes in physical display order
-- `panel_flips`: optional row-major list of booleans for physical panels that need a `180` degree flip
+- `panel_rotations`: optional row-major list of `0`, `90`, `180`, or `270` values for physical panels that need their own rotation
 
 Example for three matrices in one horizontal row:
 
@@ -74,7 +74,7 @@ Example for three matrices in one horizontal row:
   "reverse_order": false,
   "serpentine": false,
   "panel_order": null,
-  "panel_flips": null
+  "panel_rotations": null
 }
 ```
 
@@ -92,12 +92,12 @@ That example is zero-based, so the list means:
 - physical position `1` should show logical panel `0`
 - physical position `2` should show logical panel `2`
 
-If one physical module is mounted upside down, set the matching row-major position in `panel_flips` to `true`.
+If one physical module is mounted differently, set the matching row-major position in `panel_rotations` to the extra rotation that panel needs.
 
-Example for a three-panel row where only the left panel is upside down:
+Example for a three-panel row where only the left panel needs a `180` degree correction:
 
 ```json
-"panel_flips": [true, false, false]
+"panel_rotations": [180, 0, 0]
 ```
 
 ## 6. Run the server
@@ -215,7 +215,7 @@ Start with `rotate`, `block_orientation`, and `reverse_order`. You can now tune 
 
 If the panel order is neither normal nor fully reversed, use `panel_order` in `apps/pi-controller/config.json` for the remaining panel swap.
 
-If the whole image is correct except one panel is upside down, use the per-board `Flip Off` or `Flip On` button in the desktop workspace or set `panel_flips` directly in `apps/pi-controller/config.json`.
+If the whole image is correct except one panel needs its own rotation, use the per-board rotation button in the desktop workspace or set `panel_rotations` directly in `apps/pi-controller/config.json`.
 
 ## Common Issues And Fixes
 
@@ -260,18 +260,18 @@ Fix in `apps/pi-controller/config.json`:
 - try `block_orientation: -90` instead of `90`
 - if the whole display is turned, also try changing `rotate`
 
-### One panel is upside down, but the others look right
+### One panel is rotated differently, but the others look right
 
 What it usually means:
-One physical `8x8` module is rotated `180` degrees relative to the rest.
+One physical `8x8` module is mounted with a different orientation than the rest.
 
 Fix in `apps/pi-controller/config.json`:
 
 ```json
-"panel_flips": [true, false, false]
+"panel_rotations": [180, 0, 0]
 ```
 
-Or use the per-board `Flip Off` or `Flip On` control in the desktop app and then click `Save To Pi`.
+Or use the per-board rotation control in the desktop app and then click `Save To Pi`.
 
 ### The desktop app connects, but the LEDs stay dark
 

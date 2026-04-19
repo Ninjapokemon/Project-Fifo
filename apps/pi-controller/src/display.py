@@ -7,8 +7,8 @@ from luma.led_matrix.device import max7219
 from mapping import (
     build_panel_positions,
     build_physical_frame,
-    normalize_panel_flips,
     normalize_panel_order,
+    resolve_panel_rotations,
 )
 from protocol import clamp_brightness_value
 
@@ -21,9 +21,12 @@ class MatrixDisplay:
         self.width = config["matrices_wide"] * 8
         self.height = config["matrices_high"] * 8
         self.panel_positions = None
-        self.panel_flips = None
+        self.panel_rotations = None
         self._set_panel_order(config.get("panel_order"))
-        self._set_panel_flips(config.get("panel_flips"))
+        self._set_panel_rotations(
+            config.get("panel_rotations"),
+            config.get("panel_flips"),
+        )
         self.device = None
         self.brightness = 0
         self._rebuild_device()
@@ -43,15 +46,25 @@ class MatrixDisplay:
         )
         return normalized_order
 
-    def _set_panel_flips(self, panel_flips: list[bool] | None) -> list[bool] | None:
-        normalized_flips = normalize_panel_flips(
-            panel_flips,
+    def _set_panel_rotations(
+        self,
+        panel_rotations: list[int] | None,
+        panel_flips: list[bool] | None = None,
+    ) -> list[int] | None:
+        normalized_rotations = resolve_panel_rotations(
             self.config["matrices_wide"],
             self.config["matrices_high"],
+            panel_rotations,
+            panel_flips,
         )
-        self.config["panel_flips"] = normalized_flips
-        self.panel_flips = list(normalized_flips) if isinstance(normalized_flips, list) else None
-        return normalized_flips
+        self.config["panel_rotations"] = normalized_rotations
+        self.config.pop("panel_flips", None)
+        self.panel_rotations = (
+            list(normalized_rotations)
+            if isinstance(normalized_rotations, list)
+            else None
+        )
+        return normalized_rotations
 
     def _rebuild_device(self) -> None:
         if self.device is not None:
@@ -71,18 +84,22 @@ class MatrixDisplay:
             blocks_arranged_in_reverse_order=self.config.get("reverse_order", False),
         )
 
-    def get_layout(self) -> dict[str, int | bool | list[int] | list[bool] | None]:
+    def get_layout(self) -> dict[str, int | bool | list[int] | None]:
         panel_order = self.config.get("panel_order")
-        panel_flips = self.config.get("panel_flips")
+        panel_rotations = self.config.get("panel_rotations")
         return {
             "rotate": self.config.get("rotate", 0),
             "block_orientation": self.config.get("block_orientation", 90),
             "reverse_order": self.config.get("reverse_order", False),
             "panel_order": list(panel_order) if isinstance(panel_order, list) else None,
-            "panel_flips": list(panel_flips) if isinstance(panel_flips, list) else None,
+            "panel_rotations": (
+                list(panel_rotations)
+                if isinstance(panel_rotations, list)
+                else None
+            ),
         }
 
-    def get_state(self) -> dict[str, int | bool | list[int] | list[bool] | None]:
+    def get_state(self) -> dict[str, int | bool | list[int] | None]:
         return {
             "width": self.width,
             "height": self.height,
@@ -96,36 +113,43 @@ class MatrixDisplay:
         block_orientation: int,
         reverse_order: bool,
         panel_order: list[int] | None = None,
+        panel_rotations: list[int] | None = None,
         panel_flips: list[bool] | None = None,
-    ) -> dict[str, int | bool | list[int] | list[bool] | None]:
+    ) -> dict[str, int | bool | list[int] | None]:
         normalized_panel_order = normalize_panel_order(
             panel_order,
             self.config["matrices_wide"],
             self.config["matrices_high"],
         )
-        normalized_panel_flips = normalize_panel_flips(
-            panel_flips,
+        normalized_panel_rotations = resolve_panel_rotations(
             self.config["matrices_wide"],
             self.config["matrices_high"],
+            panel_rotations,
+            panel_flips,
         )
         next_layout = {
             "rotate": rotate,
             "block_orientation": block_orientation,
             "reverse_order": reverse_order,
             "panel_order": normalized_panel_order,
-            "panel_flips": normalized_panel_flips,
+            "panel_rotations": normalized_panel_rotations,
         }
         current_layout = self.get_layout()
         if current_layout == next_layout:
             return next_layout
 
         self.config.update(next_layout)
+        self.config.pop("panel_flips", None)
         self.panel_positions = build_panel_positions(
             self.config["matrices_wide"],
             self.config["matrices_high"],
             normalized_panel_order,
         )
-        self.panel_flips = list(normalized_panel_flips) if isinstance(normalized_panel_flips, list) else None
+        self.panel_rotations = (
+            list(normalized_panel_rotations)
+            if isinstance(normalized_panel_rotations, list)
+            else None
+        )
         if (
             current_layout["rotate"] != rotate
             or current_layout["block_orientation"] != block_orientation
@@ -155,7 +179,7 @@ class MatrixDisplay:
             self.width,
             self.height,
             self.panel_positions,
-            self.panel_flips,
+            self.panel_rotations,
         )
 
         with canvas(self.device) as draw:

@@ -9,6 +9,7 @@ class ProtocolError(ValueError):
 
 ALLOWED_ROTATE_VALUES = {0, 1, 2, 3}
 ALLOWED_BLOCK_ORIENTATION_VALUES = {-90, 0, 90, 180}
+ALLOWED_PANEL_ROTATION_VALUES = {0, 90, 180, 270}
 
 
 def clamp_brightness_value(value: int) -> int:
@@ -23,6 +24,7 @@ def validate_layout_message(message: dict[str, Any], expected_type: str) -> dict
     block_orientation = message.get("block_orientation")
     reverse_order = message.get("reverse_order")
     panel_order = message.get("panel_order")
+    panel_rotations = message.get("panel_rotations")
     panel_flips = message.get("panel_flips")
 
     if rotate not in ALLOWED_ROTATE_VALUES:
@@ -36,6 +38,16 @@ def validate_layout_message(message: dict[str, Any], expected_type: str) -> dict
             raise ProtocolError("panel_order must be a list or null")
         if any(not isinstance(value, int) for value in panel_order):
             raise ProtocolError("panel_order entries must be integers")
+    if panel_rotations is not None:
+        if not isinstance(panel_rotations, list):
+            raise ProtocolError("panel_rotations must be a list or null")
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value not in ALLOWED_PANEL_ROTATION_VALUES
+            for value in panel_rotations
+        ):
+            raise ProtocolError("panel_rotations entries must be 0, 90, 180, or 270")
     if panel_flips is not None:
         if not isinstance(panel_flips, list):
             raise ProtocolError("panel_flips must be a list or null")
@@ -49,6 +61,7 @@ def validate_layout_message(message: dict[str, Any], expected_type: str) -> dict
         "block_orientation": block_orientation,
         "reverse_order": reverse_order,
         "panel_order": panel_order,
+        "panel_rotations": panel_rotations,
         "panel_flips": panel_flips,
     }
 

@@ -29,6 +29,7 @@ export type LayoutMessage = {
   block_orientation: number;
   reverse_order: boolean;
   panel_order: number[] | null;
+  panel_rotations: number[] | null;
   panel_flips: boolean[] | null;
 };
 
@@ -39,6 +40,7 @@ export type SaveLayoutMessage = {
   block_orientation: number;
   reverse_order: boolean;
   panel_order: number[] | null;
+  panel_rotations: number[] | null;
   panel_flips: boolean[] | null;
 };
 

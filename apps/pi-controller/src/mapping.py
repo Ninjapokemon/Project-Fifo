@@ -2,6 +2,7 @@ from __future__ import annotations
 
 
 PANEL_SIZE = 8
+ALLOWED_PANEL_ROTATION_VALUES = {0, 90, 180, 270}
 
 
 def normalize_panel_order(
@@ -52,6 +53,55 @@ def normalize_panel_flips(
         normalized.append(raw_value)
 
     return normalized if any(normalized) else None
+
+
+def normalize_panel_rotations(
+    panel_rotations: list[int] | None,
+    panel_columns: int,
+    panel_rows: int,
+) -> list[int] | None:
+    panel_count = panel_columns * panel_rows
+    if panel_rotations is None:
+        return None
+    if not isinstance(panel_rotations, list):
+        raise ValueError("panel_rotations must be a list of integers or null")
+    if len(panel_rotations) != panel_count:
+        raise ValueError(f"panel_rotations must contain exactly {panel_count} entries")
+
+    normalized: list[int] = []
+    for raw_value in panel_rotations:
+        if isinstance(raw_value, bool) or not isinstance(raw_value, int):
+            raise ValueError("panel_rotations entries must be integers")
+        if raw_value not in ALLOWED_PANEL_ROTATION_VALUES:
+            raise ValueError("panel_rotations entries must be 0, 90, 180, or 270")
+        normalized.append(raw_value)
+
+    return normalized if any(value != 0 for value in normalized) else None
+
+
+def resolve_panel_rotations(
+    panel_columns: int,
+    panel_rows: int,
+    panel_rotations: list[int] | None = None,
+    panel_flips: list[bool] | None = None,
+) -> list[int] | None:
+    normalized_rotations = normalize_panel_rotations(
+        panel_rotations,
+        panel_columns,
+        panel_rows,
+    )
+    if normalized_rotations is not None or panel_rotations is not None:
+        return normalized_rotations
+
+    normalized_flips = normalize_panel_flips(
+        panel_flips,
+        panel_columns,
+        panel_rows,
+    )
+    if normalized_flips is None:
+        return None
+
+    return [180 if value else 0 for value in normalized_flips]
 
 
 def build_panel_positions(
@@ -150,7 +200,7 @@ def compose_physical_frame(
     panel_columns: int,
     panel_rows: int,
     panel_positions: list[int] | None = None,
-    panel_flips: list[bool] | None = None,
+    panel_rotations: list[int] | None = None,
 ) -> list[int]:
     """
     Assemble 8x8 logical panel slices into a physical row-major framebuffer.
@@ -161,8 +211,8 @@ def compose_physical_frame(
         raise ValueError(f"panel_slices must contain exactly {panel_count} entries")
     if panel_positions is not None and len(panel_positions) != panel_count:
         raise ValueError(f"panel_positions must contain exactly {panel_count} entries")
-    if panel_flips is not None and len(panel_flips) != panel_count:
-        raise ValueError(f"panel_flips must contain exactly {panel_count} entries")
+    if panel_rotations is not None and len(panel_rotations) != panel_count:
+        raise ValueError(f"panel_rotations must contain exactly {panel_count} entries")
 
     frame_width = panel_columns * PANEL_SIZE
     frame_height = panel_rows * PANEL_SIZE
@@ -177,11 +227,8 @@ def compose_physical_frame(
             if panel_positions is not None
             else logical_panel_index
         )
-        rendered_panel_slice = (
-            list(reversed(panel_slice))
-            if panel_flips is not None and panel_flips[physical_panel_index]
-            else panel_slice
-        )
+        rotation = panel_rotations[physical_panel_index] if panel_rotations is not None else 0
+        rendered_panel_slice = rotate_panel_slice(panel_slice, rotation)
         physical_panel_x = (physical_panel_index % panel_columns) * PANEL_SIZE
         physical_panel_y = (physical_panel_index // panel_columns) * PANEL_SIZE
 
@@ -195,6 +242,32 @@ def compose_physical_frame(
     return physical_pixels
 
 
+def rotate_panel_slice(panel_slice: list[int], rotation: int) -> list[int]:
+    if rotation == 0:
+        return panel_slice
+    if rotation not in ALLOWED_PANEL_ROTATION_VALUES:
+        raise ValueError("rotation must be 0, 90, 180, or 270")
+
+    rotated_slice = [0] * (PANEL_SIZE * PANEL_SIZE)
+    for source_y in range(PANEL_SIZE):
+        for source_x in range(PANEL_SIZE):
+            if rotation == 90:
+                target_x = (PANEL_SIZE - 1) - source_y
+                target_y = source_x
+            elif rotation == 180:
+                target_x = (PANEL_SIZE - 1) - source_x
+                target_y = (PANEL_SIZE - 1) - source_y
+            else:
+                target_x = source_y
+                target_y = (PANEL_SIZE - 1) - source_x
+
+            rotated_slice[(target_y * PANEL_SIZE) + target_x] = panel_slice[
+                (source_y * PANEL_SIZE) + source_x
+            ]
+
+    return rotated_slice
+
+
 def build_physical_frame(
     pixels: list[int],
     frame_width: int,
@@ -202,7 +275,7 @@ def build_physical_frame(
     display_width: int,
     display_height: int,
     panel_positions: list[int] | None = None,
-    panel_flips: list[bool] | None = None,
+    panel_rotations: list[int] | None = None,
 ) -> list[int]:
     """
     Convert a logical frame into the exact physical framebuffer sent to luma.
@@ -222,5 +295,5 @@ def build_physical_frame(
         panel_columns,
         panel_rows,
         panel_positions,
-        panel_flips,
+        panel_rotations,
     )

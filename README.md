@@ -45,7 +45,7 @@ The current version is enough to:
 2. connect to the Pi over WebSocket
 3. draw live on the matrix display
 4. save single drawings locally or on the Pi for authoring and testing
-5. tune panel order, rotation, and per-panel flips in config
+5. tune panel order, rotation, and per-panel rotation in config
 
 That Pi-side drawing storage is useful right now, but it is not the final standalone deployment model. The long-term runtime will need Pi-owned project storage, boot selection, and runtime state beyond individual saved frames.
 
