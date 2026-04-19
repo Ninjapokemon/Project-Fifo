@@ -100,6 +100,23 @@
           <details class="control-group" open>
             <summary>
               <div>
+                <p class="section-label">Project</p>
+                <h2>Animation Studio</h2>
+              </div>
+              <span class="summary-meta">Workspace tab</span>
+            </summary>
+            <div class="control-body">
+              <p class="field-hint">
+                Frame ordering, animation steps, and playback preview now live in the workspace so
+                they have enough room to actually be useful.
+              </p>
+              <button id="openAnimationStudioButton" type="button" class="secondary wide-button">Open Animation Studio</button>
+            </div>
+          </details>
+
+          <details class="control-group" open>
+            <summary>
+              <div>
                 <p class="section-label">Display</p>
                 <h2>Layout + Orientation</h2>
               </div>
@@ -304,22 +321,174 @@
 
         <div class="studio-main" id="studioMain">
           <section class="workspace-panel">
-            <div class="grid-header">
+            <div class="workspace-header">
               <div>
                 <p class="section-label">Workspace</p>
-                <h2>Pixel Grid</h2>
-                <p id="gridMeta" class="grid-meta">24 x 8</p>
-                <p class="board-layout-hint">Drag chain boards anywhere in the workspace, use groups to split eyes, nose, and mouth visually, then use the <code>LED</code> controls for hardware output and the <code>View</code> controls to make the website match real-world panel orientation without changing the LEDs.</p>
-                <div class="workspace-tools">
-                  <button id="newBoardGroupButton" type="button" class="secondary">New Group</button>
-                </div>
+                <h2>Studio</h2>
+                <p class="workspace-copy">
+                  Switch between direct board drawing and a wider animation workspace without
+                  losing your current frame.
+                </p>
               </div>
-              <p class="legend">
-                <span class="legend-chip on"></span> On
-                <span class="legend-chip off"></span> Off
-              </p>
+              <div class="workspace-tabs" role="tablist" aria-label="Workspace views">
+                <button
+                  id="workspaceGridTab"
+                  type="button"
+                  class="workspace-tab active"
+                  role="tab"
+                  aria-selected="true"
+                  aria-controls="workspaceGridView"
+                >
+                  Pixel Grid
+                </button>
+                <button
+                  id="workspaceAnimationTab"
+                  type="button"
+                  class="workspace-tab"
+                  role="tab"
+                  aria-selected="false"
+                  aria-controls="workspaceAnimationView"
+                >
+                  Animation Studio
+                </button>
+              </div>
             </div>
-            <div id="grid" class="pixel-grid" aria-label="Pixel editor grid"></div>
+
+            <div
+              id="workspaceGridView"
+              class="workspace-view workspace-grid-view"
+              role="tabpanel"
+              aria-labelledby="workspaceGridTab"
+            >
+              <div class="grid-header">
+                <div>
+                  <p id="gridMeta" class="grid-meta">24 x 8</p>
+                  <p class="board-layout-hint">Drag chain boards anywhere in the workspace, use groups to split eyes, nose, and mouth visually, then use the <code>LED</code> controls for hardware output and the <code>View</code> controls to make the website match real-world panel orientation without changing the LEDs.</p>
+                  <div class="workspace-tools">
+                    <button id="newBoardGroupButton" type="button" class="secondary">New Group</button>
+                  </div>
+                </div>
+                <p class="legend">
+                  <span class="legend-chip on"></span> On
+                  <span class="legend-chip off"></span> Off
+                </p>
+              </div>
+              <div id="grid" class="pixel-grid" aria-label="Pixel editor grid"></div>
+            </div>
+
+            <div
+              id="workspaceAnimationView"
+              class="workspace-view workspace-animation-view"
+              role="tabpanel"
+              aria-labelledby="workspaceAnimationTab"
+              hidden
+            >
+              <div class="animation-studio-shell">
+                <section class="animation-studio-card animation-studio-overview">
+                  <div class="animation-studio-card-header">
+                    <div>
+                      <p class="section-label">Project</p>
+                      <h3>Frames + Runtime Start</h3>
+                    </div>
+                  </div>
+                  <p id="projectSummary" class="field-hint project-summary">
+                    1 frame ready for editing. Add more frames to start building motion.
+                  </p>
+                  <label class="field">
+                    <span>Default Start</span>
+                    <select id="defaultTargetSelect">
+                      <option value="__auto__">Auto choose first animation or frame</option>
+                    </select>
+                  </label>
+                </section>
+
+                <section class="animation-studio-card animation-studio-frames">
+                  <div class="animation-studio-card-header">
+                    <div>
+                      <p class="section-label">Frames</p>
+                      <h3>Frame Strip</h3>
+                    </div>
+                  </div>
+                  <div class="button-row wrap">
+                    <button id="newFrameButton" type="button" class="secondary">New Frame</button>
+                    <button id="duplicateFrameButton" type="button" class="secondary">Duplicate Frame</button>
+                    <button id="deleteFrameButton" type="button" class="secondary">Delete Frame</button>
+                  </div>
+                  <div class="button-row wrap">
+                    <button id="moveFrameLeftButton" type="button" class="secondary">Move Left</button>
+                    <button id="moveFrameRightButton" type="button" class="secondary">Move Right</button>
+                  </div>
+                  <div id="frameStrip" class="frame-strip" aria-label="Project frames"></div>
+                  <label class="field">
+                    <span>Current Frame Name</span>
+                    <input id="frameName" type="text" value="Frame 1" maxlength="80" />
+                  </label>
+                </section>
+
+                <section class="animation-studio-card animation-studio-controls">
+                  <div class="animation-studio-card-header">
+                    <div>
+                      <p class="section-label">Animation</p>
+                      <h3>Clip Setup</h3>
+                    </div>
+                  </div>
+                  <label class="field">
+                    <span>Animation</span>
+                    <select id="animationSelect">
+                      <option value="">No animation selected</option>
+                    </select>
+                  </label>
+                  <div class="button-row wrap">
+                    <button id="newAnimationButton" type="button" class="secondary">New Animation</button>
+                    <button id="deleteAnimationButton" type="button" class="secondary">Delete Animation</button>
+                  </div>
+                  <label class="field">
+                    <span>Animation Name</span>
+                    <input id="animationName" type="text" value="" maxlength="80" />
+                  </label>
+                  <label class="toggle-field" for="animationLoopInput">
+                    <div>
+                      <span>Loop Animation</span>
+                      <p>Use the same loop behavior for browser preview and Pi project playback.</p>
+                    </div>
+                    <input id="animationLoopInput" type="checkbox" />
+                  </label>
+                </section>
+
+                <section class="animation-studio-card animation-studio-preview">
+                  <div class="animation-studio-card-header">
+                    <div>
+                      <p class="section-label">Preview</p>
+                      <h3>Playback Preview</h3>
+                    </div>
+                    <div class="button-row wrap">
+                      <button id="previewAnimationButton" type="button" class="secondary">Play Preview</button>
+                      <button id="stopAnimationPreviewButton" type="button" class="secondary">Stop Preview</button>
+                    </div>
+                  </div>
+                  <div class="animation-preview-shell">
+                    <div class="animation-preview-header">
+                      <span>Browser Playback</span>
+                      <span id="animationPreviewStatus" class="animation-preview-status">Preview idle.</span>
+                    </div>
+                    <div class="animation-preview-canvas">
+                      <div id="animationPreviewGrid" class="animation-preview-grid" aria-label="Animation preview"></div>
+                    </div>
+                  </div>
+                </section>
+
+                <section class="animation-studio-card animation-studio-steps">
+                  <div class="animation-studio-card-header">
+                    <div>
+                      <p class="section-label">Steps</p>
+                      <h3>Sequence Builder</h3>
+                    </div>
+                    <button id="addAnimationStepButton" type="button" class="secondary">Add Current Frame</button>
+                  </div>
+                  <div id="animationStepList" class="animation-step-list" aria-label="Animation steps"></div>
+                </section>
+              </div>
+            </div>
           </section>
 
           <section class="console-panel">

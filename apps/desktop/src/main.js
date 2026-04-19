@@ -14,6 +14,12 @@ const PANEL_SIZE = 8;
 const PANEL_ROTATION_VALUES = [0, 90, 180, 270];
 const PANEL_INDEX_TEST_FPS = 2;
 const HISTORY_LIMIT = 48;
+const DEFAULT_FRAME_ID = "frame-1";
+const DEFAULT_FRAME_NAME = "Frame 1";
+const DEFAULT_ANIMATION_STEP_DURATION_MS = 120;
+const MIN_ANIMATION_STEP_DURATION_MS = 40;
+const MAX_ANIMATION_STEP_DURATION_MS = 5000;
+const DEFAULT_TARGET_AUTO_VALUE = "__auto__";
 const AUTOSAVE_STORAGE_KEY = "project-fifo.autosave";
 const PI_ENDPOINTS_STORAGE_KEY = "project-fifo.pi-endpoints";
 const PIXEL_COLOR_STORAGE_KEY = "project-fifo.pixel-color";
@@ -125,6 +131,24 @@ const state = {
   pixelColor: DEFAULT_PIXEL_COLOR,
   boardLayout: [],
   boardGroups: [DEFAULT_BOARD_GROUP_ID],
+  project: {
+    frames: [
+      {
+        id: DEFAULT_FRAME_ID,
+        name: DEFAULT_FRAME_NAME,
+        pixels: Array(DEFAULT_WIDTH * DEFAULT_HEIGHT).fill(0),
+      },
+    ],
+    animations: [],
+    activeFrameId: DEFAULT_FRAME_ID,
+    activeAnimationId: null,
+    defaultFrameId: DEFAULT_FRAME_ID,
+    defaultAnimationId: null,
+    previewTimer: null,
+    previewAnimationId: null,
+    previewStepIndex: 0,
+  },
+  workspaceView: "grid",
   boardDrag: null,
   sidebarResize: null,
   drawValue: 1,
@@ -167,6 +191,31 @@ const elements = {
   applyLayoutPresetButton: document.querySelector("#applyLayoutPresetButton"),
   refreshLayoutButton: document.querySelector("#refreshLayoutButton"),
   saveLayoutButton: document.querySelector("#saveLayoutButton"),
+  openAnimationStudioButton: document.querySelector("#openAnimationStudioButton"),
+  workspaceGridTab: document.querySelector("#workspaceGridTab"),
+  workspaceAnimationTab: document.querySelector("#workspaceAnimationTab"),
+  workspaceGridView: document.querySelector("#workspaceGridView"),
+  workspaceAnimationView: document.querySelector("#workspaceAnimationView"),
+  projectSummary: document.querySelector("#projectSummary"),
+  newFrameButton: document.querySelector("#newFrameButton"),
+  duplicateFrameButton: document.querySelector("#duplicateFrameButton"),
+  deleteFrameButton: document.querySelector("#deleteFrameButton"),
+  moveFrameLeftButton: document.querySelector("#moveFrameLeftButton"),
+  moveFrameRightButton: document.querySelector("#moveFrameRightButton"),
+  frameStrip: document.querySelector("#frameStrip"),
+  frameName: document.querySelector("#frameName"),
+  defaultTargetSelect: document.querySelector("#defaultTargetSelect"),
+  animationSelect: document.querySelector("#animationSelect"),
+  newAnimationButton: document.querySelector("#newAnimationButton"),
+  deleteAnimationButton: document.querySelector("#deleteAnimationButton"),
+  previewAnimationButton: document.querySelector("#previewAnimationButton"),
+  stopAnimationPreviewButton: document.querySelector("#stopAnimationPreviewButton"),
+  animationName: document.querySelector("#animationName"),
+  animationLoopInput: document.querySelector("#animationLoopInput"),
+  animationPreviewStatus: document.querySelector("#animationPreviewStatus"),
+  animationPreviewGrid: document.querySelector("#animationPreviewGrid"),
+  addAnimationStepButton: document.querySelector("#addAnimationStepButton"),
+  animationStepList: document.querySelector("#animationStepList"),
   rotateSelect: document.querySelector("#rotateSelect"),
   blockOrientationSelect: document.querySelector("#blockOrientationSelect"),
   reverseOrderInput: document.querySelector("#reverseOrderInput"),
@@ -233,6 +282,18 @@ function updateModeButtons() {
 function updateHistoryButtons() {
   elements.undoButton.disabled = state.history.index <= 0;
   elements.redoButton.disabled = state.history.index >= state.history.entries.length - 1;
+}
+
+function setWorkspaceView(view) {
+  state.workspaceView = view === "animation" ? "animation" : "grid";
+  const showingGrid = state.workspaceView === "grid";
+
+  elements.workspaceGridTab.classList.toggle("active", showingGrid);
+  elements.workspaceAnimationTab.classList.toggle("active", !showingGrid);
+  elements.workspaceGridTab.setAttribute("aria-selected", String(showingGrid));
+  elements.workspaceAnimationTab.setAttribute("aria-selected", String(!showingGrid));
+  elements.workspaceGridView.hidden = !showingGrid;
+  elements.workspaceAnimationView.hidden = showingGrid;
 }
 
 function setAutosaveStatus(message) {
@@ -689,30 +750,19 @@ function syncGridToConnectedDisplay(reason) {
     return false;
   }
 
-  const previousWidth = state.width;
-  const previousHeight = state.height;
-  const resizedPixels = resizePixelBuffer(
-    state.pixels,
-    previousWidth,
-    previousHeight,
-    targetWidth,
-    targetHeight,
-  );
-  const normalizedWorkspace = normalizePersistedBoardWorkspace(
-    targetWidth,
-    targetHeight,
-    resizedPixels,
-    serializeBoardLayout(state.boardLayout),
-    [...state.boardGroups],
-  );
-  applyBoardFrame(normalizedWorkspace.boardLayout, normalizedWorkspace.boardGroups);
-  elements.gridWidth.value = String(state.width);
-  elements.gridHeight.value = String(state.height);
-  renderGrid();
+  syncActiveFrameIntoProject();
+  const resizedProject = {
+    ...buildCurrentProjectPayload({ includeEditorState: true }),
+    width: targetWidth,
+    height: targetHeight,
+    frames: resizeProjectFrames(state.project.frames, state.width, state.height, targetWidth, targetHeight),
+  };
+
+  applyProjectToEditor(resizedProject, reason, { syncFrame: false });
   pushHistorySnapshot(reason);
   log(
     `Synced the editor grid to the Pi display (${state.width}x${state.height}) after ${reason}. `
-    + "Preserved overlapping pixels.",
+    + "Preserved overlapping pixels in every frame.",
   );
   return true;
 }
@@ -1811,6 +1861,731 @@ function renderGrid() {
   updateGridMeta();
 }
 
+function renderAnimationPreviewPixels(pixels, width = state.width, height = state.height) {
+  const longestEdge = Math.max(width, height);
+  const cellSize = longestEdge >= 56 ? 12 : longestEdge >= 40 ? 14 : longestEdge >= 24 ? 16 : 18;
+
+  elements.animationPreviewGrid.innerHTML = "";
+  elements.animationPreviewGrid.style.setProperty("--preview-cell-size", `${cellSize}px`);
+  elements.animationPreviewGrid.style.gridTemplateColumns = `repeat(${Math.max(width, 1)}, ${cellSize}px)`;
+
+  pixels.forEach((value) => {
+    const cell = document.createElement("div");
+    cell.className = `preview-cell${value === 1 ? " on" : ""}`;
+    elements.animationPreviewGrid.appendChild(cell);
+  });
+
+  if (pixels.length === 0) {
+    elements.animationPreviewGrid.style.gridTemplateColumns = `repeat(1, ${cellSize}px)`;
+    const cell = document.createElement("div");
+    cell.className = "preview-cell";
+    elements.animationPreviewGrid.appendChild(cell);
+  }
+}
+
+function renderSelectedAnimationPreview(statusMessage = null) {
+  const frames = getProjectFramesSnapshot();
+  const framesById = new Map(frames.map((frame) => [frame.id, frame]));
+  const activeAnimation = getProjectAnimation();
+  const activeFrame = getProjectFrame(state.project.activeFrameId, frames) || frames[0] || null;
+  const previewFrame = activeAnimation?.steps?.[0]
+    ? framesById.get(activeAnimation.steps[0].frameId) || activeFrame
+    : activeFrame;
+
+  renderAnimationPreviewPixels(previewFrame?.pixels || Array(state.width * state.height).fill(0));
+
+  if (statusMessage) {
+    elements.animationPreviewStatus.textContent = statusMessage;
+    return;
+  }
+
+  if (activeAnimation) {
+    elements.animationPreviewStatus.textContent = `Ready to preview "${activeAnimation.name}".`;
+    return;
+  }
+
+  elements.animationPreviewStatus.textContent = "Select or create an animation to preview timing.";
+}
+
+function stopAnimationPreview(options = {}) {
+  const { logStop = false, statusMessage = null } = options;
+  const wasRunning = state.project.previewTimer != null;
+
+  if (state.project.previewTimer != null) {
+    window.clearTimeout(state.project.previewTimer);
+  }
+
+  state.project.previewTimer = null;
+  state.project.previewAnimationId = null;
+  state.project.previewStepIndex = 0;
+
+  if (wasRunning && logStop) {
+    log("Stopped animation preview.");
+  }
+
+  renderSelectedAnimationPreview(statusMessage);
+  updateProjectEditorControls();
+}
+
+function scheduleAnimationPreviewStep(animation, framesById, stepIndex) {
+  const step = animation.steps[stepIndex];
+  const frame = framesById.get(step.frameId);
+  if (!step || !frame) {
+    stopAnimationPreview({
+      statusMessage: `Could not preview "${animation.name}" because one of its steps is missing a frame.`,
+    });
+    return;
+  }
+
+  state.project.previewAnimationId = animation.id;
+  state.project.previewStepIndex = stepIndex;
+  renderAnimationPreviewPixels(frame.pixels);
+  elements.animationPreviewStatus.textContent = `Previewing "${animation.name}" step ${stepIndex + 1} of ${animation.steps.length}.`;
+
+  state.project.previewTimer = window.setTimeout(() => {
+    const nextStepIndex = stepIndex + 1;
+    if (nextStepIndex < animation.steps.length) {
+      scheduleAnimationPreviewStep(animation, framesById, nextStepIndex);
+      return;
+    }
+
+    if (animation.loop) {
+      scheduleAnimationPreviewStep(animation, framesById, 0);
+      return;
+    }
+
+    state.project.previewTimer = null;
+    state.project.previewAnimationId = null;
+    state.project.previewStepIndex = 0;
+    renderSelectedAnimationPreview(`Previewed "${animation.name}" once.`);
+    updateProjectEditorControls();
+  }, step.durationMs);
+}
+
+function startAnimationPreview() {
+  const animation = getProjectAnimation();
+  if (!animation) {
+    log("Select or create an animation first.");
+    return;
+  }
+
+  stopAnimationPreview();
+
+  const frames = getProjectFramesSnapshot();
+  const framesById = new Map(frames.map((frame) => [frame.id, frame]));
+  scheduleAnimationPreviewStep(animation, framesById, 0);
+  renderProjectEditor();
+  log(`Started previewing animation "${animation.name}".`);
+}
+
+function getDefaultTargetValue() {
+  if (state.project.defaultAnimationId) {
+    return `animation:${state.project.defaultAnimationId}`;
+  }
+  if (state.project.defaultFrameId) {
+    return `frame:${state.project.defaultFrameId}`;
+  }
+  return DEFAULT_TARGET_AUTO_VALUE;
+}
+
+function updateProjectSummary() {
+  const frameCount = state.project.frames.length;
+  const animationCount = state.project.animations.length;
+  const activeFrame = getProjectFrame();
+  let defaultLabel = "Auto choose first animation or frame";
+
+  if (state.project.defaultAnimationId) {
+    const defaultAnimation = getProjectAnimation(state.project.defaultAnimationId);
+    defaultLabel = defaultAnimation ? `Default animation: ${defaultAnimation.name}` : defaultLabel;
+  } else if (state.project.defaultFrameId) {
+    const defaultFrame = getProjectFrame(state.project.defaultFrameId, getProjectFramesSnapshot());
+    defaultLabel = defaultFrame ? `Default frame: ${defaultFrame.name}` : defaultLabel;
+  }
+
+  elements.projectSummary.textContent = `${frameCount} frame${frameCount === 1 ? "" : "s"}, `
+    + `${animationCount} animation${animationCount === 1 ? "" : "s"}. `
+    + `Editing "${activeFrame?.name || DEFAULT_FRAME_NAME}". ${defaultLabel}.`;
+}
+
+function renderFrameStrip() {
+  elements.frameStrip.innerHTML = "";
+
+  state.project.frames.forEach((frame, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `frame-chip${frame.id === state.project.activeFrameId ? " active" : ""}`;
+    button.dataset.frameId = frame.id;
+    button.textContent = `${index + 1}. ${frame.name}`;
+    elements.frameStrip.appendChild(button);
+  });
+}
+
+function syncDefaultTargetOptions() {
+  const previousValue = getDefaultTargetValue();
+  elements.defaultTargetSelect.innerHTML = "";
+
+  const autoOption = document.createElement("option");
+  autoOption.value = DEFAULT_TARGET_AUTO_VALUE;
+  autoOption.textContent = "Auto choose first animation or frame";
+  elements.defaultTargetSelect.appendChild(autoOption);
+
+  state.project.frames.forEach((frame) => {
+    const option = document.createElement("option");
+    option.value = `frame:${frame.id}`;
+    option.textContent = `Frame: ${frame.name}`;
+    elements.defaultTargetSelect.appendChild(option);
+  });
+
+  state.project.animations.forEach((animation) => {
+    const option = document.createElement("option");
+    option.value = `animation:${animation.id}`;
+    option.textContent = `Animation: ${animation.name}`;
+    elements.defaultTargetSelect.appendChild(option);
+  });
+
+  elements.defaultTargetSelect.value = previousValue;
+}
+
+function syncAnimationOptions() {
+  const previousValue = state.project.activeAnimationId || "";
+  elements.animationSelect.innerHTML = "";
+
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "No animation selected";
+  elements.animationSelect.appendChild(placeholder);
+
+  state.project.animations.forEach((animation) => {
+    const option = document.createElement("option");
+    option.value = animation.id;
+    option.textContent = animation.name;
+    elements.animationSelect.appendChild(option);
+  });
+
+  elements.animationSelect.value = previousValue;
+}
+
+function renderAnimationStepList() {
+  elements.animationStepList.innerHTML = "";
+  const activeAnimation = getProjectAnimation();
+
+  if (!activeAnimation) {
+    const emptyMessage = document.createElement("p");
+    emptyMessage.className = "animation-step-empty";
+    emptyMessage.textContent = "Pick or create an animation, then add steps that reference the current frame or any other frame in the strip.";
+    elements.animationStepList.appendChild(emptyMessage);
+    return;
+  }
+
+  activeAnimation.steps.forEach((step, index) => {
+    const row = document.createElement("div");
+    row.className = "animation-step";
+    row.dataset.stepIndex = String(index);
+
+    const header = document.createElement("div");
+    header.className = "animation-step-header";
+
+    const stepIndex = document.createElement("span");
+    stepIndex.className = "animation-step-index";
+    stepIndex.textContent = `Step ${index + 1}`;
+    header.appendChild(stepIndex);
+
+    const controls = document.createElement("div");
+    controls.className = "animation-step-controls";
+
+    const moveUpButton = document.createElement("button");
+    moveUpButton.type = "button";
+    moveUpButton.className = "secondary";
+    moveUpButton.dataset.stepAction = "move-up";
+    moveUpButton.textContent = "Up";
+    moveUpButton.disabled = index === 0;
+    controls.appendChild(moveUpButton);
+
+    const moveDownButton = document.createElement("button");
+    moveDownButton.type = "button";
+    moveDownButton.className = "secondary";
+    moveDownButton.dataset.stepAction = "move-down";
+    moveDownButton.textContent = "Down";
+    moveDownButton.disabled = index >= activeAnimation.steps.length - 1;
+    controls.appendChild(moveDownButton);
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "secondary";
+    deleteButton.dataset.stepAction = "delete";
+    deleteButton.textContent = "Delete";
+    controls.appendChild(deleteButton);
+
+    header.appendChild(controls);
+
+    const frameField = document.createElement("label");
+    frameField.className = "field";
+    const frameLabel = document.createElement("span");
+    frameLabel.textContent = "Frame";
+    const frameSelect = document.createElement("select");
+    frameSelect.dataset.stepField = "frame";
+
+    state.project.frames.forEach((frame) => {
+      const option = document.createElement("option");
+      option.value = frame.id;
+      option.textContent = frame.name;
+      frameSelect.appendChild(option);
+    });
+
+    frameSelect.value = step.frameId;
+    frameField.appendChild(frameLabel);
+    frameField.appendChild(frameSelect);
+
+    const durationField = document.createElement("label");
+    durationField.className = "field";
+    const durationLabel = document.createElement("span");
+    durationLabel.textContent = "Duration (ms)";
+    const durationInput = document.createElement("input");
+    durationInput.type = "number";
+    durationInput.min = String(MIN_ANIMATION_STEP_DURATION_MS);
+    durationInput.max = String(MAX_ANIMATION_STEP_DURATION_MS);
+    durationInput.step = "10";
+    durationInput.value = String(step.durationMs);
+    durationInput.dataset.stepField = "duration";
+    durationField.appendChild(durationLabel);
+    durationField.appendChild(durationInput);
+
+    row.appendChild(header);
+    row.appendChild(frameField);
+    row.appendChild(durationField);
+    elements.animationStepList.appendChild(row);
+  });
+}
+
+function updateProjectEditorControls() {
+  const activeFrameIndex = getProjectFrameIndex();
+  const activeFrame = getProjectFrame();
+  const activeAnimation = getProjectAnimation();
+
+  elements.frameName.disabled = !activeFrame;
+  elements.deleteFrameButton.disabled = state.project.frames.length <= 1;
+  elements.moveFrameLeftButton.disabled = activeFrameIndex <= 0;
+  elements.moveFrameRightButton.disabled = activeFrameIndex < 0 || activeFrameIndex >= state.project.frames.length - 1;
+  elements.defaultTargetSelect.disabled = state.project.frames.length === 0;
+  elements.deleteAnimationButton.disabled = !activeAnimation;
+  elements.animationName.disabled = !activeAnimation;
+  elements.animationLoopInput.disabled = !activeAnimation;
+  elements.addAnimationStepButton.disabled = !activeAnimation;
+  elements.previewAnimationButton.disabled = !activeAnimation || state.project.previewTimer != null;
+  elements.stopAnimationPreviewButton.disabled = state.project.previewTimer == null;
+}
+
+function renderProjectEditor() {
+  normalizeProjectState();
+  updateProjectSummary();
+  renderFrameStrip();
+  syncDefaultTargetOptions();
+  syncAnimationOptions();
+  renderAnimationStepList();
+  updateProjectEditorControls();
+
+  const activeFrame = getProjectFrame();
+  elements.frameName.value = activeFrame?.name || DEFAULT_FRAME_NAME;
+
+  const activeAnimation = getProjectAnimation();
+  elements.animationName.value = activeAnimation?.name || "";
+  elements.animationLoopInput.checked = activeAnimation?.loop !== false;
+
+  if (state.project.previewTimer == null) {
+    renderSelectedAnimationPreview();
+  }
+}
+
+function selectProjectFrame(frameId, reason = "frame switch") {
+  const nextFrame = getProjectFrame(frameId, state.project.frames);
+  if (!nextFrame || nextFrame.id === state.project.activeFrameId) {
+    return;
+  }
+
+  stopPatternPlayback(`for ${reason}`);
+  syncActiveFrameIntoProject();
+  state.project.activeFrameId = nextFrame.id;
+  state.pixels = [...nextFrame.pixels];
+  syncBoardPixelsFromFrame();
+  renderGrid();
+  renderProjectEditor();
+  saveAutosave();
+  scheduleFrameSend(reason, { immediate: true, logSend: false });
+}
+
+function selectProjectAnimation(animationId) {
+  if (!animationId) {
+    state.project.activeAnimationId = null;
+    stopAnimationPreview();
+    renderProjectEditor();
+    saveAutosave();
+    return;
+  }
+
+  const animation = getProjectAnimation(animationId, state.project.animations);
+  if (!animation) {
+    return;
+  }
+
+  state.project.activeAnimationId = animation.id;
+  stopAnimationPreview();
+  renderProjectEditor();
+  saveAutosave();
+}
+
+function addProjectFrame() {
+  stopAnimationPreview();
+  syncActiveFrameIntoProject();
+
+  const existingIds = new Set(state.project.frames.map((frame) => frame.id));
+  const nextFrameName = `Frame ${state.project.frames.length + 1}`;
+  const frame = {
+    id: createUniqueProjectEntityId(existingIds, nextFrameName, "frame"),
+    name: nextFrameName,
+    pixels: Array(state.width * state.height).fill(0),
+  };
+  const activeFrameIndex = Math.max(getProjectFrameIndex(), 0);
+  const nextFrames = [...state.project.frames];
+  nextFrames.splice(activeFrameIndex + 1, 0, frame);
+  state.project.frames = nextFrames;
+  state.project.activeFrameId = frame.id;
+  state.pixels = [...frame.pixels];
+  syncBoardPixelsFromFrame();
+  renderGrid();
+  renderProjectEditor();
+  pushHistorySnapshot("new frame");
+  log(`Added frame "${frame.name}".`);
+}
+
+function duplicateProjectFrame() {
+  const activeFrame = getProjectFrame();
+  if (!activeFrame) {
+    return;
+  }
+
+  stopAnimationPreview();
+  syncActiveFrameIntoProject();
+
+  const existingIds = new Set(state.project.frames.map((frame) => frame.id));
+  const copy = {
+    id: createUniqueProjectEntityId(existingIds, `${activeFrame.name} copy`, "frame"),
+    name: sanitizeProjectEntityLabel(`${activeFrame.name} Copy`, DEFAULT_FRAME_NAME),
+    pixels: [...state.pixels],
+  };
+  const activeFrameIndex = Math.max(getProjectFrameIndex(), 0);
+  const nextFrames = [...state.project.frames];
+  nextFrames.splice(activeFrameIndex + 1, 0, copy);
+  state.project.frames = nextFrames;
+  state.project.activeFrameId = copy.id;
+  state.pixels = [...copy.pixels];
+  syncBoardPixelsFromFrame();
+  renderGrid();
+  renderProjectEditor();
+  pushHistorySnapshot("frame duplicate");
+  log(`Duplicated frame "${activeFrame.name}" as "${copy.name}".`);
+}
+
+function deleteProjectFrame() {
+  if (state.project.frames.length <= 1) {
+    log("Projects need at least one frame.");
+    return;
+  }
+
+  stopAnimationPreview();
+  syncActiveFrameIntoProject();
+
+  const activeFrameIndex = getProjectFrameIndex();
+  const [deletedFrame] = state.project.frames.splice(activeFrameIndex, 1);
+  const nextFrame = state.project.frames[Math.min(activeFrameIndex, state.project.frames.length - 1)];
+  state.project.animations = state.project.animations
+    .map((animation) => ({
+      ...cloneProjectAnimation(animation),
+      steps: animation.steps.filter((step) => step.frameId !== deletedFrame.id),
+    }))
+    .filter((animation) => animation.steps.length > 0);
+  state.project.activeFrameId = nextFrame.id;
+  state.project.activeAnimationId = getProjectAnimation(state.project.activeAnimationId, state.project.animations)?.id || state.project.animations[0]?.id || null;
+  if (state.project.defaultFrameId === deletedFrame.id) {
+    state.project.defaultFrameId = nextFrame.id;
+  }
+  if (!getProjectAnimation(state.project.defaultAnimationId, state.project.animations)) {
+    state.project.defaultAnimationId = null;
+  }
+  state.pixels = [...nextFrame.pixels];
+  syncBoardPixelsFromFrame();
+  renderGrid();
+  renderProjectEditor();
+  pushHistorySnapshot("frame delete");
+  log(`Deleted frame "${deletedFrame.name}".`);
+}
+
+function moveProjectFrame(direction) {
+  const activeFrameIndex = getProjectFrameIndex();
+  const targetIndex = activeFrameIndex + direction;
+  if (activeFrameIndex < 0 || targetIndex < 0 || targetIndex >= state.project.frames.length) {
+    return;
+  }
+
+  syncActiveFrameIntoProject();
+
+  const nextFrames = [...state.project.frames];
+  const [movedFrame] = nextFrames.splice(activeFrameIndex, 1);
+  nextFrames.splice(targetIndex, 0, movedFrame);
+  state.project.frames = nextFrames;
+  renderProjectEditor();
+  pushHistorySnapshot(direction < 0 ? "frame move left" : "frame move right");
+}
+
+function renameActiveFrame() {
+  const activeFrameIndex = getProjectFrameIndex();
+  if (activeFrameIndex < 0) {
+    return;
+  }
+
+  const nextName = sanitizeProjectEntityLabel(elements.frameName.value, DEFAULT_FRAME_NAME);
+  if (state.project.frames[activeFrameIndex].name === nextName) {
+    elements.frameName.value = nextName;
+    return;
+  }
+
+  state.project.frames[activeFrameIndex] = {
+    ...state.project.frames[activeFrameIndex],
+    name: nextName,
+  };
+  renderProjectEditor();
+  pushHistorySnapshot("frame rename");
+}
+
+function createProjectAnimation() {
+  const activeFrame = getProjectFrame();
+  if (!activeFrame) {
+    return;
+  }
+
+  stopAnimationPreview();
+  syncActiveFrameIntoProject();
+
+  const existingIds = new Set(state.project.animations.map((animation) => animation.id));
+  const nextAnimationName = `Animation ${state.project.animations.length + 1}`;
+  const animation = {
+    id: createUniqueProjectEntityId(existingIds, nextAnimationName, "animation"),
+    name: nextAnimationName,
+    loop: true,
+    steps: [
+      {
+        frameId: activeFrame.id,
+        durationMs: DEFAULT_ANIMATION_STEP_DURATION_MS,
+      },
+    ],
+  };
+
+  state.project.animations = [...state.project.animations, animation];
+  state.project.activeAnimationId = animation.id;
+  renderProjectEditor();
+  pushHistorySnapshot("new animation");
+  log(`Added animation "${animation.name}".`);
+}
+
+function deleteActiveAnimation() {
+  const activeAnimation = getProjectAnimation();
+  if (!activeAnimation) {
+    log("Pick an animation first.");
+    return;
+  }
+
+  stopAnimationPreview();
+  state.project.animations = state.project.animations.filter((animation) => animation.id !== activeAnimation.id);
+  state.project.activeAnimationId = state.project.animations[0]?.id || null;
+  if (state.project.defaultAnimationId === activeAnimation.id) {
+    state.project.defaultAnimationId = null;
+  }
+  renderProjectEditor();
+  pushHistorySnapshot("animation delete");
+  log(`Deleted animation "${activeAnimation.name}".`);
+}
+
+function renameActiveAnimation() {
+  const activeAnimationIndex = getProjectAnimationIndex();
+  if (activeAnimationIndex < 0) {
+    return;
+  }
+
+  const nextName = sanitizeProjectEntityLabel(elements.animationName.value, "Animation");
+  if (state.project.animations[activeAnimationIndex].name === nextName) {
+    elements.animationName.value = nextName;
+    return;
+  }
+
+  state.project.animations[activeAnimationIndex] = {
+    ...state.project.animations[activeAnimationIndex],
+    name: nextName,
+  };
+  renderProjectEditor();
+  pushHistorySnapshot("animation rename");
+}
+
+function setActiveAnimationLoop(loopValue) {
+  const activeAnimationIndex = getProjectAnimationIndex();
+  if (activeAnimationIndex < 0) {
+    return;
+  }
+
+  const loop = loopValue === true;
+  if (state.project.animations[activeAnimationIndex].loop === loop) {
+    return;
+  }
+
+  state.project.animations[activeAnimationIndex] = {
+    ...state.project.animations[activeAnimationIndex],
+    loop,
+  };
+  renderProjectEditor();
+  pushHistorySnapshot(loop ? "animation loop on" : "animation loop off");
+}
+
+function setProjectDefaultTarget() {
+  const selectedValue = elements.defaultTargetSelect.value;
+  if (selectedValue === DEFAULT_TARGET_AUTO_VALUE) {
+    state.project.defaultFrameId = null;
+    state.project.defaultAnimationId = null;
+  } else if (selectedValue.startsWith("frame:")) {
+    const frameId = selectedValue.slice("frame:".length);
+    if (!getProjectFrame(frameId, state.project.frames)) {
+      renderProjectEditor();
+      return;
+    }
+    state.project.defaultFrameId = frameId;
+    state.project.defaultAnimationId = null;
+  } else if (selectedValue.startsWith("animation:")) {
+    const animationId = selectedValue.slice("animation:".length);
+    if (!getProjectAnimation(animationId, state.project.animations)) {
+      renderProjectEditor();
+      return;
+    }
+    state.project.defaultAnimationId = animationId;
+    state.project.defaultFrameId = null;
+  }
+
+  renderProjectEditor();
+  pushHistorySnapshot("default target change");
+}
+
+function addAnimationStepFromCurrentFrame() {
+  const activeAnimationIndex = getProjectAnimationIndex();
+  const activeFrame = getProjectFrame();
+  if (activeAnimationIndex < 0 || !activeFrame) {
+    log("Pick an animation first.");
+    return;
+  }
+
+  stopAnimationPreview();
+  syncActiveFrameIntoProject();
+
+  state.project.animations[activeAnimationIndex] = {
+    ...state.project.animations[activeAnimationIndex],
+    steps: [
+      ...state.project.animations[activeAnimationIndex].steps,
+      {
+        frameId: activeFrame.id,
+        durationMs: DEFAULT_ANIMATION_STEP_DURATION_MS,
+      },
+    ],
+  };
+  renderProjectEditor();
+  pushHistorySnapshot("animation step add");
+}
+
+function updateAnimationStep(index, field, rawValue) {
+  const activeAnimationIndex = getProjectAnimationIndex();
+  if (activeAnimationIndex < 0) {
+    return;
+  }
+
+  const animation = state.project.animations[activeAnimationIndex];
+  const step = animation.steps[index];
+  if (!step) {
+    return;
+  }
+
+  let nextStep = step;
+  if (field === "frame") {
+    if (!getProjectFrame(rawValue, state.project.frames) || step.frameId === rawValue) {
+      renderProjectEditor();
+      return;
+    }
+    nextStep = {
+      ...step,
+      frameId: rawValue,
+    };
+  } else if (field === "duration") {
+    const durationMs = clampAnimationStepDuration(Number(rawValue));
+    if (step.durationMs === durationMs) {
+      renderProjectEditor();
+      return;
+    }
+    nextStep = {
+      ...step,
+      durationMs,
+    };
+  } else {
+    return;
+  }
+
+  stopAnimationPreview();
+  const nextSteps = animation.steps.map((candidate, stepIndex) => (stepIndex === index ? nextStep : candidate));
+  state.project.animations[activeAnimationIndex] = {
+    ...animation,
+    steps: nextSteps,
+  };
+  renderProjectEditor();
+  pushHistorySnapshot("animation step edit");
+}
+
+function moveAnimationStep(index, direction) {
+  const activeAnimationIndex = getProjectAnimationIndex();
+  if (activeAnimationIndex < 0) {
+    return;
+  }
+
+  const targetIndex = index + direction;
+  const animation = state.project.animations[activeAnimationIndex];
+  if (targetIndex < 0 || targetIndex >= animation.steps.length) {
+    return;
+  }
+
+  stopAnimationPreview();
+  const nextSteps = [...animation.steps];
+  const [movedStep] = nextSteps.splice(index, 1);
+  nextSteps.splice(targetIndex, 0, movedStep);
+  state.project.animations[activeAnimationIndex] = {
+    ...animation,
+    steps: nextSteps,
+  };
+  renderProjectEditor();
+  pushHistorySnapshot(direction < 0 ? "animation step move up" : "animation step move down");
+}
+
+function deleteAnimationStep(index) {
+  const activeAnimationIndex = getProjectAnimationIndex();
+  if (activeAnimationIndex < 0) {
+    return;
+  }
+
+  const animation = state.project.animations[activeAnimationIndex];
+  if (animation.steps.length <= 1) {
+    log("Animations need at least one step. Delete the animation instead.");
+    return;
+  }
+
+  stopAnimationPreview();
+  state.project.animations[activeAnimationIndex] = {
+    ...animation,
+    steps: animation.steps.filter((_, stepIndex) => stepIndex !== index),
+  };
+  renderProjectEditor();
+  pushHistorySnapshot("animation step delete");
+}
+
 function syncGridDom() {
   const cells = elements.grid.querySelectorAll(".pixel-cell");
   cells.forEach((cell) => {
@@ -1882,13 +2657,14 @@ function buildSaveLayoutMessage() {
 }
 
 function buildSaveDrawingMessage() {
+  const drawingName = getCurrentDrawingExportName();
   return {
     type: "save_drawing",
     version: 1,
-    name: state.drawingName,
+    name: drawingName,
     width: state.width,
     height: state.height,
-    pixels: state.pixels,
+    pixels: [...state.pixels],
     boardLayout: serializeBoardLayout(),
     boardGroups: [...state.boardGroups],
   };
@@ -1910,25 +2686,11 @@ function buildLoadDrawingMessage(name) {
 }
 
 function buildSaveProjectMessage() {
-  const frameId = "frame-1";
+  const project = buildCurrentProjectPayload();
   return {
     type: "save_project",
     version: 1,
-    name: state.drawingName,
-    width: state.width,
-    height: state.height,
-    boardLayout: serializeBoardLayout(),
-    boardGroups: [...state.boardGroups],
-    frames: [
-      {
-        id: frameId,
-        name: state.drawingName,
-        pixels: [...state.pixels],
-      },
-    ],
-    animations: [],
-    defaultFrameId: frameId,
-    defaultAnimationId: null,
+    ...project,
   };
 }
 
@@ -2027,47 +2789,412 @@ function sanitizeEndpointName(value) {
   return trimmed || DEFAULT_ENDPOINT_NAME;
 }
 
+function sanitizeProjectEntityLabel(value, fallback) {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed || fallback;
+}
+
+function clampAnimationStepDuration(value) {
+  return clampNumber(
+    value,
+    MIN_ANIMATION_STEP_DURATION_MS,
+    MAX_ANIMATION_STEP_DURATION_MS,
+    DEFAULT_ANIMATION_STEP_DURATION_MS,
+  );
+}
+
+function createUniqueProjectEntityId(existingIds, preferredLabel, fallbackPrefix) {
+  const baseId = String(preferredLabel || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || fallbackPrefix;
+
+  if (!existingIds.has(baseId)) {
+    return baseId;
+  }
+
+  let suffix = 2;
+  while (existingIds.has(`${baseId}-${suffix}`)) {
+    suffix += 1;
+  }
+
+  return `${baseId}-${suffix}`;
+}
+
+function cloneProjectFrame(frame) {
+  return {
+    id: frame.id,
+    name: frame.name,
+    pixels: [...frame.pixels],
+  };
+}
+
+function cloneProjectFrames(frames = state.project.frames) {
+  return frames.map((frame) => cloneProjectFrame(frame));
+}
+
+function cloneProjectAnimation(animation) {
+  return {
+    id: animation.id,
+    name: animation.name,
+    loop: animation.loop !== false,
+    steps: animation.steps.map((step) => ({
+      frameId: step.frameId,
+      durationMs: step.durationMs,
+    })),
+  };
+}
+
+function cloneProjectAnimations(animations = state.project.animations) {
+  return animations.map((animation) => cloneProjectAnimation(animation));
+}
+
+function getProjectFrameIndex(frameId = state.project.activeFrameId, frames = state.project.frames) {
+  return frames.findIndex((frame) => frame.id === frameId);
+}
+
+function getProjectFrame(frameId = state.project.activeFrameId, frames = state.project.frames) {
+  const index = getProjectFrameIndex(frameId, frames);
+  return index >= 0 ? frames[index] : null;
+}
+
+function getProjectAnimationIndex(animationId = state.project.activeAnimationId, animations = state.project.animations) {
+  return animations.findIndex((animation) => animation.id === animationId);
+}
+
+function getProjectAnimation(animationId = state.project.activeAnimationId, animations = state.project.animations) {
+  const index = getProjectAnimationIndex(animationId, animations);
+  return index >= 0 ? animations[index] : null;
+}
+
+function getProjectFramesSnapshot() {
+  return state.project.frames.map((frame) => ({
+    ...cloneProjectFrame(frame),
+    pixels: frame.id === state.project.activeFrameId ? [...state.pixels] : [...frame.pixels],
+  }));
+}
+
+function getProjectAnimationsSnapshot() {
+  return cloneProjectAnimations();
+}
+
+function syncActiveFrameIntoProject() {
+  const index = getProjectFrameIndex();
+  if (index < 0) {
+    return;
+  }
+
+  state.project.frames[index] = {
+    ...state.project.frames[index],
+    pixels: [...state.pixels],
+  };
+}
+
+function normalizeProjectState(projectState = state.project) {
+  if (!Array.isArray(projectState.frames) || projectState.frames.length === 0) {
+    projectState.frames = [
+      {
+        id: DEFAULT_FRAME_ID,
+        name: DEFAULT_FRAME_NAME,
+        pixels: Array(state.width * state.height).fill(0),
+      },
+    ];
+  }
+
+  const frameIds = new Set(projectState.frames.map((frame) => frame.id));
+  if (!frameIds.has(projectState.activeFrameId)) {
+    projectState.activeFrameId = projectState.frames[0].id;
+  }
+  if (!frameIds.has(projectState.defaultFrameId)) {
+    projectState.defaultFrameId = null;
+  }
+
+  const animationIds = new Set(projectState.animations.map((animation) => animation.id));
+  if (!animationIds.has(projectState.activeAnimationId)) {
+    projectState.activeAnimationId = projectState.animations[0]?.id || null;
+  }
+  if (!animationIds.has(projectState.defaultAnimationId)) {
+    projectState.defaultAnimationId = null;
+  }
+}
+
+function resolveProjectEditorFrameId(project, preferredFrameId = null) {
+  const framesById = new Map(project.frames.map((frame) => [frame.id, frame]));
+  if (preferredFrameId && framesById.has(preferredFrameId)) {
+    return preferredFrameId;
+  }
+
+  if (project.defaultFrameId && framesById.has(project.defaultFrameId)) {
+    return project.defaultFrameId;
+  }
+
+  if (project.defaultAnimationId) {
+    const defaultAnimation = project.animations.find((animation) => animation.id === project.defaultAnimationId);
+    const defaultStepFrameId = defaultAnimation?.steps?.[0]?.frameId;
+    if (defaultStepFrameId && framesById.has(defaultStepFrameId)) {
+      return defaultStepFrameId;
+    }
+  }
+
+  const firstAnimationStepFrameId = project.animations[0]?.steps?.[0]?.frameId;
+  if (firstAnimationStepFrameId && framesById.has(firstAnimationStepFrameId)) {
+    return firstAnimationStepFrameId;
+  }
+
+  return project.frames[0].id;
+}
+
+function resolveProjectEditorAnimationId(project, preferredAnimationId = null) {
+  const animationIds = new Set(project.animations.map((animation) => animation.id));
+  if (preferredAnimationId && animationIds.has(preferredAnimationId)) {
+    return preferredAnimationId;
+  }
+  if (project.defaultAnimationId && animationIds.has(project.defaultAnimationId)) {
+    return project.defaultAnimationId;
+  }
+  return project.animations[0]?.id || null;
+}
+
+function createProjectFromDrawing(drawing, options = {}) {
+  const frameId = typeof options.frameId === "string" && options.frameId.trim()
+    ? options.frameId.trim()
+    : DEFAULT_FRAME_ID;
+  const frameName = sanitizeProjectEntityLabel(options.frameName || drawing.name, DEFAULT_FRAME_NAME);
+
+  return {
+    name: drawing.name,
+    width: drawing.width,
+    height: drawing.height,
+    boardLayout: drawing.boardLayout,
+    boardGroups: drawing.boardGroups,
+    frames: [
+      {
+        id: frameId,
+        name: frameName,
+        pixels: [...drawing.pixels],
+      },
+    ],
+    animations: [],
+    defaultFrameId: frameId,
+    defaultAnimationId: null,
+    activeFrameId: frameId,
+    activeAnimationId: null,
+  };
+}
+
+function resizeProjectFrames(frames, sourceWidth, sourceHeight, targetWidth, targetHeight) {
+  return frames.map((frame) => ({
+    ...cloneProjectFrame(frame),
+    pixels: resizePixelBuffer(frame.pixels, sourceWidth, sourceHeight, targetWidth, targetHeight),
+  }));
+}
+
+function fitProjectToConnectedDisplay(project) {
+  const targetWidth = state.connectedDisplayWidth;
+  const targetHeight = state.connectedDisplayHeight;
+  const clonedProject = {
+    ...project,
+    frames: cloneProjectFrames(project.frames),
+    animations: cloneProjectAnimations(project.animations),
+  };
+
+  if (!Number.isInteger(targetWidth) || targetWidth <= 0 || !Number.isInteger(targetHeight) || targetHeight <= 0) {
+    return {
+      ...clonedProject,
+      resized: false,
+    };
+  }
+
+  if (project.width === targetWidth && project.height === targetHeight) {
+    return {
+      ...clonedProject,
+      resized: false,
+    };
+  }
+
+  return {
+    ...clonedProject,
+    width: targetWidth,
+    height: targetHeight,
+    frames: resizeProjectFrames(project.frames, project.width, project.height, targetWidth, targetHeight),
+    resized: true,
+  };
+}
+
+function buildCurrentProjectPayload(options = {}) {
+  normalizeProjectState();
+
+  const frames = getProjectFramesSnapshot();
+  const animations = getProjectAnimationsSnapshot();
+  const frameIds = new Set(frames.map((frame) => frame.id));
+  const animationIds = new Set(animations.map((animation) => animation.id));
+  const payload = {
+    name: state.drawingName,
+    width: state.width,
+    height: state.height,
+    boardLayout: serializeBoardLayout(),
+    boardGroups: [...state.boardGroups],
+    frames,
+    animations,
+    defaultFrameId: frameIds.has(state.project.defaultFrameId) ? state.project.defaultFrameId : null,
+    defaultAnimationId: animationIds.has(state.project.defaultAnimationId) ? state.project.defaultAnimationId : null,
+  };
+
+  if (options.includeEditorState) {
+    payload.activeFrameId = frameIds.has(state.project.activeFrameId)
+      ? state.project.activeFrameId
+      : frames[0]?.id || null;
+    payload.activeAnimationId = animationIds.has(state.project.activeAnimationId)
+      ? state.project.activeAnimationId
+      : null;
+  }
+
+  return payload;
+}
+
+function getCurrentDrawingExportName() {
+  const activeFrame = getProjectFrame();
+  if (!activeFrame) {
+    return state.drawingName;
+  }
+
+  if (state.project.frames.length === 1) {
+    return state.drawingName;
+  }
+
+  return sanitizeDrawingName(`${state.drawingName}-${activeFrame.name}`);
+}
+
 function createEditorSnapshot() {
   return {
     width: state.width,
     height: state.height,
-    pixels: [...state.pixels],
     drawingName: state.drawingName,
     boardLayout: cloneBoardLayout(),
     boardGroups: [...state.boardGroups],
+    project: {
+      frames: getProjectFramesSnapshot(),
+      animations: getProjectAnimationsSnapshot(),
+      activeFrameId: state.project.activeFrameId,
+      activeAnimationId: state.project.activeAnimationId,
+      defaultFrameId: state.project.defaultFrameId,
+      defaultAnimationId: state.project.defaultAnimationId,
+    },
   };
 }
 
-function restoreSnapshot(snapshot, reason, options = {}) {
+function pixelsMatch(leftPixels, rightPixels) {
+  if (!Array.isArray(leftPixels) || !Array.isArray(rightPixels) || leftPixels.length !== rightPixels.length) {
+    return false;
+  }
+
+  return leftPixels.every((value, index) => value === rightPixels[index]);
+}
+
+function projectFramesMatch(leftFrames, rightFrames) {
+  if (!Array.isArray(leftFrames) || !Array.isArray(rightFrames) || leftFrames.length !== rightFrames.length) {
+    return false;
+  }
+
+  return leftFrames.every((frame, index) => (
+    frame.id === rightFrames[index].id
+    && frame.name === rightFrames[index].name
+    && pixelsMatch(frame.pixels, rightFrames[index].pixels)
+  ));
+}
+
+function projectAnimationsMatch(leftAnimations, rightAnimations) {
+  if (!Array.isArray(leftAnimations) || !Array.isArray(rightAnimations) || leftAnimations.length !== rightAnimations.length) {
+    return false;
+  }
+
+  return leftAnimations.every((animation, index) => {
+    const candidate = rightAnimations[index];
+    if (
+      animation.id !== candidate.id
+      || animation.name !== candidate.name
+      || animation.loop !== candidate.loop
+      || animation.steps.length !== candidate.steps.length
+    ) {
+      return false;
+    }
+
+    return animation.steps.every((step, stepIndex) => (
+      step.frameId === candidate.steps[stepIndex].frameId
+      && step.durationMs === candidate.steps[stepIndex].durationMs
+    ));
+  });
+}
+
+function applyProjectToEditor(project, reason, options = {}) {
   stopPatternPlayback(`for ${reason}`);
-  const fittedSnapshot = fitFrameToConnectedDisplay(snapshot);
-  const pixelsChanged = state.width !== fittedSnapshot.width
-    || state.height !== fittedSnapshot.height
-    || state.pixels.length !== fittedSnapshot.pixels.length
-    || state.pixels.some((value, index) => value !== fittedSnapshot.pixels[index]);
-  state.drawingName = sanitizeDrawingName(snapshot.drawingName);
+  stopAnimationPreview();
+
+  const previousWidth = state.width;
+  const previousHeight = state.height;
+  const previousPixels = [...state.pixels];
+  const fittedProject = fitProjectToConnectedDisplay(project);
+  const activeFrameId = resolveProjectEditorFrameId(fittedProject, project.activeFrameId);
+  const activeAnimationId = resolveProjectEditorAnimationId(fittedProject, project.activeAnimationId);
+  const activeFrame = getProjectFrame(activeFrameId, fittedProject.frames) || fittedProject.frames[0];
   const normalizedWorkspace = normalizePersistedBoardWorkspace(
-    fittedSnapshot.width,
-    fittedSnapshot.height,
-    fittedSnapshot.pixels,
-    snapshot.boardLayout,
-    snapshot.boardGroups,
+    fittedProject.width,
+    fittedProject.height,
+    activeFrame.pixels,
+    fittedProject.boardLayout,
+    fittedProject.boardGroups,
   );
+
+  state.drawingName = sanitizeDrawingName(fittedProject.name);
+  state.project.frames = cloneProjectFrames(fittedProject.frames);
+  state.project.animations = cloneProjectAnimations(fittedProject.animations);
+  state.project.activeFrameId = activeFrame.id;
+  state.project.activeAnimationId = activeAnimationId;
+  state.project.defaultFrameId = fittedProject.defaultFrameId ?? null;
+  state.project.defaultAnimationId = fittedProject.defaultAnimationId ?? null;
+  normalizeProjectState();
+
   applyBoardFrame(normalizedWorkspace.boardLayout, normalizedWorkspace.boardGroups);
   elements.gridWidth.value = String(state.width);
   elements.gridHeight.value = String(state.height);
   elements.drawingName.value = state.drawingName;
   renderGrid();
+  renderProjectEditor();
   saveAutosave();
-  if (fittedSnapshot.resized) {
+
+  if (fittedProject.resized) {
     log(
-      `Adjusted the restored editor snapshot to the connected Pi display `
+      `Adjusted the loaded project to the connected Pi display `
       + `(${state.width}x${state.height}) so live updates stay in sync.`,
     );
   }
+
+  const pixelsChanged = previousWidth !== state.width
+    || previousHeight !== state.height
+    || !pixelsMatch(previousPixels, state.pixels);
+
   if (options.syncFrame !== false && pixelsChanged) {
     scheduleFrameSend(reason, options);
   }
+}
+
+function restoreSnapshot(snapshot, reason, options = {}) {
+  const snapshotProject = {
+    name: snapshot.drawingName,
+    width: snapshot.width,
+    height: snapshot.height,
+    boardLayout: snapshot.boardLayout,
+    boardGroups: snapshot.boardGroups,
+    frames: cloneProjectFrames(snapshot.project.frames),
+    animations: cloneProjectAnimations(snapshot.project.animations),
+    defaultFrameId: snapshot.project.defaultFrameId,
+    defaultAnimationId: snapshot.project.defaultAnimationId,
+    activeFrameId: snapshot.project.activeFrameId,
+    activeAnimationId: snapshot.project.activeAnimationId,
+  };
+
+  applyProjectToEditor(snapshotProject, reason, options);
 }
 
 function snapshotsMatch(left, right) {
@@ -2079,11 +3206,20 @@ function snapshotsMatch(left, right) {
     return false;
   }
 
-  if (left.pixels.length !== right.pixels.length) {
+  if (
+    left.project.activeFrameId !== right.project.activeFrameId
+    || left.project.activeAnimationId !== right.project.activeAnimationId
+    || left.project.defaultFrameId !== right.project.defaultFrameId
+    || left.project.defaultAnimationId !== right.project.defaultAnimationId
+  ) {
     return false;
   }
 
-  if (!left.pixels.every((value, index) => value === right.pixels[index])) {
+  if (!projectFramesMatch(left.project.frames, right.project.frames)) {
+    return false;
+  }
+
+  if (!projectAnimationsMatch(left.project.animations, right.project.animations)) {
     return false;
   }
 
@@ -2152,12 +3288,7 @@ function redoHistory() {
 
 function saveAutosave() {
   const autosave = {
-    width: state.width,
-    height: state.height,
-    pixels: state.pixels,
-    drawingName: state.drawingName,
-    boardLayout: serializeBoardLayout(),
-    boardGroups: [...state.boardGroups],
+    ...buildCurrentProjectPayload({ includeEditorState: true }),
     savedAt: new Date().toISOString(),
   };
 
@@ -2173,19 +3304,17 @@ function loadAutosave() {
 
   try {
     const parsedAutosave = JSON.parse(rawValue);
-    const autosave = validateLoadedDrawing(parsedAutosave);
-    state.drawingName = autosave.name;
-    elements.drawingName.value = autosave.name;
-    restoreSnapshot({
-      width: autosave.width,
-      height: autosave.height,
-      pixels: autosave.pixels,
-      drawingName: autosave.name,
-      boardLayout: autosave.boardLayout,
-      boardGroups: autosave.boardGroups,
-    }, "autosave restore", { immediate: true, syncFrame: false });
+    const autosaveProject = Array.isArray(parsedAutosave.frames)
+      ? validateLoadedProject(parsedAutosave)
+      : createProjectFromDrawing(validateLoadedDrawing(parsedAutosave));
+    autosaveProject.activeFrameId = typeof parsedAutosave.activeFrameId === "string" ? parsedAutosave.activeFrameId : null;
+    autosaveProject.activeAnimationId = typeof parsedAutosave.activeAnimationId === "string" ? parsedAutosave.activeAnimationId : null;
+    applyProjectToEditor(autosaveProject, "autosave restore", { immediate: true, syncFrame: false });
+    if (autosaveProject.frames.length > 1 || autosaveProject.animations.length > 0) {
+      setWorkspaceView("animation");
+    }
     pushHistorySnapshot("autosave restore");
-    log(`Restored autosaved drawing "${autosave.name}".`);
+    log(`Restored autosaved project "${autosaveProject.name}".`);
     setAutosaveStatus(`Restored autosave from ${new Date(parsedAutosave.savedAt || Date.now()).toLocaleString()}.`);
   } catch (error) {
     window.localStorage.removeItem(AUTOSAVE_STORAGE_KEY);
@@ -2373,15 +3502,19 @@ function stopPatternPlayback(logReason) {
 }
 
 function applyPixels(pixels, reason, options) {
+  stopAnimationPreview();
   state.pixels = pixels;
   syncBoardPixelsFromFrame();
+  syncActiveFrameIntoProject();
   syncGridDom();
+  renderSelectedAnimationPreview();
   saveAutosave();
   scheduleFrameSend(reason, options);
 }
 
 function applyCellValue(x, y, value) {
   stopPatternPlayback("for manual drawing");
+  stopAnimationPreview();
   if (x < 0 || x >= state.width || y < 0 || y >= state.height) {
     return;
   }
@@ -2401,12 +3534,15 @@ function applyCellValue(x, y, value) {
   if (target) {
     target.classList.toggle("on", value === 1);
   }
+  syncActiveFrameIntoProject();
+  renderSelectedAnimationPreview();
   saveAutosave();
   scheduleFrameSend("draw");
 }
 
 function resizeGrid() {
   stopPatternPlayback("for grid resize");
+  stopAnimationPreview();
   const width = Number(elements.gridWidth.value);
   const height = Number(elements.gridHeight.value);
 
@@ -2432,38 +3568,26 @@ function resizeGrid() {
     return;
   }
 
-  state.width = width;
-  state.height = height;
-  state.pixels = Array(width * height).fill(0);
-  state.boardLayout = createBoardLayoutFromFrame(width, height, state.pixels);
-  syncBoardGroups(state.boardLayout, [DEFAULT_BOARD_GROUP_ID]);
-  renderGrid();
+  syncActiveFrameIntoProject();
+  const resizedProject = {
+    ...buildCurrentProjectPayload({ includeEditorState: true }),
+    width,
+    height,
+    frames: resizeProjectFrames(state.project.frames, state.width, state.height, width, height),
+  };
+
+  applyProjectToEditor(resizedProject, "grid resize", { syncFrame: false });
   pushHistorySnapshot("grid resize");
   scheduleFrameSend("resize");
-  log(`Resized grid to ${width}x${height}.`);
+  log(`Resized the project to ${width}x${height} and preserved overlapping pixels in every frame.`);
 }
 
 function applyDrawing(frame, reason) {
-  stopPatternPlayback(`for ${reason}`);
-  const fittedFrame = fitFrameToConnectedDisplay(frame);
-  const normalizedWorkspace = normalizePersistedBoardWorkspace(
-    fittedFrame.width,
-    fittedFrame.height,
-    fittedFrame.pixels,
-    frame.boardLayout,
-    frame.boardGroups,
-  );
-  applyBoardFrame(normalizedWorkspace.boardLayout, normalizedWorkspace.boardGroups);
-  elements.gridWidth.value = String(state.width);
-  elements.gridHeight.value = String(state.height);
-  renderGrid();
+  const project = createProjectFromDrawing(frame, {
+    frameName: frame.name,
+  });
+  applyProjectToEditor(project, reason, { syncFrame: false });
   pushHistorySnapshot(reason);
-  if (fittedFrame.resized) {
-    log(
-      `Adjusted the loaded drawing to the connected Pi display `
-      + `(${state.width}x${state.height}) so live updates stay in sync.`,
-    );
-  }
   scheduleFrameSend(reason);
 }
 
@@ -2824,15 +3948,24 @@ function saveDrawing() {
   elements.drawingName.value = state.drawingName;
   saveAutosave();
 
-  const drawing = {
-    name: state.drawingName,
-    ...buildFrameMessage(),
-    boardLayout: serializeBoardLayout(),
-    boardGroups: [...state.boardGroups],
-  };
+  const project = buildCurrentProjectPayload({ includeEditorState: true });
   const safeFilename = state.drawingName.replace(/[^a-z0-9-_]+/gi, "-").replace(/^-+|-+$/g, "") || "fifo-drawing";
-  triggerDownload(`${safeFilename}.json`, `${JSON.stringify(drawing, null, 2)}\n`);
-  log(`Saved drawing "${state.drawingName}" to JSON.`);
+  if (project.frames.length === 1 && project.animations.length === 0) {
+    const drawing = {
+      name: state.drawingName,
+      width: project.width,
+      height: project.height,
+      pixels: [...project.frames[0].pixels],
+      boardLayout: project.boardLayout,
+      boardGroups: project.boardGroups,
+    };
+    triggerDownload(`${safeFilename}.json`, `${JSON.stringify(drawing, null, 2)}\n`);
+    log(`Saved drawing "${state.drawingName}" to JSON.`);
+    return;
+  }
+
+  triggerDownload(`${safeFilename}.json`, `${JSON.stringify(project, null, 2)}\n`);
+  log(`Saved project "${state.drawingName}" to JSON with ${project.frames.length} frames and ${project.animations.length} animations.`);
 }
 
 function syncPiDrawingOptions() {
@@ -2907,7 +4040,7 @@ function getPiRuntimeStatusText() {
     return `Pi is idle right now. Boot project "${state.runtime.bootProject}" is saved and can be started from the website or on reboot.`;
   }
 
-  return "Pi is ready for live website editing. Save the current drawing as a project when you want the Pi to run it on its own.";
+  return "Pi is ready for live website editing. Save the current editor project when you want the Pi to run it on its own.";
 }
 
 function updatePiRuntimeStatus() {
@@ -2959,9 +4092,10 @@ function saveDrawingToPi() {
   state.drawingName = sanitizeDrawingName(elements.drawingName.value);
   elements.drawingName.value = state.drawingName;
 
+  const drawingName = getCurrentDrawingExportName();
   const sent = sendMessage(buildSaveDrawingMessage());
   if (sent) {
-    log(`Sent drawing "${state.drawingName}" to the Pi for storage.`);
+    log(`Sent frame "${drawingName}" to the Pi drawing library.`);
   } else {
     log("Not connected. Could not save drawing to the Pi.");
   }
@@ -2995,9 +4129,10 @@ function saveProjectToPi() {
   state.drawingName = sanitizeDrawingName(elements.drawingName.value);
   elements.drawingName.value = state.drawingName;
 
+  const project = buildCurrentProjectPayload();
   const sent = sendMessage(buildSaveProjectMessage());
   if (sent) {
-    log(`Sent "${state.drawingName}" to the Pi as a bootable project.`);
+    log(`Sent "${state.drawingName}" to the Pi as a bootable project with ${project.frames.length} frames and ${project.animations.length} animations.`);
   } else {
     log("Not connected. Could not save a project to the Pi.");
   }
@@ -3180,6 +4315,9 @@ function validateLoadedProject(data) {
   });
 
   const frameIds = new Set(frames.map((frame) => frame.id));
+  if (frameIds.size !== frames.length) {
+    throw new Error("Project frame ids must be unique.");
+  }
   const animations = Array.isArray(data.animations)
     ? data.animations.map((animation) => {
       if (!animation || typeof animation !== "object") {
@@ -3219,6 +4357,24 @@ function validateLoadedProject(data) {
       };
     })
     : [];
+  const animationIds = new Set(animations.map((animation) => animation.id));
+  if (animationIds.size !== animations.length) {
+    throw new Error("Project animation ids must be unique.");
+  }
+
+  const defaultFrameId = typeof data.defaultFrameId === "string" && data.defaultFrameId.trim()
+    ? data.defaultFrameId.trim()
+    : null;
+  if (defaultFrameId && !frameIds.has(defaultFrameId)) {
+    throw new Error("defaultFrameId must reference a known frame.");
+  }
+
+  const defaultAnimationId = typeof data.defaultAnimationId === "string" && data.defaultAnimationId.trim()
+    ? data.defaultAnimationId.trim()
+    : null;
+  if (defaultAnimationId && !animationIds.has(defaultAnimationId)) {
+    throw new Error("defaultAnimationId must reference a known animation.");
+  }
 
   const normalizedWorkspace = normalizePersistedBoardWorkspace(
     width,
@@ -3234,74 +4390,36 @@ function validateLoadedProject(data) {
     height,
     frames,
     animations,
-    defaultFrameId: typeof data.defaultFrameId === "string" && data.defaultFrameId.trim()
-      ? data.defaultFrameId.trim()
-      : null,
-    defaultAnimationId: typeof data.defaultAnimationId === "string" && data.defaultAnimationId.trim()
-      ? data.defaultAnimationId.trim()
-      : null,
+    defaultFrameId,
+    defaultAnimationId,
     boardLayout: normalizedWorkspace.boardLayout,
     boardGroups: normalizedWorkspace.boardGroups,
   };
 }
 
-function selectProjectEditorFrame(project) {
-  const framesById = new Map(project.frames.map((frame) => [frame.id, frame]));
-
-  if (project.defaultFrameId && framesById.has(project.defaultFrameId)) {
-    return framesById.get(project.defaultFrameId);
+function loadProjectIntoEditor(project, sourceLabel) {
+  applyProjectToEditor(project, sourceLabel, { syncFrame: false });
+  if (project.frames.length > 1 || project.animations.length > 0) {
+    setWorkspaceView("animation");
   }
-
-  if (project.defaultAnimationId) {
-    const animation = project.animations.find((entry) => entry.id === project.defaultAnimationId);
-    const firstStep = animation?.steps?.[0];
-    if (firstStep && framesById.has(firstStep.frameId)) {
-      return framesById.get(firstStep.frameId);
-    }
-  }
-
-  const firstAnimationStep = project.animations[0]?.steps?.[0];
-  if (firstAnimationStep && framesById.has(firstAnimationStep.frameId)) {
-    return framesById.get(firstAnimationStep.frameId);
-  }
-
-  return project.frames[0];
+  pushHistorySnapshot(sourceLabel);
+  scheduleFrameSend(sourceLabel);
+  log(`Loaded project "${project.name}" into the editor with ${project.frames.length} frames and ${project.animations.length} animations.`);
 }
 
-function loadProjectIntoEditor(project, sourceLabel) {
-  const frame = selectProjectEditorFrame(project);
-  state.drawingName = sanitizeDrawingName(project.name);
-  elements.drawingName.value = state.drawingName;
-  applyDrawing(
-    {
-      name: state.drawingName,
-      width: project.width,
-      height: project.height,
-      pixels: frame.pixels,
-      boardLayout: project.boardLayout,
-      boardGroups: project.boardGroups,
-    },
-    sourceLabel,
-  );
+async function loadEditorStateFromFile(file) {
+  const content = await file.text();
+  const data = JSON.parse(content);
 
-  if (project.frames.length > 1 || project.animations.length > 0) {
-    log(
-      `Loaded frame "${frame.name}" from project "${project.name}" into the editor. `
-      + "The Pi keeps the full multi-frame project; the website editor is still working on one frame at a time.",
-    );
+  if (Array.isArray(data.frames)) {
+    const project = validateLoadedProject(data);
+    project.activeFrameId = typeof data.activeFrameId === "string" ? data.activeFrameId.trim() : null;
+    project.activeAnimationId = typeof data.activeAnimationId === "string" ? data.activeAnimationId.trim() : null;
+    loadProjectIntoEditor(project, "load");
     return;
   }
 
-  log(`Loaded project "${project.name}" into the editor.`);
-}
-
-async function loadDrawingFromFile(file) {
-  const content = await file.text();
-  const data = JSON.parse(content);
   const drawing = validateLoadedDrawing(data);
-
-  state.drawingName = drawing.name;
-  elements.drawingName.value = drawing.name;
   applyDrawing(drawing, "load");
   log(`Loaded drawing "${drawing.name}" (${drawing.width}x${drawing.height}).`);
 }
@@ -3453,8 +4571,6 @@ function handleServerMessage(message) {
   if (message.type === "drawing") {
     try {
       const drawing = validateLoadedDrawing(message);
-      state.drawingName = drawing.name;
-      elements.drawingName.value = drawing.name;
       applyDrawing(drawing, "Pi load");
       log(`Loaded drawing "${drawing.name}" from the Pi.`);
       return;
@@ -3652,10 +4768,111 @@ function bindEvents() {
   elements.connectButton.addEventListener("click", connect);
   elements.disconnectButton.addEventListener("click", disconnect);
   elements.resizeButton.addEventListener("click", resizeGrid);
+  elements.openAnimationStudioButton.addEventListener("click", () => {
+    setWorkspaceView("animation");
+  });
+  elements.workspaceGridTab.addEventListener("click", () => {
+    setWorkspaceView("grid");
+  });
+  elements.workspaceAnimationTab.addEventListener("click", () => {
+    setWorkspaceView("animation");
+  });
   elements.drawingName.addEventListener("change", () => {
     state.drawingName = sanitizeDrawingName(elements.drawingName.value);
     elements.drawingName.value = state.drawingName;
     pushHistorySnapshot("drawing rename");
+  });
+  elements.newFrameButton.addEventListener("click", addProjectFrame);
+  elements.duplicateFrameButton.addEventListener("click", duplicateProjectFrame);
+  elements.deleteFrameButton.addEventListener("click", deleteProjectFrame);
+  elements.moveFrameLeftButton.addEventListener("click", () => {
+    moveProjectFrame(-1);
+  });
+  elements.moveFrameRightButton.addEventListener("click", () => {
+    moveProjectFrame(1);
+  });
+  elements.frameStrip.addEventListener("click", (event) => {
+    const target = event.target.closest("[data-frame-id]");
+    if (!target) {
+      return;
+    }
+
+    selectProjectFrame(target.dataset.frameId);
+  });
+  elements.frameName.addEventListener("change", renameActiveFrame);
+  elements.defaultTargetSelect.addEventListener("change", setProjectDefaultTarget);
+  elements.animationSelect.addEventListener("change", () => {
+    selectProjectAnimation(elements.animationSelect.value);
+  });
+  elements.newAnimationButton.addEventListener("click", createProjectAnimation);
+  elements.deleteAnimationButton.addEventListener("click", deleteActiveAnimation);
+  elements.previewAnimationButton.addEventListener("click", startAnimationPreview);
+  elements.stopAnimationPreviewButton.addEventListener("click", () => {
+    if (state.project.previewTimer == null) {
+      log("No animation preview is running.");
+      return;
+    }
+
+    stopAnimationPreview({
+      logStop: true,
+      statusMessage: "Preview stopped.",
+    });
+    updateProjectEditorControls();
+  });
+  elements.animationName.addEventListener("change", renameActiveAnimation);
+  elements.animationLoopInput.addEventListener("change", () => {
+    setActiveAnimationLoop(elements.animationLoopInput.checked);
+  });
+  elements.addAnimationStepButton.addEventListener("click", addAnimationStepFromCurrentFrame);
+  elements.animationStepList.addEventListener("change", (event) => {
+    const row = event.target.closest("[data-step-index]");
+    if (!row) {
+      return;
+    }
+
+    const stepIndex = Number(row.dataset.stepIndex);
+    if (!Number.isInteger(stepIndex)) {
+      return;
+    }
+
+    if (event.target.dataset.stepField === "frame") {
+      updateAnimationStep(stepIndex, "frame", event.target.value);
+      return;
+    }
+
+    if (event.target.dataset.stepField === "duration") {
+      updateAnimationStep(stepIndex, "duration", event.target.value);
+    }
+  });
+  elements.animationStepList.addEventListener("click", (event) => {
+    const target = event.target.closest("[data-step-action]");
+    if (!target) {
+      return;
+    }
+
+    const row = target.closest("[data-step-index]");
+    if (!row) {
+      return;
+    }
+
+    const stepIndex = Number(row.dataset.stepIndex);
+    if (!Number.isInteger(stepIndex)) {
+      return;
+    }
+
+    if (target.dataset.stepAction === "move-up") {
+      moveAnimationStep(stepIndex, -1);
+      return;
+    }
+
+    if (target.dataset.stepAction === "move-down") {
+      moveAnimationStep(stepIndex, 1);
+      return;
+    }
+
+    if (target.dataset.stepAction === "delete") {
+      deleteAnimationStep(stepIndex);
+    }
   });
   elements.brightnessRange.addEventListener("input", () => {
     setBrightness(Number(elements.brightnessRange.value), "slider change");
@@ -3768,9 +4985,9 @@ function bindEvents() {
     }
 
     try {
-      await loadDrawingFromFile(file);
+      await loadEditorStateFromFile(file);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to load drawing.";
+      const message = error instanceof Error ? error.message : "Failed to load JSON.";
       log(message);
     } finally {
       elements.loadInput.value = "";
@@ -3880,6 +5097,8 @@ function init() {
   syncSavedEndpointOptions();
   updatePiRuntimeStatus();
   renderGrid();
+  renderProjectEditor();
+  setWorkspaceView(state.workspaceView);
   updateModeButtons();
   pushHistorySnapshot("startup");
   loadAutosave();
