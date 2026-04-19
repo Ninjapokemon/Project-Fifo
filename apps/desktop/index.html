@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Project Fifo Editor</title>
-    <link rel="stylesheet" href="./src/styles.css?v=layout-resizer-12" />
+    <link rel="stylesheet" href="./src/styles.css?v=layout-resizer-13" />
   </head>
   <body>
     <main class="app-shell">
@@ -101,16 +101,15 @@
             <summary>
               <div>
                 <p class="section-label">Project</p>
-                <h2>Animation Studio</h2>
+                <h2>Frames + Animation</h2>
               </div>
-              <span class="summary-meta">Workspace tab</span>
+              <span class="summary-meta">Live beside grid</span>
             </summary>
             <div class="control-body">
               <p class="field-hint">
-                Frame ordering, animation steps, and playback preview now live in the workspace so
-                they have enough room to actually be useful.
+                The animation panel stays visible next to the grid so you can draw, reorder frames,
+                tweak timings, and preview playback without switching views.
               </p>
-              <button id="openAnimationStudioButton" type="button" class="secondary wide-button">Open Animation Studio</button>
             </div>
           </details>
 
@@ -205,8 +204,6 @@
                 <button id="fillButton" type="button" class="secondary">Fill</button>
               </div>
               <div class="button-row wrap">
-                <button id="saveButton" type="button" class="secondary">Save JSON</button>
-                <button id="loadButton" type="button" class="secondary">Load JSON</button>
                 <button id="sendButton" type="button" class="secondary">Send Now</button>
               </div>
             </div>
@@ -243,62 +240,6 @@
             </div>
           </details>
 
-          <details class="control-group">
-            <summary>
-              <div>
-                <p class="section-label">Library</p>
-                <h2>Pi Drawings</h2>
-              </div>
-              <span class="summary-meta">Remote storage</span>
-            </summary>
-            <div class="control-body">
-              <label class="field">
-                <span>Saved on Pi</span>
-                <select id="piDrawingSelect">
-                  <option value="">No Pi drawings loaded</option>
-                </select>
-              </label>
-              <div class="button-row wrap">
-                <button id="refreshPiDrawingsButton" type="button" class="secondary">Refresh Pi List</button>
-                <button id="loadFromPiButton" type="button" class="secondary">Load From Pi</button>
-                <button id="saveToPiButton" type="button" class="secondary">Save To Pi</button>
-              </div>
-            </div>
-          </details>
-
-          <details class="control-group">
-            <summary>
-              <div>
-                <p class="section-label">Runtime</p>
-                <h2>Pi Projects</h2>
-              </div>
-              <span class="summary-meta">Bootable content</span>
-            </summary>
-            <div class="control-body">
-              <p id="piRuntimeStatus" class="field-hint">
-                Connect to a Pi to manage bootable projects and temporary live control.
-              </p>
-              <label class="field">
-                <span>Saved on Pi</span>
-                <select id="piProjectSelect">
-                  <option value="">No Pi projects loaded</option>
-                </select>
-              </label>
-              <div class="button-row wrap">
-                <button id="refreshPiProjectsButton" type="button" class="secondary">Refresh Projects</button>
-                <button id="saveProjectToPiButton" type="button" class="secondary">Save As Project</button>
-                <button id="loadProjectFromPiButton" type="button" class="secondary">Load To Editor</button>
-                <button id="activateProjectButton" type="button" class="secondary">Run Project</button>
-              </div>
-              <div class="button-row wrap">
-                <button id="setBootProjectButton" type="button" class="secondary">Set Boot</button>
-                <button id="clearBootProjectButton" type="button" class="secondary">Clear Boot</button>
-                <button id="resumeProjectButton" type="button" class="secondary">Resume Project</button>
-                <button id="deleteProjectButton" type="button" class="secondary">Delete Project</button>
-              </div>
-            </div>
-          </details>
-
           <div class="sidebar-footer">
             <p class="hint">
               Left click paints. Right click erases. Drag to draw continuously. Open the nested groups only when you need them.
@@ -320,173 +261,225 @@
         ></div>
 
         <div class="studio-main" id="studioMain">
-          <section class="workspace-panel">
-            <div class="workspace-header">
-              <div>
-                <p class="section-label">Workspace</p>
-                <h2>Studio</h2>
-                <p class="workspace-copy">
-                  Switch between direct board drawing and a wider animation workspace without
-                  losing your current frame.
-                </p>
-              </div>
-              <div class="workspace-tabs" role="tablist" aria-label="Workspace views">
-                <button
-                  id="workspaceGridTab"
-                  type="button"
-                  class="workspace-tab active"
-                  role="tab"
-                  aria-selected="true"
-                  aria-controls="workspaceGridView"
-                >
-                  Pixel Grid
-                </button>
-                <button
-                  id="workspaceAnimationTab"
-                  type="button"
-                  class="workspace-tab"
-                  role="tab"
-                  aria-selected="false"
-                  aria-controls="workspaceAnimationView"
-                >
-                  Animation Studio
-                </button>
-              </div>
-            </div>
-
-            <div
-              id="workspaceGridView"
-              class="workspace-view workspace-grid-view"
-              role="tabpanel"
-              aria-labelledby="workspaceGridTab"
-            >
-              <div class="grid-header">
-                <div>
-                  <p id="gridMeta" class="grid-meta">24 x 8</p>
-                  <p class="board-layout-hint">Drag chain boards anywhere in the workspace, use groups to split eyes, nose, and mouth visually, then use the <code>LED</code> controls for hardware output and the <code>View</code> controls to make the website match real-world panel orientation without changing the LEDs.</p>
-                  <div class="workspace-tools">
-                    <button id="newBoardGroupButton" type="button" class="secondary">New Group</button>
+          <section class="workspace-panel" id="workspacePanel">
+            <div class="workspace-body" id="workspaceBody">
+              <div class="workspace-main-column">
+                <div class="workspace-header">
+                  <div class="workspace-header-copy-block">
+                    <p class="section-label">Workspace</p>
+                    <h2>Studio</h2>
+                    <p class="workspace-copy">
+                      Draw directly on the board layout while editing frame order, animation steps, and
+                      preview timing in the panel beside it.
+                    </p>
                   </div>
                 </div>
-                <p class="legend">
-                  <span class="legend-chip on"></span> On
-                  <span class="legend-chip off"></span> Off
-                </p>
+
+                <div class="workspace-grid-pane" id="workspaceGridPane">
+                  <div class="grid-header">
+                    <div>
+                      <p id="gridMeta" class="grid-meta">24 x 8</p>
+                      <p class="board-layout-hint">Drag chain boards anywhere in the workspace, use groups to split eyes, nose, and mouth visually, then use the <code>LED</code> controls for hardware output and the <code>View</code> controls to make the website match real-world panel orientation without changing the LEDs.</p>
+                      <div class="workspace-tools">
+                        <button id="newBoardGroupButton" type="button" class="secondary">New Group</button>
+                      </div>
+                    </div>
+                    <p class="legend">
+                      <span class="legend-chip on"></span> On
+                      <span class="legend-chip off"></span> Off
+                    </p>
+                  </div>
+                  <div id="grid" class="pixel-grid" aria-label="Pixel editor grid"></div>
+                </div>
               </div>
-              <div id="grid" class="pixel-grid" aria-label="Pixel editor grid"></div>
-            </div>
 
-            <div
-              id="workspaceAnimationView"
-              class="workspace-view workspace-animation-view"
-              role="tabpanel"
-              aria-labelledby="workspaceAnimationTab"
-              hidden
-            >
-              <div class="animation-studio-shell">
-                <section class="animation-studio-card animation-studio-overview">
-                  <div class="animation-studio-card-header">
-                    <div>
-                      <p class="section-label">Project</p>
-                      <h3>Frames + Runtime Start</h3>
-                    </div>
-                  </div>
-                  <p id="projectSummary" class="field-hint project-summary">
-                    1 frame ready for editing. Add more frames to start building motion.
-                  </p>
-                  <label class="field">
-                    <span>Default Start</span>
-                    <select id="defaultTargetSelect">
-                      <option value="__auto__">Auto choose first animation or frame</option>
-                    </select>
-                  </label>
-                </section>
+              <div
+                id="workspacePanelResizer"
+                class="workspace-panel-resizer"
+                role="separator"
+                tabindex="0"
+                aria-label="Resize workspace panels"
+                aria-orientation="vertical"
+                aria-controls="workspaceGridPane workspaceAnimationPane"
+                title="Drag to resize the grid and animation editor. Arrow keys also work."
+              ></div>
 
-                <section class="animation-studio-card animation-studio-frames">
-                  <div class="animation-studio-card-header">
-                    <div>
-                      <p class="section-label">Frames</p>
-                      <h3>Frame Strip</h3>
-                    </div>
-                  </div>
-                  <div class="button-row wrap">
-                    <button id="newFrameButton" type="button" class="secondary">New Frame</button>
-                    <button id="duplicateFrameButton" type="button" class="secondary">Duplicate Frame</button>
-                    <button id="deleteFrameButton" type="button" class="secondary">Delete Frame</button>
-                  </div>
-                  <div class="button-row wrap">
-                    <button id="moveFrameLeftButton" type="button" class="secondary">Move Left</button>
-                    <button id="moveFrameRightButton" type="button" class="secondary">Move Right</button>
-                  </div>
-                  <div id="frameStrip" class="frame-strip" aria-label="Project frames"></div>
-                  <label class="field">
-                    <span>Current Frame Name</span>
-                    <input id="frameName" type="text" value="Frame 1" maxlength="80" />
-                  </label>
-                </section>
+              <div class="workspace-side-column">
+                <div class="workspace-header-side">
+                  <p class="workspace-mode-label">Draw + animate at the same time</p>
+                  <div class="workspace-header-actions">
+                    <section class="animation-studio-card workspace-header-card workspace-header-storage">
+                      <div class="animation-studio-card-header">
+                        <div>
+                          <p class="section-label">Files</p>
+                          <h3>Save + Load</h3>
+                        </div>
+                      </div>
+                      <p id="saveWorkflowStatus" class="animation-studio-copy">
+                        Save the current drawing or project as JSON, or keep single-frame snapshots on the Pi.
+                      </p>
+                      <div class="button-row wrap">
+                        <button id="saveButton" type="button" class="secondary">Save JSON</button>
+                        <button id="loadButton" type="button" class="secondary">Load JSON</button>
+                      </div>
+                      <div class="animation-studio-divider"></div>
+                      <label class="field">
+                        <span>Saved Frames on Pi</span>
+                        <select id="piDrawingSelect">
+                          <option value="">No Pi drawings loaded</option>
+                        </select>
+                      </label>
+                      <div class="button-row wrap">
+                        <button id="refreshPiDrawingsButton" type="button" class="secondary">Refresh Frames</button>
+                        <button id="saveToPiButton" type="button" class="secondary">Save Current Frame</button>
+                        <button id="loadFromPiButton" type="button" class="secondary">Load Saved Frame</button>
+                      </div>
+                    </section>
 
-                <section class="animation-studio-card animation-studio-controls">
-                  <div class="animation-studio-card-header">
-                    <div>
-                      <p class="section-label">Animation</p>
-                      <h3>Clip Setup</h3>
-                    </div>
+                    <section class="animation-studio-card workspace-header-card workspace-header-deploy">
+                      <div class="animation-studio-card-header">
+                        <div>
+                          <p class="section-label">Deploy</p>
+                          <h3>Run On Pi</h3>
+                        </div>
+                      </div>
+                      <p id="piRuntimeStatus" class="field-hint animation-studio-status">
+                        Connect to a Pi to manage bootable projects and temporary live control.
+                      </p>
+                      <p id="projectDeployStatus" class="animation-studio-copy">
+                        Save the whole project to the Pi here, then load it, run it, or set it as boot.
+                      </p>
+                      <label class="field">
+                        <span>Saved Projects on Pi</span>
+                        <select id="piProjectSelect">
+                          <option value="">No Pi projects loaded</option>
+                        </select>
+                      </label>
+                      <div class="button-row wrap">
+                        <button id="refreshPiProjectsButton" type="button" class="secondary">Refresh Projects</button>
+                        <button id="saveProjectToPiButton" type="button" class="secondary">Save Project To Pi</button>
+                        <button id="loadProjectFromPiButton" type="button" class="secondary">Load Project To Editor</button>
+                      </div>
+                      <div class="button-row wrap">
+                        <button id="activateProjectButton" type="button" class="secondary">Run On Pi</button>
+                        <button id="setBootProjectButton" type="button" class="secondary">Set As Boot</button>
+                        <button id="clearBootProjectButton" type="button" class="secondary">Clear Boot</button>
+                      </div>
+                      <div class="button-row wrap">
+                        <button id="resumeProjectButton" type="button" class="secondary">Resume Saved Project</button>
+                        <button id="deleteProjectButton" type="button" class="secondary">Delete From Pi</button>
+                      </div>
+                    </section>
                   </div>
-                  <label class="field">
-                    <span>Animation</span>
-                    <select id="animationSelect">
-                      <option value="">No animation selected</option>
-                    </select>
-                  </label>
-                  <div class="button-row wrap">
-                    <button id="newAnimationButton" type="button" class="secondary">New Animation</button>
-                    <button id="deleteAnimationButton" type="button" class="secondary">Delete Animation</button>
-                  </div>
-                  <label class="field">
-                    <span>Animation Name</span>
-                    <input id="animationName" type="text" value="" maxlength="80" />
-                  </label>
-                  <label class="toggle-field" for="animationLoopInput">
-                    <div>
-                      <span>Loop Animation</span>
-                      <p>Use the same loop behavior for browser preview and Pi project playback.</p>
-                    </div>
-                    <input id="animationLoopInput" type="checkbox" />
-                  </label>
-                </section>
+                </div>
 
-                <section class="animation-studio-card animation-studio-preview">
-                  <div class="animation-studio-card-header">
-                    <div>
-                      <p class="section-label">Preview</p>
-                      <h3>Playback Preview</h3>
-                    </div>
-                    <div class="button-row wrap">
-                      <button id="previewAnimationButton" type="button" class="secondary">Play Preview</button>
-                      <button id="stopAnimationPreviewButton" type="button" class="secondary">Stop Preview</button>
-                    </div>
-                  </div>
-                  <div class="animation-preview-shell">
-                    <div class="animation-preview-header">
-                      <span>Browser Playback</span>
-                      <span id="animationPreviewStatus" class="animation-preview-status">Preview idle.</span>
-                    </div>
-                    <div class="animation-preview-canvas">
-                      <div id="animationPreviewGrid" class="animation-preview-grid" aria-label="Animation preview"></div>
-                    </div>
-                  </div>
-                </section>
+                <aside class="workspace-animation-pane" id="workspaceAnimationPane" aria-label="Animation editor">
+                  <div class="animation-studio-shell">
+                    <section class="animation-studio-card animation-studio-overview">
+                      <div class="animation-studio-card-header">
+                        <div>
+                          <p class="section-label">Project</p>
+                          <h3>Frames + Runtime Start</h3>
+                        </div>
+                      </div>
+                      <p id="projectSummary" class="field-hint project-summary">
+                        1 frame ready for editing. Add more frames to start building motion.
+                      </p>
+                      <label class="field">
+                        <span>Default Start</span>
+                        <select id="defaultTargetSelect">
+                          <option value="__auto__">Auto choose first animation or frame</option>
+                        </select>
+                      </label>
+                    </section>
 
-                <section class="animation-studio-card animation-studio-steps">
-                  <div class="animation-studio-card-header">
-                    <div>
-                      <p class="section-label">Steps</p>
-                      <h3>Sequence Builder</h3>
-                    </div>
-                    <button id="addAnimationStepButton" type="button" class="secondary">Add Current Frame</button>
+                    <section class="animation-studio-card animation-studio-frames">
+                      <div class="animation-studio-card-header">
+                        <div>
+                          <p class="section-label">Frames</p>
+                          <h3>Frame Strip</h3>
+                        </div>
+                      </div>
+                      <div class="button-row wrap">
+                        <button id="newFrameButton" type="button" class="secondary">New Frame</button>
+                        <button id="duplicateFrameButton" type="button" class="secondary">Duplicate Frame</button>
+                        <button id="deleteFrameButton" type="button" class="secondary">Delete Frame</button>
+                      </div>
+                      <div class="button-row wrap">
+                        <button id="moveFrameLeftButton" type="button" class="secondary">Move Left</button>
+                        <button id="moveFrameRightButton" type="button" class="secondary">Move Right</button>
+                      </div>
+                      <div id="frameStrip" class="frame-strip" aria-label="Project frames"></div>
+                      <label class="field">
+                        <span>Current Frame Name</span>
+                        <input id="frameName" type="text" value="Frame 1" maxlength="80" />
+                      </label>
+                    </section>
+
+                    <section class="animation-studio-card animation-studio-controls">
+                      <div class="animation-studio-card-header">
+                        <div>
+                          <p class="section-label">Animation</p>
+                          <h3>Clip Setup</h3>
+                        </div>
+                      </div>
+                      <label class="field">
+                        <span>Animation</span>
+                        <select id="animationSelect">
+                          <option value="">No animation selected</option>
+                        </select>
+                      </label>
+                      <div class="button-row wrap">
+                        <button id="newAnimationButton" type="button" class="secondary">New Animation</button>
+                        <button id="deleteAnimationButton" type="button" class="secondary">Delete Animation</button>
+                      </div>
+                      <label class="field">
+                        <span>Animation Name</span>
+                        <input id="animationName" type="text" value="" maxlength="80" />
+                      </label>
+                      <label class="toggle-field" for="animationLoopInput">
+                        <div>
+                          <span>Loop Animation</span>
+                          <p>Use the same loop behavior for browser preview and Pi project playback.</p>
+                        </div>
+                        <input id="animationLoopInput" type="checkbox" />
+                      </label>
+                    </section>
+
+                    <section class="animation-studio-card animation-studio-preview">
+                      <div class="animation-studio-card-header">
+                        <div>
+                          <p class="section-label">Preview</p>
+                          <h3>Playback Preview</h3>
+                        </div>
+                        <div class="button-row wrap">
+                          <button id="previewAnimationButton" type="button" class="secondary">Play Preview</button>
+                          <button id="stopAnimationPreviewButton" type="button" class="secondary">Stop Preview</button>
+                        </div>
+                      </div>
+                      <div class="animation-preview-shell">
+                        <div class="animation-preview-header">
+                          <span>Browser Playback</span>
+                          <span id="animationPreviewStatus" class="animation-preview-status">Preview idle.</span>
+                        </div>
+                        <div class="animation-preview-canvas">
+                          <div id="animationPreviewGrid" class="animation-preview-grid" aria-label="Animation preview"></div>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section class="animation-studio-card animation-studio-steps">
+                      <div class="animation-studio-card-header">
+                        <div>
+                          <p class="section-label">Steps</p>
+                          <h3>Sequence Builder</h3>
+                        </div>
+                        <button id="addAnimationStepButton" type="button" class="secondary">Add Current Frame</button>
+                      </div>
+                      <div id="animationStepList" class="animation-step-list" aria-label="Animation steps"></div>
+                    </section>
                   </div>
-                  <div id="animationStepList" class="animation-step-list" aria-label="Animation steps"></div>
-                </section>
+                </aside>
               </div>
             </div>
           </section>
@@ -505,6 +498,6 @@
       </section>
     </main>
 
-    <script type="module" src="./src/main.js?v=layout-resizer-12"></script>
+    <script type="module" src="./src/main.js?v=layout-resizer-13"></script>
   </body>
 </html>

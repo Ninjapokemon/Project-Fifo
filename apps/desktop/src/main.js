@@ -24,6 +24,7 @@ const AUTOSAVE_STORAGE_KEY = "project-fifo.autosave";
 const PI_ENDPOINTS_STORAGE_KEY = "project-fifo.pi-endpoints";
 const PIXEL_COLOR_STORAGE_KEY = "project-fifo.pixel-color";
 const STUDIO_SIDEBAR_WIDTH_STORAGE_KEY = "project-fifo.studio-sidebar-width";
+const WORKSPACE_ANIMATION_PANE_WIDTH_STORAGE_KEY = "project-fifo.workspace-animation-pane-width";
 const DEFAULT_ENDPOINT_NAME = "Workshop Pi";
 const DEFAULT_PIXEL_COLOR = "#7CF7D4";
 const DEFAULT_STUDIO_SIDEBAR_WIDTH = 330;
@@ -32,6 +33,12 @@ const MAX_STUDIO_SIDEBAR_WIDTH = 920;
 const MIN_STUDIO_MAIN_WIDTH = 560;
 const STUDIO_RESIZER_WIDTH = 18;
 const STUDIO_SIDEBAR_RESIZE_STEP = 24;
+const DEFAULT_WORKSPACE_ANIMATION_PANE_WIDTH = 420;
+const MIN_WORKSPACE_ANIMATION_PANE_WIDTH = 320;
+const MAX_WORKSPACE_ANIMATION_PANE_WIDTH = 720;
+const MIN_WORKSPACE_GRID_WIDTH = 520;
+const WORKSPACE_PANEL_RESIZER_WIDTH = 18;
+const WORKSPACE_ANIMATION_PANE_RESIZE_STEP = 24;
 const PIXEL_CELL_SIZE = 28;
 const BOARD_GRID_COLUMN_GAP = 7;
 const BOARD_GRID_ROW_GAP = 1;
@@ -148,9 +155,9 @@ const state = {
     previewAnimationId: null,
     previewStepIndex: 0,
   },
-  workspaceView: "grid",
   boardDrag: null,
   sidebarResize: null,
+  workspacePaneResize: null,
   drawValue: 1,
   socket: null,
   sendTimer: null,
@@ -172,6 +179,11 @@ const elements = {
   controlsSidebar: document.querySelector("#controlsSidebar"),
   studioMain: document.querySelector("#studioMain"),
   studioResizer: document.querySelector("#studioResizer"),
+  workspacePanel: document.querySelector("#workspacePanel"),
+  workspaceBody: document.querySelector("#workspaceBody"),
+  workspaceGridPane: document.querySelector("#workspaceGridPane"),
+  workspaceAnimationPane: document.querySelector("#workspaceAnimationPane"),
+  workspacePanelResizer: document.querySelector("#workspacePanelResizer"),
   savedEndpointSelect: document.querySelector("#savedEndpointSelect"),
   applySavedEndpointButton: document.querySelector("#applySavedEndpointButton"),
   deleteSavedEndpointButton: document.querySelector("#deleteSavedEndpointButton"),
@@ -191,11 +203,6 @@ const elements = {
   applyLayoutPresetButton: document.querySelector("#applyLayoutPresetButton"),
   refreshLayoutButton: document.querySelector("#refreshLayoutButton"),
   saveLayoutButton: document.querySelector("#saveLayoutButton"),
-  openAnimationStudioButton: document.querySelector("#openAnimationStudioButton"),
-  workspaceGridTab: document.querySelector("#workspaceGridTab"),
-  workspaceAnimationTab: document.querySelector("#workspaceAnimationTab"),
-  workspaceGridView: document.querySelector("#workspaceGridView"),
-  workspaceAnimationView: document.querySelector("#workspaceAnimationView"),
   projectSummary: document.querySelector("#projectSummary"),
   newFrameButton: document.querySelector("#newFrameButton"),
   duplicateFrameButton: document.querySelector("#duplicateFrameButton"),
@@ -254,6 +261,8 @@ const elements = {
   clearBootProjectButton: document.querySelector("#clearBootProjectButton"),
   resumeProjectButton: document.querySelector("#resumeProjectButton"),
   deleteProjectButton: document.querySelector("#deleteProjectButton"),
+  saveWorkflowStatus: document.querySelector("#saveWorkflowStatus"),
+  projectDeployStatus: document.querySelector("#projectDeployStatus"),
   loadInput: document.querySelector("#loadInput"),
   sendButton: document.querySelector("#sendButton"),
   grid: document.querySelector("#grid"),
@@ -282,18 +291,6 @@ function updateModeButtons() {
 function updateHistoryButtons() {
   elements.undoButton.disabled = state.history.index <= 0;
   elements.redoButton.disabled = state.history.index >= state.history.entries.length - 1;
-}
-
-function setWorkspaceView(view) {
-  state.workspaceView = view === "animation" ? "animation" : "grid";
-  const showingGrid = state.workspaceView === "grid";
-
-  elements.workspaceGridTab.classList.toggle("active", showingGrid);
-  elements.workspaceAnimationTab.classList.toggle("active", !showingGrid);
-  elements.workspaceGridTab.setAttribute("aria-selected", String(showingGrid));
-  elements.workspaceAnimationTab.setAttribute("aria-selected", String(!showingGrid));
-  elements.workspaceGridView.hidden = !showingGrid;
-  elements.workspaceAnimationView.hidden = showingGrid;
 }
 
 function setAutosaveStatus(message) {
@@ -475,6 +472,157 @@ function finishStudioSidebarResize(event) {
 
   applyStudioSidebarWidth(getCurrentStudioSidebarWidth(), { persist: true });
   cleanupStudioSidebarResize();
+  return true;
+}
+
+function getWorkspaceAnimationPaneWidthLimits() {
+  const minimum = MIN_WORKSPACE_ANIMATION_PANE_WIDTH;
+  if (!elements.workspaceBody || window.matchMedia("(max-width: 900px)").matches) {
+    return { minimum, maximum: minimum };
+  }
+
+  const bodyWidth = elements.workspaceBody.clientWidth;
+  const maximum = Math.max(
+    minimum,
+    Math.min(
+      MAX_WORKSPACE_ANIMATION_PANE_WIDTH,
+      bodyWidth - MIN_WORKSPACE_GRID_WIDTH - WORKSPACE_PANEL_RESIZER_WIDTH,
+    ),
+  );
+  return { minimum, maximum };
+}
+
+function getStoredWorkspaceAnimationPaneWidth() {
+  const rawValue = window.localStorage.getItem(WORKSPACE_ANIMATION_PANE_WIDTH_STORAGE_KEY);
+  const parsedValue = Number.parseFloat(rawValue || "");
+  return Number.isFinite(parsedValue) ? parsedValue : DEFAULT_WORKSPACE_ANIMATION_PANE_WIDTH;
+}
+
+function getCurrentWorkspaceAnimationPaneWidth() {
+  if (!elements.workspacePanel) {
+    return DEFAULT_WORKSPACE_ANIMATION_PANE_WIDTH;
+  }
+
+  const rawValue = window.getComputedStyle(elements.workspacePanel).getPropertyValue("--workspace-animation-pane-width");
+  const parsedValue = Number.parseFloat(rawValue);
+  return Number.isFinite(parsedValue) ? parsedValue : DEFAULT_WORKSPACE_ANIMATION_PANE_WIDTH;
+}
+
+function updateWorkspacePanelResizerAccessibility(width = getCurrentWorkspaceAnimationPaneWidth()) {
+  if (!elements.workspacePanelResizer) {
+    return;
+  }
+
+  const { minimum, maximum } = getWorkspaceAnimationPaneWidthLimits();
+  elements.workspacePanelResizer.setAttribute("aria-valuemin", String(minimum));
+  elements.workspacePanelResizer.setAttribute("aria-valuemax", String(maximum));
+  elements.workspacePanelResizer.setAttribute("aria-valuenow", String(width));
+  elements.workspacePanelResizer.setAttribute("aria-valuetext", `${width}px animation panel width`);
+}
+
+function applyWorkspaceAnimationPaneWidth(width, options = {}) {
+  if (!elements.workspacePanel) {
+    return DEFAULT_WORKSPACE_ANIMATION_PANE_WIDTH;
+  }
+
+  const { minimum, maximum } = getWorkspaceAnimationPaneWidthLimits();
+  const fallback = clampNumber(
+    DEFAULT_WORKSPACE_ANIMATION_PANE_WIDTH,
+    minimum,
+    maximum,
+    minimum,
+  );
+  const clampedWidth = clampNumber(width, minimum, maximum, fallback);
+  elements.workspacePanel.style.setProperty("--workspace-animation-pane-width", `${clampedWidth}px`);
+  updateWorkspacePanelResizerAccessibility(clampedWidth);
+
+  if (options.persist) {
+    window.localStorage.setItem(WORKSPACE_ANIMATION_PANE_WIDTH_STORAGE_KEY, String(clampedWidth));
+  }
+
+  return clampedWidth;
+}
+
+function loadWorkspaceAnimationPaneWidthPreference() {
+  applyWorkspaceAnimationPaneWidth(getStoredWorkspaceAnimationPaneWidth());
+}
+
+function resetWorkspaceAnimationPaneWidth() {
+  applyWorkspaceAnimationPaneWidth(DEFAULT_WORKSPACE_ANIMATION_PANE_WIDTH, { persist: true });
+}
+
+function cleanupWorkspaceAnimationPaneResize() {
+  if (!state.workspacePaneResize) {
+    return;
+  }
+
+  const pointerId = state.workspacePaneResize.pointerId;
+  if (
+    elements.workspacePanelResizer
+    && typeof elements.workspacePanelResizer.hasPointerCapture === "function"
+    && typeof elements.workspacePanelResizer.releasePointerCapture === "function"
+  ) {
+    try {
+      if (elements.workspacePanelResizer.hasPointerCapture(pointerId)) {
+        elements.workspacePanelResizer.releasePointerCapture(pointerId);
+      }
+    } catch (error) {
+      // Pointer capture cleanup is optional here, so ignore failures.
+    }
+  }
+
+  state.workspacePaneResize = null;
+  elements.workspacePanel?.classList.remove("is-pane-resizing");
+  document.body.classList.remove("workspace-pane-resizing");
+}
+
+function startWorkspaceAnimationPaneResize(event) {
+  if (!elements.workspacePanelResizer || window.matchMedia("(max-width: 900px)").matches) {
+    return;
+  }
+
+  event.preventDefault();
+  state.isPointerDown = false;
+  state.strokeHasChanges = false;
+  state.workspacePaneResize = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startWidth: getCurrentWorkspaceAnimationPaneWidth(),
+  };
+  elements.workspacePanel?.classList.add("is-pane-resizing");
+  document.body.classList.add("workspace-pane-resizing");
+
+  if (typeof elements.workspacePanelResizer.setPointerCapture === "function") {
+    try {
+      elements.workspacePanelResizer.setPointerCapture(event.pointerId);
+    } catch (error) {
+      // Pointer capture is helpful but not required for the resize interaction.
+    }
+  }
+}
+
+function updateWorkspaceAnimationPaneResize(event) {
+  if (!state.workspacePaneResize || event.pointerId !== state.workspacePaneResize.pointerId) {
+    return false;
+  }
+
+  const nextWidth = state.workspacePaneResize.startWidth
+    - (event.clientX - state.workspacePaneResize.startX);
+  applyWorkspaceAnimationPaneWidth(nextWidth);
+  return true;
+}
+
+function finishWorkspaceAnimationPaneResize(event) {
+  if (!state.workspacePaneResize) {
+    return false;
+  }
+
+  if (event?.pointerId != null && event.pointerId !== state.workspacePaneResize.pointerId) {
+    return false;
+  }
+
+  applyWorkspaceAnimationPaneWidth(getCurrentWorkspaceAnimationPaneWidth(), { persist: true });
+  cleanupWorkspaceAnimationPaneResize();
   return true;
 }
 
@@ -2191,6 +2339,21 @@ function renderProjectEditor() {
   elements.animationName.value = activeAnimation?.name || "";
   elements.animationLoopInput.checked = activeAnimation?.loop !== false;
 
+  const frameCount = state.project.frames.length;
+  const animationCount = state.project.animations.length;
+  const hasProjectSave = frameCount > 1 || animationCount > 0;
+  elements.saveButton.textContent = hasProjectSave ? "Save Project JSON" : "Save Drawing JSON";
+  elements.loadButton.textContent = "Load JSON";
+  elements.saveWorkflowStatus.textContent = hasProjectSave
+    ? `Saving here exports the full project with ${frameCount} frame${frameCount === 1 ? "" : "s"} and `
+      + `${animationCount} animation${animationCount === 1 ? "" : "s"} as one JSON file.`
+    : "Saving here exports a single drawing JSON. Add more frames or animations and it will switch to a full project save.";
+  elements.projectDeployStatus.textContent = animationCount > 0
+    ? `Save Project To Pi uploads all ${frameCount} frames and ${animationCount} animation${animationCount === 1 ? "" : "s"} together. Then choose that project below to run it or set it as boot.`
+    : frameCount > 1
+      ? `Save Project To Pi uploads all ${frameCount} frames together as one project. Then choose that project below to run it or set it as boot.`
+      : "Save Project To Pi uploads the current one-frame project. Choose it below to run it or set it as boot.";
+
   if (state.project.previewTimer == null) {
     renderSelectedAnimationPreview();
   }
@@ -3310,9 +3473,6 @@ function loadAutosave() {
     autosaveProject.activeFrameId = typeof parsedAutosave.activeFrameId === "string" ? parsedAutosave.activeFrameId : null;
     autosaveProject.activeAnimationId = typeof parsedAutosave.activeAnimationId === "string" ? parsedAutosave.activeAnimationId : null;
     applyProjectToEditor(autosaveProject, "autosave restore", { immediate: true, syncFrame: false });
-    if (autosaveProject.frames.length > 1 || autosaveProject.animations.length > 0) {
-      setWorkspaceView("animation");
-    }
     pushHistorySnapshot("autosave restore");
     log(`Restored autosaved project "${autosaveProject.name}".`);
     setAutosaveStatus(`Restored autosave from ${new Date(parsedAutosave.savedAt || Date.now()).toLocaleString()}.`);
@@ -4399,9 +4559,6 @@ function validateLoadedProject(data) {
 
 function loadProjectIntoEditor(project, sourceLabel) {
   applyProjectToEditor(project, sourceLabel, { syncFrame: false });
-  if (project.frames.length > 1 || project.animations.length > 0) {
-    setWorkspaceView("animation");
-  }
   pushHistorySnapshot(sourceLabel);
   scheduleFrameSend(sourceLabel);
   log(`Loaded project "${project.name}" into the editor with ${project.frames.length} frames and ${project.animations.length} animations.`);
@@ -4747,6 +4904,53 @@ function bindEvents() {
       resetStudioSidebarWidth();
     }
   });
+  elements.workspacePanelResizer.addEventListener("pointerdown", startWorkspaceAnimationPaneResize);
+  elements.workspacePanelResizer.addEventListener("dblclick", () => {
+    resetWorkspaceAnimationPaneWidth();
+  });
+  elements.workspacePanelResizer.addEventListener("keydown", (event) => {
+    if (window.matchMedia("(max-width: 900px)").matches) {
+      return;
+    }
+
+    const { minimum, maximum } = getWorkspaceAnimationPaneWidthLimits();
+    const currentWidth = getCurrentWorkspaceAnimationPaneWidth();
+
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      applyWorkspaceAnimationPaneWidth(
+        currentWidth + WORKSPACE_ANIMATION_PANE_RESIZE_STEP,
+        { persist: true },
+      );
+      return;
+    }
+
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      applyWorkspaceAnimationPaneWidth(
+        currentWidth - WORKSPACE_ANIMATION_PANE_RESIZE_STEP,
+        { persist: true },
+      );
+      return;
+    }
+
+    if (event.key === "Home") {
+      event.preventDefault();
+      applyWorkspaceAnimationPaneWidth(minimum, { persist: true });
+      return;
+    }
+
+    if (event.key === "End") {
+      event.preventDefault();
+      applyWorkspaceAnimationPaneWidth(maximum, { persist: true });
+      return;
+    }
+
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      resetWorkspaceAnimationPaneWidth();
+    }
+  });
   elements.applySavedEndpointButton.addEventListener("click", applySavedEndpoint);
   elements.deleteSavedEndpointButton.addEventListener("click", deleteSavedEndpoint);
   elements.saveEndpointButton.addEventListener("click", () => {
@@ -4768,15 +4972,6 @@ function bindEvents() {
   elements.connectButton.addEventListener("click", connect);
   elements.disconnectButton.addEventListener("click", disconnect);
   elements.resizeButton.addEventListener("click", resizeGrid);
-  elements.openAnimationStudioButton.addEventListener("click", () => {
-    setWorkspaceView("animation");
-  });
-  elements.workspaceGridTab.addEventListener("click", () => {
-    setWorkspaceView("grid");
-  });
-  elements.workspaceAnimationTab.addEventListener("click", () => {
-    setWorkspaceView("animation");
-  });
   elements.drawingName.addEventListener("change", () => {
     state.drawingName = sanitizeDrawingName(elements.drawingName.value);
     elements.drawingName.value = state.drawingName;
@@ -5003,10 +5198,18 @@ function bindEvents() {
       return;
     }
 
+    if (updateWorkspaceAnimationPaneResize(event)) {
+      return;
+    }
+
     updateBoardDrag(event);
   });
   window.addEventListener("pointerup", (event) => {
     if (finishStudioSidebarResize(event)) {
+      return;
+    }
+
+    if (finishWorkspaceAnimationPaneResize(event)) {
       return;
     }
 
@@ -5023,7 +5226,7 @@ function bindEvents() {
     }
   });
   window.addEventListener("pointerleave", () => {
-    if (state.sidebarResize || state.boardDrag) {
+    if (state.sidebarResize || state.workspacePaneResize || state.boardDrag) {
       return;
     }
 
@@ -5031,6 +5234,10 @@ function bindEvents() {
   });
   window.addEventListener("pointercancel", (event) => {
     if (finishStudioSidebarResize(event)) {
+      return;
+    }
+
+    if (finishWorkspaceAnimationPaneResize(event)) {
       return;
     }
 
@@ -5048,6 +5255,7 @@ function bindEvents() {
   });
   window.addEventListener("resize", () => {
     loadStudioSidebarWidthPreference();
+    loadWorkspaceAnimationPaneWidthPreference();
   });
   window.addEventListener("keydown", (event) => {
     const isUndo = (event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z";
@@ -5077,6 +5285,7 @@ function init() {
   loadSavedEndpoints();
   loadPixelColorPreference();
   loadStudioSidebarWidthPreference();
+  loadWorkspaceAnimationPaneWidthPreference();
   state.boardLayout = createBoardLayoutFromFrame(state.width, state.height, state.pixels);
   syncBoardGroups(state.boardLayout, [DEFAULT_BOARD_GROUP_ID]);
   elements.gridWidth.value = String(state.width);
@@ -5098,7 +5307,6 @@ function init() {
   updatePiRuntimeStatus();
   renderGrid();
   renderProjectEditor();
-  setWorkspaceView(state.workspaceView);
   updateModeButtons();
   pushHistorySnapshot("startup");
   loadAutosave();

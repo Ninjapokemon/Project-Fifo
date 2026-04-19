@@ -366,7 +366,8 @@ button:disabled {
   grid-column: 1 / -1;
 }
 
-.studio-resizer {
+.studio-resizer,
+.workspace-panel-resizer {
   position: relative;
   align-self: stretch;
   width: 18px;
@@ -377,7 +378,8 @@ button:disabled {
   touch-action: none;
 }
 
-.studio-resizer::before {
+.studio-resizer::before,
+.workspace-panel-resizer::before {
   content: "";
   position: absolute;
   top: 0;
@@ -393,7 +395,8 @@ button:disabled {
   );
 }
 
-.studio-resizer::after {
+.studio-resizer::after,
+.workspace-panel-resizer::after {
   content: "";
   position: absolute;
   top: 50%;
@@ -414,24 +417,31 @@ button:disabled {
 
 .studio-resizer:hover::after,
 .studio-resizer:focus-visible::after,
-.studio-shell.is-resizing .studio-resizer::after {
+.studio-shell.is-resizing .studio-resizer::after,
+.workspace-panel-resizer:hover::after,
+.workspace-panel-resizer:focus-visible::after,
+.workspace-panel.is-pane-resizing .workspace-panel-resizer::after {
   background: linear-gradient(180deg, rgba(255, 122, 61, 0.5), rgba(255, 179, 122, 0.36));
   box-shadow:
     0 0 0 1px rgba(255, 122, 61, 0.2),
     0 12px 28px rgba(255, 122, 61, 0.14);
 }
 
-.studio-resizer:focus-visible {
+.studio-resizer:focus-visible,
+.workspace-panel-resizer:focus-visible {
   outline: none;
 }
 
 .studio-shell.is-resizing,
-body.sidebar-resizing {
+.workspace-panel.is-pane-resizing,
+body.sidebar-resizing,
+body.workspace-pane-resizing {
   cursor: col-resize;
   user-select: none;
 }
 
-body.sidebar-resizing * {
+body.sidebar-resizing *,
+body.workspace-pane-resizing * {
   cursor: col-resize !important;
 }
 
@@ -621,6 +631,7 @@ body.sidebar-resizing * {
 
 .workspace-panel,
 .console-panel {
+  --workspace-animation-pane-width: 420px;
   padding: 20px;
   border-radius: 24px;
   background: linear-gradient(180deg, rgba(22, 30, 39, 0.88), rgba(16, 22, 29, 0.76));
@@ -642,6 +653,40 @@ body.sidebar-resizing * {
   gap: 16px;
 }
 
+.workspace-header {
+  align-items: start;
+}
+
+.workspace-header-copy-block {
+  min-width: 0;
+  max-width: 46ch;
+}
+
+.workspace-header-side {
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.workspace-header-actions {
+  width: 100%;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.workspace-header-card {
+  height: 100%;
+  padding: 16px;
+  gap: 12px;
+}
+
+.workspace-header-card .field:last-child,
+.workspace-header-card .button-row:last-child {
+  margin-bottom: 0;
+}
+
 .workspace-copy {
   margin: 8px 0 0;
   max-width: 44ch;
@@ -649,38 +694,53 @@ body.sidebar-resizing * {
   line-height: 1.45;
 }
 
-.workspace-tabs {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  align-self: start;
+.workspace-mode-label {
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 122, 61, 0.2);
+  background: rgba(255, 122, 61, 0.1);
+  color: var(--accent-strong);
+  font-size: 0.86rem;
+  white-space: nowrap;
+  justify-self: end;
 }
 
-.workspace-tab {
-  background: rgba(11, 17, 24, 0.82);
-  color: var(--muted);
-  box-shadow: inset 0 0 0 1px rgba(134, 160, 185, 0.12);
+.workspace-body {
+  display: grid;
+  gap: 18px 0;
+  grid-template-columns:
+    minmax(0, 1fr)
+    18px
+    clamp(320px, var(--workspace-animation-pane-width), 720px);
+  align-items: start;
 }
 
-.workspace-tab.active {
-  background: linear-gradient(135deg, #ff7a3d, #f05d24);
-  color: #fff8f2;
-  box-shadow: 0 12px 26px rgba(240, 93, 36, 0.24);
+.workspace-grid-pane,
+.workspace-animation-pane {
+  min-width: 0;
 }
 
-.workspace-view[hidden] {
-  display: none !important;
+.workspace-main-column,
+.workspace-side-column {
+  min-width: 0;
+  display: grid;
+  gap: 18px;
+  align-content: start;
 }
 
-.workspace-grid-view,
-.workspace-animation-view {
-  margin-top: 18px;
+.workspace-panel-resizer {
+  min-height: 100%;
+}
+
+.workspace-animation-pane {
+  min-width: 0;
 }
 
 .animation-studio-shell {
   display: grid;
   gap: 18px;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   align-items: start;
 }
 
@@ -707,22 +767,33 @@ body.sidebar-resizing * {
   font-size: 1.04rem;
 }
 
-.animation-studio-overview,
-.animation-studio-frames,
-.animation-studio-controls {
-  grid-column: span 4;
+.animation-studio-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
 }
 
-.animation-studio-preview {
-  grid-column: span 5;
+.animation-studio-status {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(134, 160, 185, 0.12);
+  background: rgba(11, 17, 24, 0.46);
 }
 
-.animation-studio-steps {
-  grid-column: span 7;
+.animation-studio-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(134, 160, 185, 0.04),
+    rgba(134, 160, 185, 0.24),
+    rgba(134, 160, 185, 0.04)
+  );
 }
 
 .animation-studio-steps .animation-step-list {
-  max-height: 540px;
+  max-height: 620px;
   overflow: auto;
   padding-right: 4px;
 }
@@ -1024,6 +1095,10 @@ code {
     display: none;
   }
 
+  .workspace-panel-resizer {
+    display: none;
+  }
+
   .button-row,
   .workspace-header,
   .grid-header,
@@ -1033,28 +1108,22 @@ code {
     align-items: stretch;
   }
 
-  .workspace-tabs {
-    width: 100%;
-  }
-
-  .workspace-tab {
-    flex: 1 1 0;
-  }
-
   .stacked-fields.two-up {
     grid-template-columns: 1fr;
   }
 
-  .animation-studio-shell {
+  .workspace-body {
     grid-template-columns: 1fr;
+    gap: 18px;
   }
 
-  .animation-studio-overview,
-  .animation-studio-frames,
-  .animation-studio-controls,
-  .animation-studio-preview,
-  .animation-studio-steps {
-    grid-column: auto;
+  .workspace-header-side {
+    justify-items: stretch;
+  }
+
+  .workspace-header-actions {
+    width: 100%;
+    grid-template-columns: 1fr;
   }
 
   .legend {
@@ -1067,16 +1136,11 @@ code {
   }
 }
 
-@media (max-width: 1250px) and (min-width: 901px) {
-  .animation-studio-shell {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .animation-studio-overview,
-  .animation-studio-frames,
-  .animation-studio-controls,
-  .animation-studio-preview,
-  .animation-studio-steps {
-    grid-column: auto;
+@media (max-width: 1400px) and (min-width: 901px) {
+  .workspace-body {
+    grid-template-columns:
+      minmax(0, 1fr)
+      18px
+      clamp(320px, var(--workspace-animation-pane-width), 540px);
   }
 }
