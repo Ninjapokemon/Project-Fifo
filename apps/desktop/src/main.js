@@ -24,7 +24,7 @@ const BOARD_GRID_COLUMN_GAP = 7;
 const BOARD_GRID_ROW_GAP = 1;
 const BOARD_CARD_PADDING = 14;
 const BOARD_CARD_BORDER = 2;
-const BOARD_HEADER_HEIGHT = 72;
+const BOARD_HEADER_HEIGHT = 112;
 const BOARD_LABEL_GAP = 12;
 const BOARD_WORKSPACE_GAP = 18;
 const BOARD_SLOT_WIDTH = (PANEL_SIZE * PIXEL_CELL_SIZE)
@@ -622,6 +622,8 @@ function cloneBoard(board) {
     logicalGridY: board.logicalGridY,
     visualGridX: board.visualGridX,
     visualGridY: board.visualGridY,
+    viewRotation: board.viewRotation,
+    viewMirror: board.viewMirror,
     groupId: board.groupId,
     width: board.width,
     height: board.height,
@@ -639,6 +641,8 @@ function serializeBoardLayout(layout = state.boardLayout) {
     chainIndex: board.chainIndex,
     visualGridX: board.visualGridX,
     visualGridY: board.visualGridY,
+    viewRotation: board.viewRotation,
+    viewMirror: board.viewMirror,
     groupId: board.groupId,
     width: board.width,
     height: board.height,
@@ -761,8 +765,16 @@ function getBoardOutputRotation(board, layout = state.layout) {
   return panelRotations[physicalPanelIndex] ?? 0;
 }
 
-function formatBoardRotationLabel(rotation) {
-  return `Rot ${rotation}`;
+function normalizeBoardViewRotation(value) {
+  return PANEL_ROTATION_VALUES.includes(value) ? value : 0;
+}
+
+function normalizeBoardViewMirror(value) {
+  return value === true;
+}
+
+function formatBoardOutputRotationLabel(rotation) {
+  return `LED ${rotation}`;
 }
 
 function getBoardOutputMirrored(board, layout = state.layout) {
@@ -775,8 +787,57 @@ function getBoardOutputMirrored(board, layout = state.layout) {
   return panelMirrors[physicalPanelIndex] === true;
 }
 
-function formatBoardMirrorLabel(mirrored) {
-  return mirrored ? "Mirror On" : "Mirror Off";
+function formatBoardOutputMirrorLabel(mirrored) {
+  return mirrored ? "LED Mir On" : "LED Mir Off";
+}
+
+function getBoardViewRotation(board) {
+  return normalizeBoardViewRotation(board.viewRotation);
+}
+
+function getBoardViewMirrored(board) {
+  return normalizeBoardViewMirror(board.viewMirror);
+}
+
+function formatBoardViewRotationLabel(rotation) {
+  return `View ${rotation}`;
+}
+
+function formatBoardViewMirrorLabel(mirrored) {
+  return mirrored ? "View Mir On" : "View Mir Off";
+}
+
+function getBoardDisplayWidth(board) {
+  const rotation = getBoardViewRotation(board);
+  return rotation === 90 || rotation === 270 ? board.height : board.width;
+}
+
+function getBoardDisplayHeight(board) {
+  const rotation = getBoardViewRotation(board);
+  return rotation === 90 || rotation === 270 ? board.width : board.height;
+}
+
+function mapBoardLogicalToDisplayCoordinates(board, localX, localY) {
+  const rotation = getBoardViewRotation(board);
+  let displayX = localX;
+  let displayY = localY;
+
+  if (rotation === 90) {
+    displayX = board.height - 1 - localY;
+    displayY = localX;
+  } else if (rotation === 180) {
+    displayX = board.width - 1 - localX;
+    displayY = board.height - 1 - localY;
+  } else if (rotation === 270) {
+    displayX = localY;
+    displayY = board.width - 1 - localX;
+  }
+
+  if (getBoardViewMirrored(board)) {
+    displayX = getBoardDisplayWidth(board) - 1 - displayX;
+  }
+
+  return { x: displayX, y: displayY };
 }
 
 function boardOriginX(board) {
@@ -796,17 +857,19 @@ function boardVisualTop(board) {
 }
 
 function boardOuterWidth(board) {
-  return (board.width * PIXEL_CELL_SIZE)
-    + (Math.max(board.width - 1, 0) * BOARD_GRID_COLUMN_GAP)
+  const displayWidth = getBoardDisplayWidth(board);
+  return (displayWidth * PIXEL_CELL_SIZE)
+    + (Math.max(displayWidth - 1, 0) * BOARD_GRID_COLUMN_GAP)
     + (BOARD_CARD_PADDING * 2)
     + (BOARD_CARD_BORDER * 2);
 }
 
 function boardOuterHeight(board) {
+  const displayHeight = getBoardDisplayHeight(board);
   return BOARD_HEADER_HEIGHT
     + BOARD_LABEL_GAP
-    + (board.height * PIXEL_CELL_SIZE)
-    + (Math.max(board.height - 1, 0) * BOARD_GRID_ROW_GAP)
+    + (displayHeight * PIXEL_CELL_SIZE)
+    + (Math.max(displayHeight - 1, 0) * BOARD_GRID_ROW_GAP)
     + (BOARD_CARD_PADDING * 2)
     + (BOARD_CARD_BORDER * 2);
 }
@@ -853,6 +916,8 @@ function createBoardLayoutFromFrame(frameWidth = state.width, frameHeight = stat
         logicalGridY: boardY,
         visualGridX: boardX,
         visualGridY: boardY,
+        viewRotation: 0,
+        viewMirror: false,
         groupId: DEFAULT_BOARD_GROUP_ID,
         width,
         height,
@@ -899,6 +964,8 @@ function normalizePersistedBoardWorkspace(frameWidth, frameHeight, framePixels, 
       chainIndex: index,
       visualGridX: visualPosition.x,
       visualGridY: visualPosition.y,
+      viewRotation: normalizeBoardViewRotation(persistedBoard?.viewRotation),
+      viewMirror: normalizeBoardViewMirror(persistedBoard?.viewMirror),
       groupId: typeof persistedBoard?.groupId === "string" && persistedBoard.groupId.trim()
         ? persistedBoard.groupId.trim()
         : DEFAULT_BOARD_GROUP_ID,
@@ -1015,6 +1082,8 @@ function boardLayoutMetadataMatches(leftLayout = [], rightLayout = []) {
       && leftBoard.logicalGridY === rightBoard.logicalGridY
       && leftBoard.visualGridX === rightBoard.visualGridX
       && leftBoard.visualGridY === rightBoard.visualGridY
+      && getBoardViewRotation(leftBoard) === getBoardViewRotation(rightBoard)
+      && getBoardViewMirrored(leftBoard) === getBoardViewMirrored(rightBoard)
       && leftBoard.groupId === rightBoard.groupId
       && leftBoard.width === rightBoard.width
       && leftBoard.height === rightBoard.height
@@ -1334,6 +1403,38 @@ function toggleBoardOutputMirror(boardId) {
   log(`Turned ${nextMirrorValue ? "on" : "off"} output mirror for ${getBoardChainLabel(board)} on physical panel ${physicalPanelIndex + 1} locally. Connect to send it to the Pi.`);
 }
 
+function cycleBoardViewRotation(boardId) {
+  const nextLayout = cloneBoardLayout();
+  const board = nextLayout.find((entry) => entry.id === boardId);
+  if (!board) {
+    return;
+  }
+
+  const currentRotation = getBoardViewRotation(board);
+  const currentRotationIndex = PANEL_ROTATION_VALUES.indexOf(currentRotation);
+  board.viewRotation = PANEL_ROTATION_VALUES[(currentRotationIndex + 1) % PANEL_ROTATION_VALUES.length];
+  state.boardLayout = nextLayout;
+  renderGrid();
+  saveAutosave();
+  pushHistorySnapshot("board website rotation");
+  log(`Set website view rotation for ${getBoardChainLabel(board)} to ${board.viewRotation} degrees.`);
+}
+
+function toggleBoardViewMirror(boardId) {
+  const nextLayout = cloneBoardLayout();
+  const board = nextLayout.find((entry) => entry.id === boardId);
+  if (!board) {
+    return;
+  }
+
+  board.viewMirror = !getBoardViewMirrored(board);
+  state.boardLayout = nextLayout;
+  renderGrid();
+  saveAutosave();
+  pushHistorySnapshot("board website mirror");
+  log(`Turned ${board.viewMirror ? "on" : "off"} website view mirror for ${getBoardChainLabel(board)}.`);
+}
+
 function createNewBoardGroup() {
   const highestGroupNumber = Math.max(...getBoardGroups().map((groupId) => extractBoardGroupNumber(groupId)));
   const nextGroupId = `group-${highestGroupNumber + 1}`;
@@ -1348,15 +1449,20 @@ function createBoard(boardData) {
   const board = document.createElement("section");
   const boardHeader = document.createElement("div");
   const boardLabel = document.createElement("button");
-  const boardControls = document.createElement("div");
   const groupSelect = document.createElement("select");
   const rotationButton = document.createElement("button");
   const mirrorButton = document.createElement("button");
+  const viewRotationButton = document.createElement("button");
+  const viewMirrorButton = document.createElement("button");
   const boardGrid = document.createElement("div");
   const dragState = state.boardDrag && state.boardDrag.boardId === boardData.id ? state.boardDrag : null;
   const physicalPanelIndex = getPhysicalPanelIndex(boardData.chainIndex);
   const outputRotation = getBoardOutputRotation(boardData);
   const outputMirrored = getBoardOutputMirrored(boardData);
+  const viewRotation = getBoardViewRotation(boardData);
+  const viewMirrored = getBoardViewMirrored(boardData);
+  const displayWidth = getBoardDisplayWidth(boardData);
+  const displayHeight = getBoardDisplayHeight(boardData);
 
   board.className = "pixel-board";
   board.setAttribute("aria-label", getBoardChainLabel(boardData));
@@ -1370,6 +1476,7 @@ function createBoard(boardData) {
   board.classList.toggle("drag-invalid", Boolean(dragState && dragState.hasMoved && !dragState.isValid));
 
   boardHeader.className = "pixel-board-header";
+  boardHeader.style.minHeight = `${BOARD_HEADER_HEIGHT}px`;
 
   boardLabel.type = "button";
   boardLabel.className = "pixel-board-label";
@@ -1378,8 +1485,6 @@ function createBoard(boardData) {
   boardLabel.addEventListener("pointerdown", (event) => {
     startBoardDrag(boardData.id, event);
   });
-
-  boardControls.className = "pixel-board-controls";
 
   groupSelect.className = "pixel-board-group-select";
   groupSelect.setAttribute("aria-label", `${getBoardChainLabel(boardData)} group`);
@@ -1400,7 +1505,7 @@ function createBoard(boardData) {
   rotationButton.type = "button";
   rotationButton.className = "pixel-board-rotation-button";
   rotationButton.classList.toggle("active", outputRotation !== 0);
-  rotationButton.textContent = formatBoardRotationLabel(outputRotation);
+  rotationButton.textContent = formatBoardOutputRotationLabel(outputRotation);
   rotationButton.setAttribute("aria-pressed", outputRotation !== 0 ? "true" : "false");
   rotationButton.setAttribute(
     "aria-label",
@@ -1417,7 +1522,7 @@ function createBoard(boardData) {
   mirrorButton.type = "button";
   mirrorButton.className = "pixel-board-mirror-button";
   mirrorButton.classList.toggle("active", outputMirrored);
-  mirrorButton.textContent = formatBoardMirrorLabel(outputMirrored);
+  mirrorButton.textContent = formatBoardOutputMirrorLabel(outputMirrored);
   mirrorButton.setAttribute("aria-pressed", outputMirrored ? "true" : "false");
   mirrorButton.setAttribute(
     "aria-label",
@@ -1431,24 +1536,67 @@ function createBoard(boardData) {
     toggleBoardOutputMirror(boardData.id);
   });
 
+  viewRotationButton.type = "button";
+  viewRotationButton.className = "pixel-board-view-rotation-button";
+  viewRotationButton.classList.toggle("active", viewRotation !== 0);
+  viewRotationButton.textContent = formatBoardViewRotationLabel(viewRotation);
+  viewRotationButton.setAttribute("aria-pressed", viewRotation !== 0 ? "true" : "false");
+  viewRotationButton.setAttribute(
+    "aria-label",
+    `${getBoardChainLabel(boardData)} currently uses ${viewRotation} degrees of website-only view rotation. Click to cycle 0, 90, 180, and 270 degrees without changing the LED hardware output.`,
+  );
+  viewRotationButton.title = "Cycle how this board is shown on the website only.";
+  viewRotationButton.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+  });
+  viewRotationButton.addEventListener("click", () => {
+    cycleBoardViewRotation(boardData.id);
+  });
+
+  viewMirrorButton.type = "button";
+  viewMirrorButton.className = "pixel-board-view-mirror-button";
+  viewMirrorButton.classList.toggle("active", viewMirrored);
+  viewMirrorButton.textContent = formatBoardViewMirrorLabel(viewMirrored);
+  viewMirrorButton.setAttribute("aria-pressed", viewMirrored ? "true" : "false");
+  viewMirrorButton.setAttribute(
+    "aria-label",
+    `${getBoardChainLabel(boardData)} currently has ${viewMirrored ? "website-only mirroring enabled" : "website-only mirroring disabled"}. Click to toggle how this board is shown in the editor without changing the LED hardware output.`,
+  );
+  viewMirrorButton.title = "Toggle how this board is mirrored on the website only.";
+  viewMirrorButton.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+  });
+  viewMirrorButton.addEventListener("click", () => {
+    toggleBoardViewMirror(boardData.id);
+  });
+
   boardHeader.appendChild(boardLabel);
-  boardControls.appendChild(groupSelect);
-  boardControls.appendChild(rotationButton);
-  boardControls.appendChild(mirrorButton);
-  boardHeader.appendChild(boardControls);
+  boardHeader.appendChild(groupSelect);
+  boardHeader.appendChild(rotationButton);
+  boardHeader.appendChild(mirrorButton);
+  boardHeader.appendChild(viewRotationButton);
+  boardHeader.appendChild(viewMirrorButton);
 
   boardGrid.className = "pixel-board-grid";
-  boardGrid.style.gridTemplateColumns = `repeat(${boardData.width}, ${PIXEL_CELL_SIZE}px)`;
-  boardGrid.style.gridTemplateRows = `repeat(${boardData.height}, ${PIXEL_CELL_SIZE}px)`;
+  boardGrid.style.gridTemplateColumns = `repeat(${displayWidth}, ${PIXEL_CELL_SIZE}px)`;
+  boardGrid.style.gridTemplateRows = `repeat(${displayHeight}, ${PIXEL_CELL_SIZE}px)`;
 
+  const displayCells = Array(displayWidth * displayHeight);
   for (let localY = 0; localY < boardData.height; localY += 1) {
     for (let localX = 0; localX < boardData.width; localX += 1) {
+      const displayCoordinates = mapBoardLogicalToDisplayCoordinates(boardData, localX, localY);
       const x = boardOriginX(boardData) + localX;
       const y = boardOriginY(boardData) + localY;
       const value = boardData.pixels[(localY * boardData.width) + localX] ?? 0;
-      boardGrid.appendChild(createCell(x, y, value));
+      const displayIndex = indexForDimensions(displayCoordinates.x, displayCoordinates.y, displayWidth);
+      displayCells[displayIndex] = createCell(x, y, value);
     }
   }
+  displayCells.forEach((cell) => {
+    if (cell) {
+      boardGrid.appendChild(cell);
+    }
+  });
 
   board.appendChild(boardHeader);
   board.appendChild(boardGrid);
