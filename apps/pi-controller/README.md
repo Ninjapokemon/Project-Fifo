@@ -16,6 +16,7 @@ Today it can already run a saved default project on boot while still allowing th
 - render frames to the hardware device
 - load a saved boot project from disk on startup
 - play saved default frames or animations locally without needing a browser connection
+- drive auxiliary OLED status and preview output with runtime-aware mode selection
 - eventually react to inputs such as GPIO buttons or microphone activity
 
 ## Main Files
@@ -27,6 +28,7 @@ Today it can already run a saved default project on boot while still allowing th
 - `src/storage.py`: Pi-side drawing library storage
 - `src/project_store.py`: Pi-side project storage
 - `src/runtime.py`: project runtime and live-override handoff
+- `src/oled.py`: OLED status/preview helper with `preset` and `mirror` preview modes
 - `config.example.json`: template for local hardware settings
 - `project-fifo.service`: `systemd` unit template for boot-time startup
 
@@ -54,6 +56,23 @@ Saved drawings are stored on the Pi under `apps/pi-controller/data/drawings` as 
 Saved projects are stored on the Pi under `apps/pi-controller/data/projects` as JSON files. A project can contain one or more named frames, optional named animations, and a default frame or animation target. The desktop app can save the current drawing as a Pi project, activate it, and choose which project should load automatically on boot.
 
 Live website frames are now treated as a temporary override on top of that project runtime. If the website disconnects and a Pi project was active, the Pi can resume the project instead of staying stuck in the temporary live frame state.
+
+## OLED Preview Pipeline
+
+The Pi OLED helper now supports two preview modes:
+
+- `preset` (default): OLED preview is driven from the active Pi project target in runtime state. If the active target is an animation, OLED advances through that animation's step timing using the project file data. If the active target is a frame, OLED shows that frame. If project data is unavailable, it falls back to built-in preset animations mapped by event.
+- `mirror`: OLED preview uses the transformed live frame callback path.
+
+This means future project animations are automatically eligible for OLED preview without code changes, as long as they become the active runtime target.
+
+Relevant config keys in `apps/pi-controller/config.json`:
+
+- `oled.preview_mode`
+- `oled.preview_event_map`
+- `oled.preview_fps`
+- `oled.status_fps`
+- `oled_coalesce_seconds`
 
 ## Future Runtime Direction
 

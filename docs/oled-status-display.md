@@ -1,118 +1,63 @@
-# OLED Status Display Plan
+# OLED Status and Preview
 
-This project currently drives MAX7219 LED matrices as the primary face output. The small `0.96"` `128x64` I2C OLED modules are a good fit as a secondary status screen for setup and runtime information that is hard to show on the matrix face itself.
+This project drives MAX7219 matrices as the primary face output and can also drive auxiliary I2C OLED displays for status and preview.
 
-## Why it fits
+## What is implemented
 
-An auxiliary OLED is useful for information such as:
+- status OLED pages for runtime/network/system summary
+- optional preview OLED output
+- configurable preview mode:
+  - `preset` (default): uses active project frame/animation data from Pi runtime state
+  - `mirror`: uses transformed live frame mirroring
+- runtime-aware event fallback mapping (`preview_event_map`) when project-backed preview data is unavailable
+- capped update rates (`status_fps`, `preview_fps`) and coalesced state refresh (`oled_coalesce_seconds`)
 
-- Pi network address for connecting the desktop app
-- WebSocket port and whether the service is up
-- whether the runtime is in `idle`, `live`, or `project` mode
-- active project and boot project names
-- active animation or frame target
-- brightness and display size
-- startup or error messages during bring-up
+## Preview behavior contract
 
-That keeps the matrix chain focused on the actual face output while the OLED handles text and diagnostics.
+When `oled.preview_mode` is `preset`:
 
-## Typical hardware assumptions
+1. If runtime has an active project target:
+   - active frame target -> OLED shows that frame
+   - active animation target -> OLED advances using that animation's step timing (`durationMs`, `loop`) from the saved project data
+2. If project-backed data cannot be resolved, OLED falls back to preset animations chosen by `preview_event_map`
 
-Most of these modules expose four pins:
+This means future animations added to project files are processed the same way automatically when they become the active runtime target.
 
-- `VCC`
-- `GND`
-- `SCL`
-- `SDA`
+## Built-in fallback presets
 
-Typical Raspberry Pi wiring:
+Built-in fallback names:
+
+- `idle`
+- `blink`
+- `talk`
+- `live`
+
+These are used only when project-backed preview selection is unavailable in `preset` mode.
+
+## Typical config keys
+
+Use these fields in `apps/pi-controller/config.json`:
+
+- `oled.enabled`
+- `oled.status_enabled`
+- `oled.preview_enabled`
+- `oled.preview_mode`
+- `oled.status_address`
+- `oled.preview_address`
+- `oled.status_fps`
+- `oled.preview_fps`
+- `oled.preview_event_map`
+- `oled_coalesce_seconds`
+
+## Hardware note
+
+Typical modules are `0.96"` `128x64` I2C OLEDs (commonly `SSD1306`) at `0x3C` or `0x3D`.
+
+Typical Raspberry Pi pin mapping:
 
 - `VCC` -> `3V3` (Pin 1)
 - `GND` -> `GND` (Pin 6)
 - `SCL` -> `GPIO3` / `SCL1` (Pin 5)
 - `SDA` -> `GPIO2` / `SDA1` (Pin 3)
 
-Common I2C addresses are `0x3C` and `0x3D`.
-
-## Pi prep
-
-The project does not use the OLED yet, but the Raspberry Pi side will eventually need I2C enabled.
-
-Typical prep steps on Raspberry Pi OS:
-
-1. run `sudo raspi-config`
-2. open `Interface Options`
-3. enable `I2C`
-4. reboot if prompted
-
-If you want to confirm the module is visible on the bus before coding, install `i2c-tools` and scan bus `1`:
-
-```bash
-sudo apt install -y i2c-tools
-i2cdetect -y 1
-```
-
-That should usually show the module at `0x3C` or `0x3D`.
-
-## Important module note
-
-Many generic `128x64` `0.96"` I2C OLEDs are `SSD1306`, but some are `SH1106`. The software path should start with `SSD1306` because it is the most common target, while keeping the implementation flexible enough to swap to `SH1106` if the real module needs it.
-
-## Suggested software direction
-
-1. Keep the MAX7219 matrix output as the main render target.
-2. Add an optional auxiliary OLED status display on the Pi side.
-3. Store OLED-specific config separately from the matrix layout config.
-4. Update the OLED only when runtime state changes instead of every matrix frame.
-5. Start with plain text screens before worrying about icons or animation.
-
-## Good first-pass OLED screens
-
-Because `128x64` is small, the first version should probably rotate between a few short screens instead of trying to fit everything at once.
-
-Suggested screen set:
-
-1. Boot or network screen
-   `Project Fifo`
-   Pi IP or hostname
-   `ws://<address>:8765`
-2. Runtime screen
-   mode
-   active project
-   active target
-3. Hardware screen
-   matrix size
-   brightness
-   connection state
-
-## What the current code already exposes
-
-The existing Pi runtime already tracks several fields that map nicely to an OLED:
-
-- `runtime_mode`
-- `live_override_active`
-- `active_project`
-- `boot_project`
-- `active_target_type`
-- `active_target_name`
-- matrix `width` and `height`
-- `brightness`
-
-That means the OLED work can build on real runtime state instead of scraping logs.
-
-## Likely implementation shape
-
-A clean way to add this later would be:
-
-1. leave `MatrixDisplay` focused on the MAX7219 output
-2. add a separate OLED status-display helper or interface
-3. have the Pi server or runtime publish state updates to that helper at key events
-4. keep OLED failures non-fatal so face rendering still works if the small screen is disconnected
-
-## Open questions for the implementation pass
-
-- exact controller on the real module: `SSD1306` or `SH1106`
-- whether the OLED should show a single static summary or cycle between pages
-- how aggressively project names should scroll or truncate
-- whether the OLED should show the Pi's current LAN IP, hostname, or both
-- whether temporary error messages should replace the normal status screen or appear as a timed overlay
+Enable I2C on Pi with `raspi-config` and verify with `i2cdetect -y 1`.

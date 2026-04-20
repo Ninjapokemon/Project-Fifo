@@ -6,7 +6,7 @@
 Desktop UI -> WebSocket messages -> Pi controller -> mapping layer -> luma device -> MAX7219 matrices
 ```
 
-The MAX7219 chain is still the primary rendered output. A small I2C OLED can fit alongside it later as a secondary status display for text such as IP address, connection state, active project, and runtime mode.
+The MAX7219 chain is still the primary rendered output. A small I2C OLED now runs alongside it as a secondary status and preview display.
 
 ## Long-Term Direction
 
@@ -33,6 +33,7 @@ The current implementation is now starting to follow that split:
 - the website can still stream temporary live frames for fast editing
 - the Pi can store named projects and remember a boot project
 - disconnecting the website no longer has to mean losing the Pi-owned runtime state
+- OLED preview can follow the active Pi runtime target (frame or animation) using project data, with preset fallback behavior
 
 That means the future high-level flow will look more like:
 
@@ -40,7 +41,7 @@ That means the future high-level flow will look more like:
 Desktop editor -> project upload/control -> Pi runtime -> playback/state engine -> mapping layer -> luma device -> MAX7219 matrices
                                                 |
                                                 -> input handlers (buttons, microphone, future sensors)
-                                                -> auxiliary status display (I2C OLED)
+                                                -> auxiliary status + preview display (I2C OLED)
 ```
 
 ## Responsibilities
@@ -58,7 +59,7 @@ Desktop editor -> project upload/control -> Pi runtime -> playback/state engine 
 - Validates payloads against the shared protocol.
 - Converts logical coordinates to physical matrix positions.
 - Pushes updates to the `luma` device.
-- Can later publish a compact text summary to an auxiliary OLED without changing the face-render pipeline.
+- Publishes compact runtime status and preview output to auxiliary OLEDs without changing MAX7219 ownership.
 - Will eventually need a local playback engine, project loader, state machine, and input manager.
 
 ### Shared package

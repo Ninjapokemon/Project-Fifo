@@ -71,6 +71,8 @@ The main fields to care about are:
 
 Built-in preset animation names today are `idle`, `blink`, `talk`, and `live`.
 
+With `oled.preview_mode: "preset"`, the OLED preview first tries to use the active project's real frame or animation data from Pi runtime state. That means new animations added to project files are previewed on OLED automatically when they become the active target. The `preview_event_map` keys are only used as a fallback when project-backed preview data is unavailable.
+
 Example for three matrices in one horizontal row:
 
 ```json
