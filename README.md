@@ -72,9 +72,10 @@ That means the current single-frame architecture is a starting point, not the fi
 - a shared project format that can represent drawings, animations, boot defaults, and future input mappings
 - a clear split between temporary live control, saved Pi settings, and deployed Pi runtime projects
 - Pi-side playback and state management so animation timing does not depend on the browser
+- optional Pi-side status output on a small I2C OLED for network, project, and runtime state
 - Pi-side input handling for things like buttons and microphone-driven reactions
 - protocol support for runtime state, project loading, and animation control
 
-See [docs/architecture.md](docs/architecture.md) for the data flow and [apps/pi-controller/README.md](apps/pi-controller/README.md) for Pi-specific setup.
+See [docs/architecture.md](docs/architecture.md) for the data flow, [docs/oled-status-display.md](docs/oled-status-display.md) for the planned auxiliary OLED direction, and [apps/pi-controller/README.md](apps/pi-controller/README.md) for Pi-specific setup.
 
 The running TODO list is in [TODO.md](TODO.md).

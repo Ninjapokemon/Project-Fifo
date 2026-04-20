@@ -6,6 +6,8 @@
 Desktop UI -> WebSocket messages -> Pi controller -> mapping layer -> luma device -> MAX7219 matrices
 ```
 
+The MAX7219 chain is still the primary rendered output. A small I2C OLED can fit alongside it later as a secondary status display for text such as IP address, connection state, active project, and runtime mode.
+
 ## Long-Term Direction
 
 Project Fifo is moving toward a protogen face runtime, not just a one-frame drawing transport.
@@ -38,6 +40,7 @@ That means the future high-level flow will look more like:
 Desktop editor -> project upload/control -> Pi runtime -> playback/state engine -> mapping layer -> luma device -> MAX7219 matrices
                                                 |
                                                 -> input handlers (buttons, microphone, future sensors)
+                                                -> auxiliary status display (I2C OLED)
 ```
 
 ## Responsibilities
@@ -55,6 +58,7 @@ Desktop editor -> project upload/control -> Pi runtime -> playback/state engine 
 - Validates payloads against the shared protocol.
 - Converts logical coordinates to physical matrix positions.
 - Pushes updates to the `luma` device.
+- Can later publish a compact text summary to an auxiliary OLED without changing the face-render pipeline.
 - Will eventually need a local playback engine, project loader, state machine, and input manager.
 
 ### Shared package

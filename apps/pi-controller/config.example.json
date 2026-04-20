@@ -9,6 +9,12 @@
   "block_orientation": 90,
   "reverse_order": false,
   "serpentine": false,
+  "oled": {
+    "enabled": true,
+    "port": 1,
+    "status_address": 60,
+    "preview_address": 61
+  },
   "panel_order": null,
   "panel_rotations": null,
   "panel_mirrors": null

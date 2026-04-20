@@ -27,11 +27,13 @@ class ProjectRuntime:
         project_store: ProjectStore,
         config: dict[str, Any],
         save_config_callback: Callable[[dict[str, Any]], Any] = save_config,
+        on_state_change: Callable[[dict[str, Any]], Any] | None = None,
     ):
         self.display = display
         self.project_store = project_store
         self.config = config
         self._save_config_callback = save_config_callback
+        self._on_state_change = on_state_change
         self._connected_clients = 0
         self._playback_task: asyncio.Task[None] | None = None
         self._live_frame: dict[str, Any] | None = None
@@ -43,6 +45,12 @@ class ProjectRuntime:
         self.active_target_type: str | None = None
         self.active_target_id: str | None = None
         self.active_target_name: str | None = None
+        self._emit_state_change()
+
+    def _emit_state_change(self) -> None:
+        if self._on_state_change is None:
+            return
+        self._on_state_change(self.get_runtime_state())
 
     def _normalize_project_name(self, value: Any) -> str | None:
         if not isinstance(value, str) or not value.strip():
@@ -146,6 +154,7 @@ class ProjectRuntime:
         self.active_target_name = target_name
         self.runtime_mode = "project"
         self.live_override_active = False
+        self._emit_state_change()
 
         if target_type == "frame":
             frame = self._build_frames_by_id(project)[target_id]
@@ -192,6 +201,7 @@ class ProjectRuntime:
         self.live_override_active = True
         self.runtime_mode = "live"
         self.display.render_frame(pixels, width, height)
+        self._emit_state_change()
 
     async def apply_live_clear(self) -> None:
         await self._stop_playback()
@@ -203,12 +213,14 @@ class ProjectRuntime:
         self.live_override_active = True
         self.runtime_mode = "live"
         self.display.clear()
+        self._emit_state_change()
 
     async def refresh_output(self) -> None:
         if self.live_override_active:
             await self._stop_playback()
             self.runtime_mode = "live"
             self._render_live_frame()
+            self._emit_state_change()
             return
 
         if self.active_project is not None:
@@ -218,6 +230,7 @@ class ProjectRuntime:
         await self._stop_playback()
         self.runtime_mode = "idle"
         self.display.clear()
+        self._emit_state_change()
 
     async def save_project(self, project: dict[str, Any]) -> str:
         normalized_project = validate_project_payload(project)
@@ -263,6 +276,7 @@ class ProjectRuntime:
         if deleted_name == self.boot_project_name:
             self.boot_project_name = None
             self._save_config()
+            self._emit_state_change()
 
         if deleted_name == self.active_project_name:
             await self._stop_playback()
@@ -276,6 +290,7 @@ class ProjectRuntime:
             else:
                 self.runtime_mode = "idle"
                 self.display.clear()
+            self._emit_state_change()
 
         return deleted_name
 
@@ -283,11 +298,13 @@ class ProjectRuntime:
         project = self._read_runnable_project(name)
         self.boot_project_name = project["name"]
         self._save_config()
+        self._emit_state_change()
         return self.boot_project_name
 
     async def clear_boot_project(self) -> None:
         self.boot_project_name = None
         self._save_config()
+        self._emit_state_change()
 
     async def shutdown(self) -> None:
         await self._stop_playback()
