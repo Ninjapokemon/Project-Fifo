@@ -155,6 +155,7 @@ class DualOledStatus:
         self.preview_device = None
         self._runtime_state: dict[str, Any] = {}
         self._display_state: dict[str, Any] = {}
+        self._active_project: dict[str, Any] | None = None
         self._hostname = socket.gethostname()
         self._ip_address = _lan_ip()
         self._page = 0
@@ -186,6 +187,7 @@ class DualOledStatus:
         )
         self._active_preview_event = "idle"
         self._active_preview_started_at = time.monotonic()
+        self._active_preview_source_key: tuple[str, str, str] | None = None
         self._preset_animation_cache_key: tuple[int, int] | None = None
         self._preset_animation_cache: dict[str, dict[str, Any]] | None = None
         status_fps = oled_config.get("status_fps", 2)
@@ -246,11 +248,13 @@ class DualOledStatus:
         runtime_state: dict[str, Any],
         display_state: dict[str, Any],
         board_layout: list[dict[str, Any]] | None = None,
+        active_project: dict[str, Any] | None = None,
     ) -> None:
         if not self.enabled:
             return
         self._runtime_state = dict(runtime_state)
         self._display_state = dict(display_state)
+        self._active_project = dict(active_project) if isinstance(active_project, dict) else None
         self._board_layout = list(board_layout) if isinstance(board_layout, list) else None
         if self._board_layout is None:
             self._board_layout_signature = 0
@@ -414,14 +418,123 @@ class DualOledStatus:
             return "live"
         return default_event
 
+    def _resolve_preview_source_key(self) -> tuple[str, str, str]:
+        runtime_mode = str(self._runtime_state.get("runtime_mode", "")).strip().lower()
+        active_target_type = str(self._runtime_state.get("active_target_type", "")).strip().lower()
+        active_target_id = str(self._runtime_state.get("active_target_id", "")).strip().lower()
+        return (runtime_mode, active_target_type, active_target_id)
+
     def _update_preview_event(self) -> None:
         next_event = self._resolve_preview_event()
-        if next_event == self._active_preview_event:
+        source_key = self._resolve_preview_source_key()
+        if next_event == self._active_preview_event and source_key == self._active_preview_source_key:
             return
         self._active_preview_event = next_event
+        self._active_preview_source_key = source_key
         self._active_preview_started_at = time.monotonic()
         self._last_preview_render = 0.0
         self._last_preview_signature = None
+
+    def _select_project_preview_frame(self) -> tuple[list[int], int, int, str, int] | None:
+        if not isinstance(self._active_project, dict):
+            return None
+
+        project = self._active_project
+        target_type = str(self._runtime_state.get("active_target_type", "")).strip().lower()
+        target_id = str(self._runtime_state.get("active_target_id", "")).strip()
+        if target_type not in ("animation", "frame"):
+            return None
+        if not target_id:
+            return None
+
+        width = int(project.get("width", 0))
+        height = int(project.get("height", 0))
+        if width <= 0 or height <= 0:
+            return None
+
+        frames = project.get("frames")
+        if not isinstance(frames, list):
+            return None
+        frames_by_id: dict[str, dict[str, Any]] = {}
+        for frame in frames:
+            if not isinstance(frame, dict):
+                continue
+            frame_id = frame.get("id")
+            if isinstance(frame_id, str) and frame_id.strip():
+                frames_by_id[frame_id] = frame
+        if not frames_by_id:
+            return None
+
+        if target_type == "frame":
+            frame = frames_by_id.get(target_id)
+            if not isinstance(frame, dict):
+                return None
+            pixels = frame.get("pixels")
+            if not isinstance(pixels, list):
+                return None
+            expected_length = width * height
+            if len(pixels) != expected_length:
+                return None
+            return (list(pixels), width, height, target_id, 0)
+
+        animations = project.get("animations")
+        if not isinstance(animations, list):
+            return None
+        animation: dict[str, Any] | None = None
+        for candidate in animations:
+            if not isinstance(candidate, dict):
+                continue
+            if candidate.get("id") == target_id:
+                animation = candidate
+                break
+        if animation is None:
+            return None
+
+        steps = animation.get("steps")
+        if not isinstance(steps, list) or not steps:
+            return None
+        loop_enabled = bool(animation.get("loop", True))
+
+        cumulative_limits: list[int] = []
+        total_duration_ms = 0
+        normalized_steps: list[tuple[str, int]] = []
+        for step in steps:
+            if not isinstance(step, dict):
+                continue
+            step_frame_id = step.get("frameId")
+            if not isinstance(step_frame_id, str) or step_frame_id not in frames_by_id:
+                continue
+            duration_ms = int(step.get("durationMs", 100))
+            duration_ms = max(1, duration_ms)
+            normalized_steps.append((step_frame_id, duration_ms))
+            total_duration_ms += duration_ms
+            cumulative_limits.append(total_duration_ms)
+
+        if not normalized_steps or total_duration_ms <= 0:
+            return None
+
+        elapsed_ms = int((time.monotonic() - self._active_preview_started_at) * 1000)
+        if loop_enabled:
+            phase_ms = elapsed_ms % total_duration_ms
+        else:
+            phase_ms = min(elapsed_ms, total_duration_ms - 1)
+
+        step_index = len(normalized_steps) - 1
+        for index, limit in enumerate(cumulative_limits):
+            if phase_ms < limit:
+                step_index = index
+                break
+
+        frame_id = normalized_steps[step_index][0]
+        frame = frames_by_id.get(frame_id)
+        if not isinstance(frame, dict):
+            return None
+        pixels = frame.get("pixels")
+        if not isinstance(pixels, list):
+            return None
+        if len(pixels) != width * height:
+            return None
+        return (list(pixels), width, height, target_id, step_index)
 
     def _build_preset_animations(self, width: int, height: int) -> dict[str, dict[str, Any]]:
         open_eyes = _build_face_frame(width, height, eye_height=max(2, height // 3))
@@ -591,6 +704,28 @@ class DualOledStatus:
         safe_height = max(1, int(self._display_state.get("height", height if height > 0 else 8)))
 
         if self._preview_mode == "preset":
+            project_frame = self._select_project_preview_frame()
+            if project_frame is not None:
+                (
+                    project_pixels,
+                    project_width,
+                    project_height,
+                    project_target_id,
+                    project_step_index,
+                ) = project_frame
+                frame_signature = (
+                    "preset-project",
+                    project_target_id,
+                    project_step_index,
+                    project_width,
+                    project_height,
+                )
+                if frame_signature == self._last_preview_signature:
+                    return
+                self._last_preview_signature = frame_signature
+                self._draw_preview_bitmap(project_pixels, project_width, project_height)
+                return
+
             frame_pixels, event_name, frame_index = self._select_preset_frame(safe_width, safe_height)
             frame_signature = ("preset", event_name, frame_index, safe_width, safe_height)
             if frame_signature == self._last_preview_signature:

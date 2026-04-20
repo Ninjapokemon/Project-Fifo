@@ -460,6 +460,7 @@ async def main() -> None:
             runtime.get_runtime_state(),
             display.get_state(),
             board_layout,
+            active_project if isinstance(active_project, dict) else None,
         )
 
     def refresh_oled() -> None:
