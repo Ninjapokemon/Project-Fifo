@@ -57,6 +57,8 @@ Saved projects are stored on the Pi under `apps/pi-controller/data/projects` as 
 
 Live website frames are now treated as a temporary override on top of that project runtime. If the website disconnects and a Pi project was active, the Pi can resume the project instead of staying stuck in the temporary live frame state.
 
+When a saved project includes channel metadata (`channels`, optional `channelDefaults`, and animation `channelId`), the runtime can now compose multiple channels per tick (for example `base` + `eyes` + `mouth`) into one output frame. The compositor tick rate can be tuned with `runtime_tick_hz` in `apps/pi-controller/config.json`.
+
 ## OLED Preview Pipeline
 
 The Pi OLED helper now supports two preview modes:

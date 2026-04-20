@@ -208,6 +208,112 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(config["boot_project"], "Blink-Face")
             self.assertEqual(saved_configs[-1]["boot_project"], "Blink-Face")
 
+    async def test_runtime_composes_multiple_channels(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_store = ProjectStore(Path(temp_dir))
+            project_store.save(
+                {
+                    "name": "Layered Face",
+                    "width": 16,
+                    "height": 8,
+                    "frames": [
+                        {
+                            "id": "base-open",
+                            "name": "Base Open",
+                            "pixels": build_pixels(16, 8, [(0, 0)]),
+                        },
+                        {
+                            "id": "eyes-blink",
+                            "name": "Eyes Blink",
+                            "pixels": build_pixels(16, 8, [(1, 0)]),
+                        },
+                        {
+                            "id": "mouth-talk",
+                            "name": "Mouth Talk",
+                            "pixels": build_pixels(16, 8, [(2, 0)]),
+                        },
+                    ],
+                    "animations": [
+                        {
+                            "id": "idle",
+                            "name": "Idle",
+                            "loop": True,
+                            "channelId": "base",
+                            "steps": [
+                                {"frameId": "base-open", "durationMs": 120},
+                            ],
+                        },
+                        {
+                            "id": "blink",
+                            "name": "Blink",
+                            "loop": True,
+                            "channelId": "eyes",
+                            "steps": [
+                                {"frameId": "eyes-blink", "durationMs": 120},
+                            ],
+                        },
+                        {
+                            "id": "talk",
+                            "name": "Talk",
+                            "loop": True,
+                            "channelId": "mouth",
+                            "steps": [
+                                {"frameId": "mouth-talk", "durationMs": 120},
+                            ],
+                        },
+                    ],
+                    "channels": [
+                        {
+                            "id": "base",
+                            "name": "Base",
+                            "priority": 100,
+                            "blendMode": "overwrite",
+                            "mask": None,
+                        },
+                        {
+                            "id": "eyes",
+                            "name": "Eyes",
+                            "priority": 200,
+                            "blendMode": "overwrite",
+                            "mask": None,
+                        },
+                        {
+                            "id": "mouth",
+                            "name": "Mouth",
+                            "priority": 300,
+                            "blendMode": "overwrite",
+                            "mask": None,
+                        },
+                    ],
+                    "channelDefaults": {
+                        "base": {"startupAnimationId": "idle"},
+                        "eyes": {"startupAnimationId": "blink"},
+                        "mouth": {"startupAnimationId": "talk"},
+                    },
+                    "defaultFrameId": None,
+                    "defaultAnimationId": "idle",
+                }
+            )
+
+            config = {"boot_project": None}
+            display = FakeDisplay()
+            runtime = ProjectRuntime(display, project_store, config, lambda updated_config: updated_config)
+
+            await runtime.activate_project("Layered Face")
+            await asyncio.sleep(0.03)
+
+            self.assertGreaterEqual(len(display.frames), 1)
+            last_frame = display.frames[-1]
+            self.assertEqual(last_frame[0], 1)
+            self.assertEqual(last_frame[1], 1)
+            self.assertEqual(last_frame[2], 1)
+
+            runtime_state = runtime.get_runtime_state()
+            runtime_channels = runtime_state.get("channels")
+            self.assertIsInstance(runtime_channels, list)
+            channel_ids = {channel["channel_id"] for channel in runtime_channels}
+            self.assertSetEqual(channel_ids, {"base", "eyes", "mouth"})
+
 
 if __name__ == "__main__":
     unittest.main()
