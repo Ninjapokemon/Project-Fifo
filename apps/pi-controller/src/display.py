@@ -230,7 +230,7 @@ class MatrixDisplay:
                         continue
                     draw.point((x, y), fill="white")
         if self.frame_callback is not None:
-            self.frame_callback(physical_pixels, self.width, self.height)
+            self.frame_callback(pixels, width, height)
 
     def clear(self) -> None:
         self.device.clear()

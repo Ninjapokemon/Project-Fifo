@@ -425,7 +425,17 @@ async def main() -> None:
     def refresh_oled() -> None:
         if runtime is None:
             return
-        oled_display.update_state(runtime.get_runtime_state(), display.get_state())
+        active_project = runtime.active_project if runtime is not None else None
+        board_layout = (
+            active_project.get("boardLayout")
+            if isinstance(active_project, dict)
+            else None
+        )
+        oled_display.update_state(
+            runtime.get_runtime_state(),
+            display.get_state(),
+            board_layout,
+        )
 
     runtime = ProjectRuntime(
         display,

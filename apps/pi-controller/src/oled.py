@@ -8,6 +8,8 @@ from luma.core.interface.serial import i2c
 from luma.core.render import canvas
 from luma.oled.device import ssd1306
 
+from mapping import PANEL_SIZE, transform_panel_slice
+
 
 def _short(value: Any, limit: int) -> str:
     text = str(value) if value is not None else "-"
@@ -83,6 +85,7 @@ class DualOledStatus:
         self._page = 0
         self._last_flip = 0.0
         self._flip_seconds = 5.0
+        self._board_layout: list[dict[str, Any]] | None = None
 
         if not self.enabled:
             print("OLED status disabled by config.")
@@ -105,11 +108,17 @@ class DualOledStatus:
             self.status_device = None
             self.preview_device = None
 
-    def update_state(self, runtime_state: dict[str, Any], display_state: dict[str, Any]) -> None:
+    def update_state(
+        self,
+        runtime_state: dict[str, Any],
+        display_state: dict[str, Any],
+        board_layout: list[dict[str, Any]] | None = None,
+    ) -> None:
         if not self.enabled or self.status_device is None:
             return
         self._runtime_state = dict(runtime_state)
         self._display_state = dict(display_state)
+        self._board_layout = list(board_layout) if isinstance(board_layout, list) else None
         self._render_status()
 
     def _render_status(self) -> None:
@@ -160,15 +169,69 @@ class DualOledStatus:
 
         safe_width = max(1, int(width))
         safe_height = max(1, int(height))
+        panel_columns = max(1, safe_width // PANEL_SIZE)
+        panel_rows = max(1, safe_height // PANEL_SIZE)
+        panel_count = panel_columns * panel_rows
+
+        normalized_layout: list[dict[str, int | bool]] = []
+        has_custom_layout = False
+        for panel_index in range(panel_count):
+            fallback_x = panel_index % panel_columns
+            fallback_y = panel_index // panel_columns
+            board: dict[str, Any] | None = None
+            if isinstance(self._board_layout, list):
+                for candidate in self._board_layout:
+                    if not isinstance(candidate, dict):
+                        continue
+                    if candidate.get("chainIndex") == panel_index:
+                        board = candidate
+                        break
+
+            visual_grid_x = int(board.get("visualGridX", fallback_x)) if board is not None else fallback_x
+            visual_grid_y = int(board.get("visualGridY", fallback_y)) if board is not None else fallback_y
+            view_rotation = int(board.get("viewRotation", 0)) if board is not None else 0
+            if view_rotation not in (0, 90, 180, 270):
+                view_rotation = 0
+            view_mirror = bool(board.get("viewMirror", False)) if board is not None else False
+
+            if visual_grid_x != fallback_x or visual_grid_y != fallback_y:
+                has_custom_layout = True
+
+            normalized_layout.append(
+                {
+                    "panel_index": panel_index,
+                    "visual_grid_x": visual_grid_x,
+                    "visual_grid_y": visual_grid_y,
+                    "view_rotation": view_rotation,
+                    "view_mirror": view_mirror,
+                }
+            )
+
+        if not has_custom_layout:
+            # Keep standard row-major shape when no custom board layout was provided.
+            for board in normalized_layout:
+                board["visual_grid_x"] = int(board["panel_index"]) % panel_columns
+                board["visual_grid_y"] = int(board["panel_index"]) // panel_columns
+
+        min_grid_x = min(int(board["visual_grid_x"]) for board in normalized_layout)
+        min_grid_y = min(int(board["visual_grid_y"]) for board in normalized_layout)
+        max_grid_x = max(int(board["visual_grid_x"]) for board in normalized_layout)
+        max_grid_y = max(int(board["visual_grid_y"]) for board in normalized_layout)
+        layout_columns = (max_grid_x - min_grid_x) + 1
+        layout_rows = (max_grid_y - min_grid_y) + 1
+
+        board_pitch = PANEL_SIZE + 1
+        layout_width_px = max(1, (layout_columns * PANEL_SIZE) + ((layout_columns - 1) * 1))
+        layout_height_px = max(1, (layout_rows * PANEL_SIZE) + ((layout_rows - 1) * 1))
         scale = max(
             1,
             min(
-                self.preview_device.width // safe_width,
-                self.preview_device.height // safe_height,
+                self.preview_device.width // layout_width_px,
+                self.preview_device.height // layout_height_px,
             ),
         )
-        draw_width = safe_width * scale
-        draw_height = safe_height * scale
+        draw_width = layout_width_px * scale
+        draw_height = layout_height_px * scale
         origin_x = (self.preview_device.width - draw_width) // 2
         origin_y = (self.preview_device.height - draw_height) // 2
 
@@ -178,16 +241,46 @@ class DualOledStatus:
                 outline="white",
                 fill="black",
             )
-            for y in range(safe_height):
-                row_offset = y * safe_width
-                for x in range(safe_width):
-                    if pixels[row_offset + x] != 1:
+            for board in normalized_layout:
+                panel_index = int(board["panel_index"])
+                logical_panel_x = panel_index % panel_columns
+                logical_panel_y = panel_index // panel_columns
+                panel_offset_x = logical_panel_x * PANEL_SIZE
+                panel_offset_y = logical_panel_y * PANEL_SIZE
+
+                panel_slice = [0] * (PANEL_SIZE * PANEL_SIZE)
+                for local_y in range(PANEL_SIZE):
+                    source_y = panel_offset_y + local_y
+                    if source_y >= safe_height:
                         continue
-                    if scale == 1:
-                        draw.point((origin_x + x, origin_y + y), fill="white")
-                    else:
-                        left = origin_x + (x * scale)
-                        top = origin_y + (y * scale)
+                    source_row = source_y * safe_width
+                    panel_row = local_y * PANEL_SIZE
+                    for local_x in range(PANEL_SIZE):
+                        source_x = panel_offset_x + local_x
+                        if source_x >= safe_width:
+                            continue
+                        panel_slice[panel_row + local_x] = pixels[source_row + source_x]
+
+                transformed = transform_panel_slice(
+                    panel_slice,
+                    int(board["view_rotation"]),
+                    bool(board["view_mirror"]),
+                )
+                visual_x = int(board["visual_grid_x"]) - min_grid_x
+                visual_y = int(board["visual_grid_y"]) - min_grid_y
+                board_origin_x = origin_x + (visual_x * board_pitch * scale)
+                board_origin_y = origin_y + (visual_y * board_pitch * scale)
+
+                for local_y in range(PANEL_SIZE):
+                    row_offset = local_y * PANEL_SIZE
+                    for local_x in range(PANEL_SIZE):
+                        if transformed[row_offset + local_x] != 1:
+                            continue
+                        if scale == 1:
+                            draw.point((board_origin_x + local_x, board_origin_y + local_y), fill="white")
+                            continue
+                        left = board_origin_x + (local_x * scale)
+                        top = board_origin_y + (local_y * scale)
                         draw.rectangle(
                             (left, top, left + scale - 1, top + scale - 1),
                             fill="white",
