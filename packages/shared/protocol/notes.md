@@ -19,3 +19,7 @@
 - delta updates
 - richer animation commands beyond project activation
 - device health and acknowledgement messages
+- layered channel project schema (for example `base`, `eyes`, `mouth`)
+- channel runtime control messages (`play_channel`, `stop_channel`, `set_channel_animation`, `set_channel_frame`, `clear_channel`)
+- runtime state fields for active channels and per-channel targets
+- backward-compatible project migration rules (legacy projects load as a single `base` channel)

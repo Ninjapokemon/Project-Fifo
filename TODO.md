@@ -172,6 +172,7 @@ Status:
 - [ ] support named animations for future face states such as `idle`, `blink`, and `talk`
 - [ ] keep early playback available in the desktop app for iteration speed
 - [ ] design toward Pi-driven playback as the real long-term runtime
+- [ ] complete Layered Runtime Phase A schema and migration work (see `docs/layered-runtime-phase-a.md`)
 - [x] separate temporary live streaming from Pi-owned playback of saved projects
 
 Done when:

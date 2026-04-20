@@ -87,8 +87,11 @@ That future runtime will likely need to add:
 - input handling for buttons, microphone activity, and future sensors
 - runtime rules that map input events to animation or state changes
 - protocol endpoints for project loading, playback control, persistence decisions, and runtime state queries
+- layered channel playback and compositing so `eyes` and `mouth` can animate independently (for example blink while talking)
 
 The current frame transport is still useful because it gives the website a fast live-edit path without replacing the Pi-owned runtime model.
+
+The detailed layered runtime plan (channels, compositor, protocol, and phased rollout) is documented in `docs/architecture.md` under `Layered Channel Runtime Plan`.
 
 ## Common Issues
 

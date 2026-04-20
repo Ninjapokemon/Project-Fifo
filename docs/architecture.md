@@ -120,6 +120,90 @@ That suggests a future runtime with these responsibilities:
 
 The current code already covers the renderer and the basic network transport. The remaining pieces should be added gradually so the current simple flow stays usable while the standalone runtime grows.
 
+## Layered Channel Runtime Plan
+
+The current Pi runtime chooses one active target at a time (one frame or one animation). That is good for early bring-up, but it does not support independent behaviors like blinking eyes while talking.
+
+The next runtime shape should support simultaneous channel playback with compositing:
+
+- `base` channel for default expression or idle loop
+- `eyes` channel for blink and eye-only reactions
+- `mouth` channel for talk/viseme behavior
+
+Each channel should play independently, then produce one final composited frame per tick for MAX7219 output.
+
+### Why This Model
+
+- Supports concurrent behavior (`blink` + `talk`) without requiring one giant precomposed animation.
+- Keeps timing local to the Pi runtime instead of browser message timing.
+- Creates a clear place for event-driven logic (mic activity, buttons, sensors) to target specific face regions.
+
+### Initial Compositing Rules (v1)
+
+- Keep binary pixels (`0` or `1`) for now.
+- Render channels in priority order.
+- Use `overwrite` blending first: higher priority channel wins at a pixel.
+- Treat `0` as transparent for channel overlays.
+- Support optional per-channel masks so channels can stay scoped to eye/mouth regions.
+
+### Project Model Additions
+
+The project format should keep backward compatibility while adding channel metadata:
+
+- channel definitions (`id`, `name`, `priority`, `blendMode`, optional `mask`)
+- animation-to-channel assignment (`channelId`)
+- optional runtime defaults for channel startup behavior
+
+Older projects without channels should load as a single `base` channel automatically.
+
+### Runtime Engine Changes
+
+The Pi runtime should evolve from one playback task to a channel-based engine:
+
+- per-channel playback state (`active animation/frame`, `step index`, `loop`, `timing`)
+- fixed-tick render loop (for example 20-30 FPS)
+- compositor stage that merges all active channels into one logical frame
+- existing mapping/render stage stays unchanged after compositing
+
+### Protocol Additions
+
+In addition to existing project lifecycle commands, add channel control commands:
+
+- `play_channel`
+- `stop_channel`
+- `set_channel_animation`
+- `set_channel_frame`
+- `clear_channel`
+
+Runtime state payloads should report channel-level activity so the website and OLED can display what is running.
+
+### Event Router Direction
+
+Introduce an internal event router that maps runtime events to channel actions:
+
+- `blink` -> play one-shot eye animation on `eyes`
+- `speech_start` and `speech_level` -> drive `mouth`
+- `speech_end` -> return mouth channel to idle
+
+Start with manual/synthetic events first, then integrate real microphone/button handlers.
+
+### Delivery Phases
+
+1. Data model and validation updates with backward-compatible loading.
+2. Pi channel playback engine plus compositor and fixed-tick render loop.
+3. Channel control protocol and runtime state reporting.
+4. Desktop authoring updates for channel assignment and layered preview.
+5. Event router wiring and first microphone bridge.
+
+### Decisions To Lock Early
+
+- target tick rate (20/30/60 FPS)
+- mask format (explicit pixel mask, board-group mapping, or both)
+- one-shot conflict behavior (`interrupt`, `restart`, or `queue`)
+- overlap policy when channels target the same pixels
+
+Implementation starts with a concrete Phase A checklist in `docs/layered-runtime-phase-a.md`.
+
 ## Mapping Layer
 
 The Pi owns the mapping layer because physical layouts vary:
