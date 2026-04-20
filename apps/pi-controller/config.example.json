@@ -9,6 +9,7 @@
   "block_orientation": 90,
   "reverse_order": false,
   "serpentine": false,
+  "oled_coalesce_seconds": 0.075,
   "oled": {
     "enabled": true,
     "status_enabled": true,

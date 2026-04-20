@@ -433,6 +433,11 @@ async def wait_for_shutdown() -> None:
 async def main() -> None:
     config = load_config()
     oled_display = DualOledStatus(config)
+    oled_coalesce_seconds = 0.075
+    try:
+        oled_coalesce_seconds = max(0.0, float(config.get("oled_coalesce_seconds", 0.075)))
+    except (TypeError, ValueError):
+        oled_coalesce_seconds = 0.075
     display = MatrixDisplay(config)
     if oled_display.preview_enabled:
         display.frame_callback = oled_display.render_preview
@@ -442,11 +447,13 @@ async def main() -> None:
     drawing_store = DrawingStore()
     project_store = ProjectStore()
     runtime: ProjectRuntime | None = None
+    loop = asyncio.get_running_loop()
+    pending_oled_refresh: asyncio.TimerHandle | None = None
 
-    def refresh_oled() -> None:
+    def refresh_oled_immediate() -> None:
         if runtime is None:
             return
-        active_project = runtime.active_project if runtime is not None else None
+        active_project = runtime.active_project
         board_layout = (
             active_project.get("boardLayout")
             if isinstance(active_project, dict)
@@ -457,6 +464,21 @@ async def main() -> None:
             display.get_state(),
             board_layout,
         )
+
+    def refresh_oled() -> None:
+        nonlocal pending_oled_refresh
+        if pending_oled_refresh is not None and not pending_oled_refresh.cancelled():
+            return
+        if oled_coalesce_seconds <= 0:
+            refresh_oled_immediate()
+            return
+
+        def run_refresh() -> None:
+            nonlocal pending_oled_refresh
+            pending_oled_refresh = None
+            refresh_oled_immediate()
+
+        pending_oled_refresh = loop.call_later(oled_coalesce_seconds, run_refresh)
 
     runtime = ProjectRuntime(
         display,
@@ -472,7 +494,7 @@ async def main() -> None:
                 print(f'Loaded boot project "{runtime.active_project_name}".')
         except (FileNotFoundError, ProtocolError, ValueError) as error:
             print(f"Could not restore boot project: {error}")
-        refresh_oled()
+        refresh_oled_immediate()
 
         async with websockets.serve(
             lambda websocket: handle_connection(
@@ -490,6 +512,8 @@ async def main() -> None:
             print(f"Listening on ws://{config['host']}:{config['port']}")
             await wait_for_shutdown()
     finally:
+        if pending_oled_refresh is not None and not pending_oled_refresh.cancelled():
+            pending_oled_refresh.cancel()
         await runtime.shutdown()
         display.shutdown()
         oled_display.shutdown()

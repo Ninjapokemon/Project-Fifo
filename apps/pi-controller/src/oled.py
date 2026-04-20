@@ -95,6 +95,8 @@ class DualOledStatus:
         self._board_layout_signature: int = 0
         self._last_preview_render = 0.0
         self._last_preview_signature: tuple[int, int, int, int] | None = None
+        self._preview_plan_key: tuple[int, int, int, int, int] | None = None
+        self._preview_plan: dict[str, Any] | None = None
         status_fps = oled_config.get("status_fps", 2)
         try:
             self._status_fps = float(status_fps)
@@ -163,7 +165,130 @@ class DualOledStatus:
             self._board_layout_signature = zlib.crc32(
                 repr(self._board_layout).encode("utf-8")
             )
+        self._preview_plan_key = None
+        self._preview_plan = None
         self._render_status()
+
+    def _build_preview_plan(self, safe_width: int, safe_height: int) -> dict[str, Any]:
+        if self.preview_device is None:
+            return {"boards": []}
+
+        panel_columns = max(1, safe_width // PANEL_SIZE)
+        panel_rows = max(1, safe_height // PANEL_SIZE)
+        panel_count = panel_columns * panel_rows
+
+        normalized_layout: list[dict[str, int | bool]] = []
+        has_custom_layout = False
+        for panel_index in range(panel_count):
+            fallback_x = panel_index % panel_columns
+            fallback_y = panel_index // panel_columns
+            board: dict[str, Any] | None = None
+            if isinstance(self._board_layout, list):
+                for candidate in self._board_layout:
+                    if not isinstance(candidate, dict):
+                        continue
+                    if candidate.get("chainIndex") == panel_index:
+                        board = candidate
+                        break
+
+            visual_grid_x = int(board.get("visualGridX", fallback_x)) if board is not None else fallback_x
+            visual_grid_y = int(board.get("visualGridY", fallback_y)) if board is not None else fallback_y
+            view_rotation = int(board.get("viewRotation", 0)) if board is not None else 0
+            if view_rotation not in (0, 90, 180, 270):
+                view_rotation = 0
+            view_mirror = bool(board.get("viewMirror", False)) if board is not None else False
+
+            if visual_grid_x != fallback_x or visual_grid_y != fallback_y:
+                has_custom_layout = True
+
+            normalized_layout.append(
+                {
+                    "panel_index": panel_index,
+                    "visual_grid_x": visual_grid_x,
+                    "visual_grid_y": visual_grid_y,
+                    "view_rotation": view_rotation,
+                    "view_mirror": view_mirror,
+                }
+            )
+
+        if not has_custom_layout:
+            # Keep standard row-major shape when no custom board layout was provided.
+            for board in normalized_layout:
+                board["visual_grid_x"] = int(board["panel_index"]) % panel_columns
+                board["visual_grid_y"] = int(board["panel_index"]) // panel_columns
+
+        min_grid_x = min(int(board["visual_grid_x"]) for board in normalized_layout)
+        min_grid_y = min(int(board["visual_grid_y"]) for board in normalized_layout)
+        max_grid_x = max(int(board["visual_grid_x"]) for board in normalized_layout)
+        max_grid_y = max(int(board["visual_grid_y"]) for board in normalized_layout)
+        layout_columns = (max_grid_x - min_grid_x) + 1
+        layout_rows = (max_grid_y - min_grid_y) + 1
+
+        board_pitch = PANEL_SIZE + 1
+        layout_width_px = max(1, (layout_columns * PANEL_SIZE) + ((layout_columns - 1) * 1))
+        layout_height_px = max(1, (layout_rows * PANEL_SIZE) + ((layout_rows - 1) * 1))
+        scale = max(
+            1,
+            min(
+                self.preview_device.width // layout_width_px,
+                self.preview_device.height // layout_height_px,
+            ),
+        )
+        draw_width = layout_width_px * scale
+        draw_height = layout_height_px * scale
+        origin_x = (self.preview_device.width - draw_width) // 2
+        origin_y = (self.preview_device.height - draw_height) // 2
+
+        boards: list[dict[str, Any]] = []
+        for board in normalized_layout:
+            panel_index = int(board["panel_index"])
+            logical_panel_x = panel_index % panel_columns
+            logical_panel_y = panel_index // panel_columns
+            panel_offset_x = logical_panel_x * PANEL_SIZE
+            panel_offset_y = logical_panel_y * PANEL_SIZE
+
+            source_offsets: list[int] = []
+            for local_y in range(PANEL_SIZE):
+                source_y = panel_offset_y + local_y
+                for local_x in range(PANEL_SIZE):
+                    source_x = panel_offset_x + local_x
+                    if source_x >= safe_width or source_y >= safe_height:
+                        source_offsets.append(-1)
+                    else:
+                        source_offsets.append((source_y * safe_width) + source_x)
+
+            visual_x = int(board["visual_grid_x"]) - min_grid_x
+            visual_y = int(board["visual_grid_y"]) - min_grid_y
+            board_origin_x = origin_x + (visual_x * board_pitch * scale)
+            board_origin_y = origin_y + (visual_y * board_pitch * scale)
+
+            boards.append(
+                {
+                    "source_offsets": tuple(source_offsets),
+                    "view_rotation": int(board["view_rotation"]),
+                    "view_mirror": bool(board["view_mirror"]),
+                    "board_origin_x": board_origin_x,
+                    "board_origin_y": board_origin_y,
+                }
+            )
+
+        return {"boards": boards, "scale": scale}
+
+    def _get_preview_plan(self, safe_width: int, safe_height: int) -> dict[str, Any]:
+        if self.preview_device is None:
+            return {"boards": [], "scale": 1}
+        plan_key = (
+            safe_width,
+            safe_height,
+            self.preview_device.width,
+            self.preview_device.height,
+            self._board_layout_signature,
+        )
+        if self._preview_plan is not None and self._preview_plan_key == plan_key:
+            return self._preview_plan
+        self._preview_plan = self._build_preview_plan(safe_width, safe_height)
+        self._preview_plan_key = plan_key
+        return self._preview_plan
 
     def _render_status(self) -> None:
         if self.status_device is None:
@@ -252,71 +377,8 @@ class DualOledStatus:
 
         safe_width = max(1, int(width))
         safe_height = max(1, int(height))
-        panel_columns = max(1, safe_width // PANEL_SIZE)
-        panel_rows = max(1, safe_height // PANEL_SIZE)
-        panel_count = panel_columns * panel_rows
-
-        normalized_layout: list[dict[str, int | bool]] = []
-        has_custom_layout = False
-        for panel_index in range(panel_count):
-            fallback_x = panel_index % panel_columns
-            fallback_y = panel_index // panel_columns
-            board: dict[str, Any] | None = None
-            if isinstance(self._board_layout, list):
-                for candidate in self._board_layout:
-                    if not isinstance(candidate, dict):
-                        continue
-                    if candidate.get("chainIndex") == panel_index:
-                        board = candidate
-                        break
-
-            visual_grid_x = int(board.get("visualGridX", fallback_x)) if board is not None else fallback_x
-            visual_grid_y = int(board.get("visualGridY", fallback_y)) if board is not None else fallback_y
-            view_rotation = int(board.get("viewRotation", 0)) if board is not None else 0
-            if view_rotation not in (0, 90, 180, 270):
-                view_rotation = 0
-            view_mirror = bool(board.get("viewMirror", False)) if board is not None else False
-
-            if visual_grid_x != fallback_x or visual_grid_y != fallback_y:
-                has_custom_layout = True
-
-            normalized_layout.append(
-                {
-                    "panel_index": panel_index,
-                    "visual_grid_x": visual_grid_x,
-                    "visual_grid_y": visual_grid_y,
-                    "view_rotation": view_rotation,
-                    "view_mirror": view_mirror,
-                }
-            )
-
-        if not has_custom_layout:
-            # Keep standard row-major shape when no custom board layout was provided.
-            for board in normalized_layout:
-                board["visual_grid_x"] = int(board["panel_index"]) % panel_columns
-                board["visual_grid_y"] = int(board["panel_index"]) // panel_columns
-
-        min_grid_x = min(int(board["visual_grid_x"]) for board in normalized_layout)
-        min_grid_y = min(int(board["visual_grid_y"]) for board in normalized_layout)
-        max_grid_x = max(int(board["visual_grid_x"]) for board in normalized_layout)
-        max_grid_y = max(int(board["visual_grid_y"]) for board in normalized_layout)
-        layout_columns = (max_grid_x - min_grid_x) + 1
-        layout_rows = (max_grid_y - min_grid_y) + 1
-
-        board_pitch = PANEL_SIZE + 1
-        layout_width_px = max(1, (layout_columns * PANEL_SIZE) + ((layout_columns - 1) * 1))
-        layout_height_px = max(1, (layout_rows * PANEL_SIZE) + ((layout_rows - 1) * 1))
-        scale = max(
-            1,
-            min(
-                self.preview_device.width // layout_width_px,
-                self.preview_device.height // layout_height_px,
-            ),
-        )
-        draw_width = layout_width_px * scale
-        draw_height = layout_height_px * scale
-        origin_x = (self.preview_device.width - draw_width) // 2
-        origin_y = (self.preview_device.height - draw_height) // 2
+        preview_plan = self._get_preview_plan(safe_width, safe_height)
+        scale = int(preview_plan["scale"])
 
         with canvas(self.preview_device) as draw:
             draw.rectangle(
@@ -324,35 +386,19 @@ class DualOledStatus:
                 outline="white",
                 fill="black",
             )
-            for board in normalized_layout:
-                panel_index = int(board["panel_index"])
-                logical_panel_x = panel_index % panel_columns
-                logical_panel_y = panel_index // panel_columns
-                panel_offset_x = logical_panel_x * PANEL_SIZE
-                panel_offset_y = logical_panel_y * PANEL_SIZE
-
-                panel_slice = [0] * (PANEL_SIZE * PANEL_SIZE)
-                for local_y in range(PANEL_SIZE):
-                    source_y = panel_offset_y + local_y
-                    if source_y >= safe_height:
-                        continue
-                    source_row = source_y * safe_width
-                    panel_row = local_y * PANEL_SIZE
-                    for local_x in range(PANEL_SIZE):
-                        source_x = panel_offset_x + local_x
-                        if source_x >= safe_width:
-                            continue
-                        panel_slice[panel_row + local_x] = pixels[source_row + source_x]
+            for board in preview_plan["boards"]:
+                panel_slice = [
+                    pixels[offset] if offset >= 0 else 0
+                    for offset in board["source_offsets"]
+                ]
 
                 transformed = transform_panel_slice(
                     panel_slice,
                     int(board["view_rotation"]),
                     bool(board["view_mirror"]),
                 )
-                visual_x = int(board["visual_grid_x"]) - min_grid_x
-                visual_y = int(board["visual_grid_y"]) - min_grid_y
-                board_origin_x = origin_x + (visual_x * board_pitch * scale)
-                board_origin_y = origin_y + (visual_y * board_pitch * scale)
+                board_origin_x = int(board["board_origin_x"])
+                board_origin_y = int(board["board_origin_y"])
 
                 for local_y in range(PANEL_SIZE):
                     row_offset = local_y * PANEL_SIZE
@@ -373,6 +419,8 @@ class DualOledStatus:
         if not self.preview_enabled or self.preview_device is None:
             return
         self._last_preview_signature = None
+        self._preview_plan_key = None
+        self._preview_plan = None
         self.preview_device.clear()
 
     def shutdown(self) -> None:
@@ -382,3 +430,5 @@ class DualOledStatus:
             self.preview_device.clear()
         self._last_status_lines = None
         self._last_preview_signature = None
+        self._preview_plan_key = None
+        self._preview_plan = None
