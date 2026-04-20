@@ -544,6 +544,9 @@ function finishStudioSidebarResize(event) {
 
   applyStudioSidebarWidth(getCurrentStudioSidebarWidth(), { persist: true });
   cleanupStudioSidebarResize();
+  if (state.project.previewTimer == null) {
+    renderSelectedAnimationPreview();
+  }
   return true;
 }
 
@@ -695,6 +698,9 @@ function finishWorkspaceAnimationPaneResize(event) {
 
   applyWorkspaceAnimationPaneWidth(getCurrentWorkspaceAnimationPaneWidth(), { persist: true });
   cleanupWorkspaceAnimationPaneResize();
+  if (state.project.previewTimer == null) {
+    renderSelectedAnimationPreview();
+  }
   return true;
 }
 
@@ -2083,28 +2089,255 @@ function renderGrid() {
 
   elements.grid.appendChild(workspace);
   updateGridMeta();
+
+  if (state.project.previewTimer == null) {
+    renderSelectedAnimationPreview();
+  }
 }
 
-function renderAnimationPreviewPixels(pixels, width = state.width, height = state.height) {
-  const longestEdge = Math.max(width, height);
-  const cellSize = longestEdge >= 56 ? 12 : longestEdge >= 40 ? 14 : longestEdge >= 24 ? 16 : 18;
+function createAnimationPreviewMetrics(cellSize) {
+  const gridGap = cellSize <= 6 ? 1 : 2;
+  const cardPadding = cellSize <= 6 ? 6 : 8;
+  const labelHeight = cellSize <= 6 ? 16 : 18;
+  const labelGap = 6;
+  const cardBorder = 1;
+  const workspaceGap = cellSize <= 6 ? 10 : 12;
+  const workspaceInsetX = 12;
+  const workspaceInsetY = 18;
+  const groupSidePadding = cellSize <= 6 ? 8 : 10;
+  const groupTopPadding = cellSize <= 6 ? 16 : 18;
+  const groupBottomPadding = cellSize <= 6 ? 8 : 10;
+  const slotWidth = (PANEL_SIZE * cellSize)
+    + ((PANEL_SIZE - 1) * gridGap)
+    + (cardPadding * 2)
+    + (cardBorder * 2);
+  const slotHeight = labelHeight
+    + labelGap
+    + (PANEL_SIZE * cellSize)
+    + ((PANEL_SIZE - 1) * gridGap)
+    + (cardPadding * 2)
+    + (cardBorder * 2);
 
-  elements.animationPreviewGrid.innerHTML = "";
-  elements.animationPreviewGrid.style.setProperty("--preview-cell-size", `${cellSize}px`);
-  elements.animationPreviewGrid.style.gridTemplateColumns = `repeat(${Math.max(width, 1)}, ${cellSize}px)`;
+  return {
+    cellSize,
+    gridGap,
+    cardPadding,
+    labelHeight,
+    labelGap,
+    cardBorder,
+    workspaceGap,
+    workspaceInsetX,
+    workspaceInsetY,
+    groupSidePadding,
+    groupTopPadding,
+    groupBottomPadding,
+    slotWidth,
+    slotHeight,
+    slotPitchX: slotWidth + workspaceGap,
+    slotPitchY: slotHeight + workspaceGap,
+  };
+}
 
-  pixels.forEach((value) => {
-    const cell = document.createElement("div");
-    cell.className = `preview-cell${value === 1 ? " on" : ""}`;
-    elements.animationPreviewGrid.appendChild(cell);
+function animationPreviewBoardLeft(board, metrics) {
+  return metrics.workspaceInsetX + (board.visualGridX * metrics.slotPitchX);
+}
+
+function animationPreviewBoardTop(board, metrics) {
+  return metrics.workspaceInsetY + (board.visualGridY * metrics.slotPitchY);
+}
+
+function animationPreviewBoardOuterWidth(board, metrics) {
+  const displayWidth = getBoardDisplayWidth(board);
+  return (displayWidth * metrics.cellSize)
+    + (Math.max(displayWidth - 1, 0) * metrics.gridGap)
+    + (metrics.cardPadding * 2)
+    + (metrics.cardBorder * 2);
+}
+
+function animationPreviewBoardOuterHeight(board, metrics) {
+  const displayHeight = getBoardDisplayHeight(board);
+  return metrics.labelHeight
+    + metrics.labelGap
+    + (displayHeight * metrics.cellSize)
+    + (Math.max(displayHeight - 1, 0) * metrics.gridGap)
+    + (metrics.cardPadding * 2)
+    + (metrics.cardBorder * 2);
+}
+
+function calculateAnimationPreviewWorkspaceSize(boardLayout, metrics) {
+  if (boardLayout.length === 0) {
+    return {
+      width: metrics.workspaceInsetX + metrics.slotWidth + metrics.groupSidePadding,
+      height: metrics.workspaceInsetY + metrics.slotHeight + metrics.groupBottomPadding,
+    };
+  }
+
+  const width = Math.max(
+    metrics.workspaceInsetX + metrics.slotWidth + metrics.groupSidePadding,
+    ...boardLayout.map((board) => (
+      animationPreviewBoardLeft(board, metrics)
+      + animationPreviewBoardOuterWidth(board, metrics)
+      + metrics.groupSidePadding
+    )),
+  );
+  const height = Math.max(
+    metrics.workspaceInsetY + metrics.slotHeight + metrics.groupBottomPadding,
+    ...boardLayout.map((board) => (
+      animationPreviewBoardTop(board, metrics)
+      + animationPreviewBoardOuterHeight(board, metrics)
+      + metrics.groupBottomPadding
+    )),
+  );
+
+  return { width, height };
+}
+
+function getAnimationPreviewBoardLayout(pixels, width = state.width, height = state.height) {
+  const safeWidth = Math.max(Number(width) || 0, 1);
+  const safeHeight = Math.max(Number(height) || 0, 1);
+  const fallbackPixels = Array.isArray(pixels) ? pixels : Array(safeWidth * safeHeight).fill(0);
+  const baseLayout = getRenderedBoardLayout();
+  const layout = baseLayout.length > 0
+    ? baseLayout
+    : createBoardLayoutFromFrame(safeWidth, safeHeight, fallbackPixels);
+
+  return layout
+    .map((board) => ({
+      ...cloneBoard(board),
+      pixels: extractBoardPixelsFromFrame(board, safeWidth, safeHeight, fallbackPixels),
+    }))
+    .sort((left, right) => (left.visualGridY - right.visualGridY) || (left.visualGridX - right.visualGridX) || left.chainIndex - right.chainIndex);
+}
+
+function selectAnimationPreviewMetrics(boardLayout) {
+  const preferredCellSizes = [12, 10, 8, 6, 5];
+  const availableWidth = Math.max(
+    240,
+    (elements.animationPreviewGrid.parentElement?.clientWidth ?? 0) - 8,
+  );
+  let fallbackMetrics = createAnimationPreviewMetrics(preferredCellSizes[preferredCellSizes.length - 1]);
+
+  for (const cellSize of preferredCellSizes) {
+    const metrics = createAnimationPreviewMetrics(cellSize);
+    const workspaceSize = calculateAnimationPreviewWorkspaceSize(boardLayout, metrics);
+    fallbackMetrics = metrics;
+    if (workspaceSize.width <= availableWidth) {
+      return metrics;
+    }
+  }
+
+  return fallbackMetrics;
+}
+
+function createAnimationPreviewGroupShell(groupId, boards, metrics) {
+  const shell = document.createElement("div");
+  const label = document.createElement("div");
+  const left = Math.min(...boards.map((board) => animationPreviewBoardLeft(board, metrics))) - metrics.groupSidePadding;
+  const top = Math.min(...boards.map((board) => animationPreviewBoardTop(board, metrics))) - metrics.groupTopPadding;
+  const right = Math.max(...boards.map((board) => (
+    animationPreviewBoardLeft(board, metrics) + animationPreviewBoardOuterWidth(board, metrics)
+  ))) + metrics.groupSidePadding;
+  const bottom = Math.max(...boards.map((board) => (
+    animationPreviewBoardTop(board, metrics) + animationPreviewBoardOuterHeight(board, metrics)
+  ))) + metrics.groupBottomPadding;
+
+  shell.className = "animation-preview-group";
+  shell.style.left = `${left}px`;
+  shell.style.top = `${top}px`;
+  shell.style.width = `${Math.max(right - left, animationPreviewBoardOuterWidth(boards[0], metrics) + (metrics.groupSidePadding * 2))}px`;
+  shell.style.height = `${Math.max(bottom - top, animationPreviewBoardOuterHeight(boards[0], metrics) + metrics.groupTopPadding + metrics.groupBottomPadding)}px`;
+
+  label.className = "animation-preview-group-label";
+  label.textContent = getBoardGroupLabel(groupId);
+  shell.appendChild(label);
+  return shell;
+}
+
+function createAnimationPreviewCell(value) {
+  const cell = document.createElement("div");
+  cell.className = value === 1 ? "animation-preview-board-cell on" : "animation-preview-board-cell";
+  return cell;
+}
+
+function createAnimationPreviewBoard(board, metrics) {
+  const boardElement = document.createElement("section");
+  const label = document.createElement("div");
+  const boardGrid = document.createElement("div");
+  const displayWidth = getBoardDisplayWidth(board);
+  const displayHeight = getBoardDisplayHeight(board);
+  const displayCells = Array(displayWidth * displayHeight);
+
+  boardElement.className = "animation-preview-board";
+  boardElement.setAttribute("aria-label", `${getBoardChainLabel(board)} preview`);
+  boardElement.style.left = `${animationPreviewBoardLeft(board, metrics)}px`;
+  boardElement.style.top = `${animationPreviewBoardTop(board, metrics)}px`;
+  boardElement.style.width = `${animationPreviewBoardOuterWidth(board, metrics)}px`;
+  boardElement.style.height = `${animationPreviewBoardOuterHeight(board, metrics)}px`;
+  boardElement.style.padding = `${metrics.cardPadding}px`;
+
+  label.className = "animation-preview-board-label";
+  label.textContent = getBoardChainLabel(board);
+  label.style.minHeight = `${metrics.labelHeight}px`;
+
+  boardGrid.className = "animation-preview-board-grid";
+  boardGrid.style.setProperty("--preview-cell-size", `${metrics.cellSize}px`);
+  boardGrid.style.gridTemplateColumns = `repeat(${displayWidth}, ${metrics.cellSize}px)`;
+  boardGrid.style.gridTemplateRows = `repeat(${displayHeight}, ${metrics.cellSize}px)`;
+  boardGrid.style.columnGap = `${metrics.gridGap}px`;
+  boardGrid.style.rowGap = `${metrics.gridGap}px`;
+
+  for (let localY = 0; localY < board.height; localY += 1) {
+    for (let localX = 0; localX < board.width; localX += 1) {
+      const displayCoordinates = mapBoardLogicalToDisplayCoordinates(board, localX, localY);
+      const displayIndex = indexForDimensions(displayCoordinates.x, displayCoordinates.y, displayWidth);
+      const value = board.pixels[(localY * board.width) + localX] ?? 0;
+      displayCells[displayIndex] = createAnimationPreviewCell(value);
+    }
+  }
+
+  displayCells.forEach((cell) => {
+    boardGrid.appendChild(cell || createAnimationPreviewCell(0));
   });
 
-  if (pixels.length === 0) {
-    elements.animationPreviewGrid.style.gridTemplateColumns = `repeat(1, ${cellSize}px)`;
-    const cell = document.createElement("div");
-    cell.className = "preview-cell";
-    elements.animationPreviewGrid.appendChild(cell);
-  }
+  boardElement.appendChild(label);
+  boardElement.appendChild(boardGrid);
+  return boardElement;
+}
+
+function renderAnimationPreviewFrame(pixels, width = state.width, height = state.height) {
+  const boardLayout = getAnimationPreviewBoardLayout(pixels, width, height);
+  const metrics = selectAnimationPreviewMetrics(boardLayout);
+  const workspaceSize = calculateAnimationPreviewWorkspaceSize(boardLayout, metrics);
+  const workspace = document.createElement("div");
+  const boardsByGroup = new Map();
+
+  elements.animationPreviewGrid.innerHTML = "";
+  elements.animationPreviewGrid.style.width = `${workspaceSize.width}px`;
+  elements.animationPreviewGrid.style.minHeight = `${workspaceSize.height}px`;
+
+  workspace.className = "animation-preview-workspace";
+  workspace.style.width = `${workspaceSize.width}px`;
+  workspace.style.height = `${workspaceSize.height}px`;
+
+  boardLayout.forEach((board) => {
+    const groupId = board.groupId || DEFAULT_BOARD_GROUP_ID;
+    const groupedBoards = boardsByGroup.get(groupId) || [];
+    groupedBoards.push(board);
+    boardsByGroup.set(groupId, groupedBoards);
+  });
+
+  getBoardGroups(boardLayout).forEach((groupId) => {
+    const groupedBoards = boardsByGroup.get(groupId) || [];
+    if (groupedBoards.length > 0) {
+      workspace.appendChild(createAnimationPreviewGroupShell(groupId, groupedBoards, metrics));
+    }
+  });
+
+  boardLayout.forEach((board) => {
+    workspace.appendChild(createAnimationPreviewBoard(board, metrics));
+  });
+
+  elements.animationPreviewGrid.appendChild(workspace);
 }
 
 function renderSelectedAnimationPreview(statusMessage = null) {
@@ -2116,7 +2349,7 @@ function renderSelectedAnimationPreview(statusMessage = null) {
     ? framesById.get(activeAnimation.steps[0].frameId) || activeFrame
     : activeFrame;
 
-  renderAnimationPreviewPixels(previewFrame?.pixels || Array(state.width * state.height).fill(0));
+  renderAnimationPreviewFrame(previewFrame?.pixels || Array(state.width * state.height).fill(0));
 
   if (statusMessage) {
     elements.animationPreviewStatus.textContent = statusMessage;
@@ -2163,7 +2396,7 @@ function scheduleAnimationPreviewStep(animation, framesById, stepIndex) {
 
   state.project.previewAnimationId = animation.id;
   state.project.previewStepIndex = stepIndex;
-  renderAnimationPreviewPixels(frame.pixels);
+  renderAnimationPreviewFrame(frame.pixels);
   elements.animationPreviewStatus.textContent = `Previewing "${animation.name}" step ${stepIndex + 1} of ${animation.steps.length}.`;
 
   state.project.previewTimer = window.setTimeout(() => {
@@ -5341,6 +5574,9 @@ function bindEvents() {
   window.addEventListener("resize", () => {
     loadStudioSidebarWidthPreference();
     loadWorkspaceAnimationPaneWidthPreference();
+    if (state.project.previewTimer == null) {
+      renderSelectedAnimationPreview();
+    }
   });
   window.addEventListener("keydown", (event) => {
     const isUndo = (event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z";
