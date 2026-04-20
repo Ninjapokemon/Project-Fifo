@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import signal
+from contextlib import suppress
 from typing import Any, Callable
 
 import websockets
@@ -446,6 +447,7 @@ async def main() -> None:
     runtime: ProjectRuntime | None = None
     loop = asyncio.get_running_loop()
     pending_oled_refresh: asyncio.TimerHandle | None = None
+    preset_preview_task: asyncio.Task[None] | None = None
 
     def refresh_oled_immediate() -> None:
         if runtime is None:
@@ -478,14 +480,20 @@ async def main() -> None:
 
         pending_oled_refresh = loop.call_later(oled_coalesce_seconds, run_refresh)
 
+    use_mirror_callbacks = oled_display.preview_enabled and oled_display.preview_mode == "mirror"
     runtime = ProjectRuntime(
         display,
         project_store,
         config,
         on_state_change=lambda _state: refresh_oled(),
-        on_frame_render=oled_display.render_preview,
-        on_clear_render=oled_display.clear_preview,
+        on_frame_render=oled_display.render_preview if use_mirror_callbacks else None,
+        on_clear_render=oled_display.clear_preview if use_mirror_callbacks else None,
     )
+
+    async def run_preset_preview_loop() -> None:
+        while True:
+            oled_display.tick_preview()
+            await asyncio.sleep(0.02)
 
     try:
         try:
@@ -495,6 +503,8 @@ async def main() -> None:
         except (FileNotFoundError, ProtocolError, ValueError) as error:
             print(f"Could not restore boot project: {error}")
         refresh_oled_immediate()
+        if oled_display.preview_enabled and oled_display.preview_mode == "preset":
+            preset_preview_task = asyncio.create_task(run_preset_preview_loop())
 
         async with websockets.serve(
             lambda websocket: handle_connection(
@@ -512,6 +522,10 @@ async def main() -> None:
             print(f"Listening on ws://{config['host']}:{config['port']}")
             await wait_for_shutdown()
     finally:
+        if preset_preview_task is not None:
+            preset_preview_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await preset_preview_task
         if pending_oled_refresh is not None and not pending_oled_refresh.cancelled():
             pending_oled_refresh.cancel()
         await runtime.shutdown()

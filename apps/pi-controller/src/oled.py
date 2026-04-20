@@ -243,6 +243,17 @@ class DualOledStatus:
         elif self.preview_enabled:
             print(f"OLED preview mode: {self._preview_mode}.")
 
+    @property
+    def preview_mode(self) -> str:
+        return self._preview_mode
+
+    def tick_preview(self) -> None:
+        if not self.preview_enabled or self.preview_device is None:
+            return
+        width = int(self._display_state.get("width", 16))
+        height = int(self._display_state.get("height", 8))
+        self.render_preview([], width, height)
+
     def update_state(
         self,
         runtime_state: dict[str, Any],
@@ -633,6 +644,47 @@ class DualOledStatus:
                         fill="white",
                     )
 
+    def _draw_preview_transformed(self, pixels: list[int], safe_width: int, safe_height: int) -> None:
+        if self.preview_device is None:
+            return
+        preview_plan = self._get_preview_plan(safe_width, safe_height)
+        scale = int(preview_plan["scale"])
+
+        with canvas(self.preview_device) as draw:
+            draw.rectangle(
+                (0, 0, self.preview_device.width - 1, self.preview_device.height - 1),
+                outline="white",
+                fill="black",
+            )
+            for board in preview_plan["boards"]:
+                panel_slice = [
+                    pixels[offset] if offset >= 0 else 0
+                    for offset in board["source_offsets"]
+                ]
+
+                transformed = transform_panel_slice(
+                    panel_slice,
+                    int(board["view_rotation"]),
+                    bool(board["view_mirror"]),
+                )
+                board_origin_x = int(board["board_origin_x"])
+                board_origin_y = int(board["board_origin_y"])
+
+                for local_y in range(PANEL_SIZE):
+                    row_offset = local_y * PANEL_SIZE
+                    for local_x in range(PANEL_SIZE):
+                        if transformed[row_offset + local_x] != 1:
+                            continue
+                        if scale == 1:
+                            draw.point((board_origin_x + local_x, board_origin_y + local_y), fill="white")
+                            continue
+                        left = board_origin_x + (local_x * scale)
+                        top = board_origin_y + (local_y * scale)
+                        draw.rectangle(
+                            (left, top, left + scale - 1, top + scale - 1),
+                            fill="white",
+                        )
+
     def _render_status(self) -> None:
         if self.status_device is None:
             return
@@ -723,7 +775,7 @@ class DualOledStatus:
                 if frame_signature == self._last_preview_signature:
                     return
                 self._last_preview_signature = frame_signature
-                self._draw_preview_bitmap(project_pixels, project_width, project_height)
+                self._draw_preview_transformed(project_pixels, project_width, project_height)
                 return
 
             frame_pixels, event_name, frame_index = self._select_preset_frame(safe_width, safe_height)
@@ -731,7 +783,7 @@ class DualOledStatus:
             if frame_signature == self._last_preview_signature:
                 return
             self._last_preview_signature = frame_signature
-            self._draw_preview_bitmap(frame_pixels, safe_width, safe_height)
+            self._draw_preview_transformed(frame_pixels, safe_width, safe_height)
             return
 
         try:
@@ -752,43 +804,7 @@ class DualOledStatus:
             return
 
         self._last_preview_signature = frame_signature
-        preview_plan = self._get_preview_plan(safe_width, safe_height)
-        scale = int(preview_plan["scale"])
-
-        with canvas(self.preview_device) as draw:
-            draw.rectangle(
-                (0, 0, self.preview_device.width - 1, self.preview_device.height - 1),
-                outline="white",
-                fill="black",
-            )
-            for board in preview_plan["boards"]:
-                panel_slice = [
-                    pixels[offset] if offset >= 0 else 0
-                    for offset in board["source_offsets"]
-                ]
-
-                transformed = transform_panel_slice(
-                    panel_slice,
-                    int(board["view_rotation"]),
-                    bool(board["view_mirror"]),
-                )
-                board_origin_x = int(board["board_origin_x"])
-                board_origin_y = int(board["board_origin_y"])
-
-                for local_y in range(PANEL_SIZE):
-                    row_offset = local_y * PANEL_SIZE
-                    for local_x in range(PANEL_SIZE):
-                        if transformed[row_offset + local_x] != 1:
-                            continue
-                        if scale == 1:
-                            draw.point((board_origin_x + local_x, board_origin_y + local_y), fill="white")
-                            continue
-                        left = board_origin_x + (local_x * scale)
-                        top = board_origin_y + (local_y * scale)
-                        draw.rectangle(
-                            (left, top, left + scale - 1, top + scale - 1),
-                            fill="white",
-                        )
+        self._draw_preview_transformed(pixels, safe_width, safe_height)
 
     def clear_preview(self) -> None:
         if not self.preview_enabled or self.preview_device is None:
