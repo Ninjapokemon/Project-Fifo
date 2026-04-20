@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Project Fifo Editor</title>
-    <link rel="stylesheet" href="./src/styles.css?v=layout-resizer-28" />
+    <link rel="stylesheet" href="./src/styles.css?v=layout-resizer-34" />
   </head>
   <body>
     <main class="app-shell">
@@ -393,6 +393,41 @@
                   </div>
                   <div id="grid" class="pixel-grid" aria-label="Pixel editor grid"></div>
                 </div>
+
+                <div
+                  id="workspaceTimelineResizer"
+                  class="workspace-timeline-resizer"
+                  role="separator"
+                  tabindex="0"
+                  aria-label="Resize studio and clip timeline"
+                  aria-orientation="horizontal"
+                  aria-controls="workspaceGridPane workspaceTimelinePanel"
+                  title="Drag to resize the studio and clip timeline. Arrow keys also work."
+                ></div>
+
+                <section
+                  id="workspaceTimelinePanel"
+                  class="workspace-timeline-panel animation-studio-card animation-studio-steps collapsible-card"
+                  data-collapsible-card
+                >
+                  <div class="animation-studio-card-header">
+                    <button
+                      type="button"
+                      class="card-title-toggle"
+                      aria-expanded="true"
+                      aria-controls="animationStepsCardBody"
+                    >
+                      <span class="card-title-toggle-copy">
+                        <span class="section-label">Timeline</span>
+                        <span class="card-title-main">Clip Timeline</span>
+                      </span>
+                    </button>
+                    <button id="addAnimationStepButton" type="button" class="secondary">Insert Current Frame</button>
+                  </div>
+                  <div id="animationStepsCardBody" class="collapsible-card-body">
+                    <div id="animationStepList" class="animation-step-list" aria-label="Clip timeline"></div>
+                  </div>
+                </section>
               </div>
 
               <div
@@ -541,41 +576,6 @@
                 </aside>
               </div>
             </div>
-
-            <div
-              id="workspaceTimelineResizer"
-              class="workspace-timeline-resizer"
-              role="separator"
-              tabindex="0"
-              aria-label="Resize studio and clip timeline"
-              aria-orientation="horizontal"
-              aria-controls="workspaceBody workspaceTimelinePanel"
-              title="Drag to resize the studio and clip timeline. Arrow keys also work."
-            ></div>
-
-            <section
-              id="workspaceTimelinePanel"
-              class="workspace-timeline-panel animation-studio-card animation-studio-steps collapsible-card"
-              data-collapsible-card
-            >
-              <div class="animation-studio-card-header">
-                <button
-                  type="button"
-                  class="card-title-toggle"
-                  aria-expanded="true"
-                  aria-controls="animationStepsCardBody"
-                >
-                  <span class="card-title-toggle-copy">
-                    <span class="section-label">Timeline</span>
-                    <span class="card-title-main">Clip Timeline</span>
-                  </span>
-                </button>
-                <button id="addAnimationStepButton" type="button" class="secondary">Insert Current Frame</button>
-              </div>
-              <div id="animationStepsCardBody" class="collapsible-card-body">
-                <div id="animationStepList" class="animation-step-list" aria-label="Clip timeline"></div>
-              </div>
-            </section>
           </section>
 
           <section class="console-panel collapsible-card" data-collapsible-card>
@@ -601,6 +601,6 @@
       </section>
     </main>
 
-    <script type="module" src="./src/main.js?v=layout-resizer-28"></script>
+    <script type="module" src="./src/main.js?v=layout-resizer-34"></script>
   </body>
 </html>

@@ -25,7 +25,7 @@ const PI_ENDPOINTS_STORAGE_KEY = "project-fifo.pi-endpoints";
 const PIXEL_COLOR_STORAGE_KEY = "project-fifo.pixel-color";
 const STUDIO_SIDEBAR_WIDTH_STORAGE_KEY = "project-fifo.studio-sidebar-width";
 const WORKSPACE_ANIMATION_PANE_WIDTH_STORAGE_KEY = "project-fifo.workspace-animation-pane-width";
-const WORKSPACE_STUDIO_HEIGHT_STORAGE_KEY = "project-fifo.workspace-studio-height";
+const WORKSPACE_STUDIO_HEIGHT_STORAGE_KEY = "project-fifo.workspace-studio-height-v2";
 const DEFAULT_ENDPOINT_NAME = "Workshop Pi";
 const DEFAULT_PIXEL_COLOR = "#7CF7D4";
 const DEFAULT_STUDIO_SIDEBAR_WIDTH = 330;
@@ -43,10 +43,11 @@ const MIN_WORKSPACE_GRID_COMPACT_WIDTH = 120;
 const WORKSPACE_GRID_MIN_WIDTH_RATIO = 0.12;
 const WORKSPACE_PANEL_RESIZER_WIDTH = 18;
 const WORKSPACE_ANIMATION_PANE_RESIZE_STEP = 24;
-const DEFAULT_WORKSPACE_STUDIO_HEIGHT = 680;
+const DEFAULT_WORKSPACE_STUDIO_HEIGHT = 760;
 const MIN_WORKSPACE_STUDIO_HEIGHT = 160;
 const MAX_WORKSPACE_STUDIO_HEIGHT = 1400;
-const MIN_WORKSPACE_TIMELINE_HEIGHT = 220;
+const MIN_WORKSPACE_TIMELINE_HEIGHT = 140;
+const WORKSPACE_STUDIO_VIEWPORT_BOTTOM_GUTTER = 16;
 const WORKSPACE_STUDIO_HEIGHT_RESIZE_STEP = 32;
 const WORKSPACE_TIMELINE_PANEL_DRAG_ZONE_HEIGHT = 28;
 const PIXEL_CELL_SIZE = 28;
@@ -174,6 +175,8 @@ const state = {
   boardWorkspaceScale: 1,
   boardWorkspaceScaleFrame: null,
   boardWorkspaceResizeObserver: null,
+  boardWorkspaceViewportWidth: null,
+  boardWorkspaceViewportHeight: null,
   drawValue: 1,
   socket: null,
   sendTimer: null,
@@ -664,7 +667,9 @@ function getWorkspaceStudioHeightLimits() {
   }
 
   const panelRect = elements.workspacePanel.getBoundingClientRect();
-  const viewportMaximum = Math.round(window.innerHeight - panelRect.top - MIN_WORKSPACE_TIMELINE_HEIGHT - 40);
+  const viewportMaximum = Math.round(
+    window.innerHeight - panelRect.top - MIN_WORKSPACE_TIMELINE_HEIGHT - WORKSPACE_STUDIO_VIEWPORT_BOTTOM_GUTTER,
+  );
   const maximum = Math.max(
     minimum,
     Math.min(
@@ -856,6 +861,12 @@ function cleanupWorkspaceAnimationPaneResize() {
   state.workspacePaneResize = null;
   elements.workspacePanel?.classList.remove("is-pane-resizing");
   document.body.classList.remove("workspace-pane-resizing");
+}
+
+function cancelActiveStudioResizeInteractions() {
+  cleanupStudioSidebarResize();
+  cleanupWorkspaceAnimationPaneResize();
+  cleanupWorkspaceTimelineResize();
 }
 
 function startWorkspaceAnimationPaneResize(event) {
@@ -1860,6 +1871,20 @@ function getPixelGridContentBoxSize() {
   };
 }
 
+function calculateGridWorkspaceScale(workspaceWidth, workspaceHeight, availableSize = getPixelGridContentBoxSize()) {
+  if (availableSize.width <= 0 || availableSize.height <= 0) {
+    return 1;
+  }
+
+  const nextScale = Math.min(
+    1,
+    availableSize.width / workspaceWidth,
+    availableSize.height / workspaceHeight,
+  );
+
+  return Number.isFinite(nextScale) && nextScale > 0 ? nextScale : 1;
+}
+
 function updateGridWorkspaceScale() {
   const stage = elements.grid?.querySelector(".pixel-grid-stage");
   const workspace = stage?.querySelector(".pixel-grid-workspace");
@@ -1879,26 +1904,48 @@ function updateGridWorkspaceScale() {
   const availableSize = getPixelGridContentBoxSize();
   if (availableSize.width <= 0 || availableSize.height <= 0) {
     state.boardWorkspaceScale = 1;
+    state.boardWorkspaceViewportWidth = availableSize.width;
+    state.boardWorkspaceViewportHeight = availableSize.height;
     return 1;
   }
 
-  const nextScale = Math.min(
-    1,
-    availableSize.width / workspaceWidth,
-    availableSize.height / workspaceHeight,
-  );
-  const safeScale = Number.isFinite(nextScale) && nextScale > 0 ? nextScale : 1;
+  const fitScale = calculateGridWorkspaceScale(workspaceWidth, workspaceHeight, availableSize);
+  const lockedScale = state.boardDrag?.workspaceScale;
+  const previousScale = getCurrentBoardWorkspaceScale();
+  const viewportChanged = !Number.isFinite(state.boardWorkspaceViewportWidth)
+    || !Number.isFinite(state.boardWorkspaceViewportHeight)
+    || Math.abs(availableSize.width - state.boardWorkspaceViewportWidth) > 0.5
+    || Math.abs(availableSize.height - state.boardWorkspaceViewportHeight) > 0.5;
+  const safeScale = Number.isFinite(lockedScale) && lockedScale > 0
+    ? Math.min(lockedScale, 1)
+    : (
+      viewportChanged
+      || !Number.isFinite(previousScale)
+      || previousScale <= 0
+        ? fitScale
+        : previousScale
+    );
   stage.style.width = `${Math.max(1, Math.round(workspaceWidth * safeScale))}px`;
   stage.style.height = `${Math.max(1, Math.round(workspaceHeight * safeScale))}px`;
   workspace.style.transform = safeScale < 0.999 ? `scale(${safeScale})` : "";
   workspace.dataset.workspaceScale = String(safeScale);
   state.boardWorkspaceScale = safeScale;
+  state.boardWorkspaceViewportWidth = availableSize.width;
+  state.boardWorkspaceViewportHeight = availableSize.height;
   elements.grid.scrollTop = 0;
   elements.grid.scrollLeft = 0;
   return safeScale;
 }
 
 function scheduleGridWorkspaceScaleUpdate() {
+  if (state.boardDrag) {
+    if (state.boardWorkspaceScaleFrame != null) {
+      window.cancelAnimationFrame(state.boardWorkspaceScaleFrame);
+      state.boardWorkspaceScaleFrame = null;
+    }
+    return;
+  }
+
   if (state.boardWorkspaceScaleFrame != null) {
     window.cancelAnimationFrame(state.boardWorkspaceScaleFrame);
   }
@@ -1932,6 +1979,7 @@ function startBoardDrag(boardId, event) {
 
   event.preventDefault();
   event.stopPropagation();
+  cancelActiveStudioResizeInteractions();
   state.isPointerDown = false;
 
   state.boardDrag = {
@@ -2034,6 +2082,7 @@ function createCell(x, y, value) {
 
   cell.addEventListener("pointerdown", (event) => {
     event.preventDefault();
+    cancelActiveStudioResizeInteractions();
     const value = event.button === 2 ? 0 : state.drawValue;
     state.isPointerDown = true;
     applyCellValue(x, y, value);
