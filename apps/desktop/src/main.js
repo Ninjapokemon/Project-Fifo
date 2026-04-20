@@ -25,20 +25,30 @@ const PI_ENDPOINTS_STORAGE_KEY = "project-fifo.pi-endpoints";
 const PIXEL_COLOR_STORAGE_KEY = "project-fifo.pixel-color";
 const STUDIO_SIDEBAR_WIDTH_STORAGE_KEY = "project-fifo.studio-sidebar-width";
 const WORKSPACE_ANIMATION_PANE_WIDTH_STORAGE_KEY = "project-fifo.workspace-animation-pane-width";
+const WORKSPACE_STUDIO_HEIGHT_STORAGE_KEY = "project-fifo.workspace-studio-height";
 const DEFAULT_ENDPOINT_NAME = "Workshop Pi";
 const DEFAULT_PIXEL_COLOR = "#7CF7D4";
 const DEFAULT_STUDIO_SIDEBAR_WIDTH = 330;
-const MIN_STUDIO_SIDEBAR_WIDTH = 280;
+const MIN_STUDIO_SIDEBAR_WIDTH = 220;
 const MAX_STUDIO_SIDEBAR_WIDTH = 920;
-const MIN_STUDIO_MAIN_WIDTH = 560;
+const MIN_STUDIO_MAIN_WIDTH = 280;
+const MAX_STUDIO_SIDEBAR_VIEWPORT_RATIO = 0.48;
 const STUDIO_RESIZER_WIDTH = 18;
 const STUDIO_SIDEBAR_RESIZE_STEP = 24;
 const DEFAULT_WORKSPACE_ANIMATION_PANE_WIDTH = 420;
-const MIN_WORKSPACE_ANIMATION_PANE_WIDTH = 320;
-const MAX_WORKSPACE_ANIMATION_PANE_WIDTH = 720;
+const MIN_WORKSPACE_ANIMATION_PANE_WIDTH = 220;
+const MAX_WORKSPACE_ANIMATION_PANE_WIDTH = 1200;
 const MIN_WORKSPACE_GRID_WIDTH = 520;
+const MIN_WORKSPACE_GRID_COMPACT_WIDTH = 120;
+const WORKSPACE_GRID_MIN_WIDTH_RATIO = 0.12;
 const WORKSPACE_PANEL_RESIZER_WIDTH = 18;
 const WORKSPACE_ANIMATION_PANE_RESIZE_STEP = 24;
+const DEFAULT_WORKSPACE_STUDIO_HEIGHT = 680;
+const MIN_WORKSPACE_STUDIO_HEIGHT = 160;
+const MAX_WORKSPACE_STUDIO_HEIGHT = 1400;
+const MIN_WORKSPACE_TIMELINE_HEIGHT = 220;
+const WORKSPACE_STUDIO_HEIGHT_RESIZE_STEP = 32;
+const WORKSPACE_TIMELINE_PANEL_DRAG_ZONE_HEIGHT = 28;
 const PIXEL_CELL_SIZE = 28;
 const BOARD_GRID_COLUMN_GAP = 7;
 const BOARD_GRID_ROW_GAP = 1;
@@ -150,6 +160,7 @@ const state = {
     animations: [],
     activeFrameId: DEFAULT_FRAME_ID,
     activeAnimationId: null,
+    selectedStepIndex: null,
     defaultFrameId: DEFAULT_FRAME_ID,
     defaultAnimationId: null,
     previewTimer: null,
@@ -159,6 +170,10 @@ const state = {
   boardDrag: null,
   sidebarResize: null,
   workspacePaneResize: null,
+  workspaceTimelineResize: null,
+  boardWorkspaceScale: 1,
+  boardWorkspaceScaleFrame: null,
+  boardWorkspaceResizeObserver: null,
   drawValue: 1,
   socket: null,
   sendTimer: null,
@@ -190,6 +205,8 @@ const elements = {
   workspaceGridPane: document.querySelector("#workspaceGridPane"),
   workspaceAnimationPane: document.querySelector("#workspaceAnimationPane"),
   workspacePanelResizer: document.querySelector("#workspacePanelResizer"),
+  workspaceTimelinePanel: document.querySelector("#workspaceTimelinePanel"),
+  workspaceTimelineResizer: document.querySelector("#workspaceTimelineResizer"),
   savedEndpointSelect: document.querySelector("#savedEndpointSelect"),
   applySavedEndpointButton: document.querySelector("#applySavedEndpointButton"),
   deleteSavedEndpointButton: document.querySelector("#deleteSavedEndpointButton"),
@@ -412,9 +429,14 @@ function getStudioSidebarWidthLimits() {
   }
 
   const shellWidth = elements.studioShell.clientWidth;
+  const viewportMaximum = Math.round(window.innerWidth * MAX_STUDIO_SIDEBAR_VIEWPORT_RATIO);
   const maximum = Math.max(
     minimum,
-    Math.min(MAX_STUDIO_SIDEBAR_WIDTH, shellWidth - MIN_STUDIO_MAIN_WIDTH - STUDIO_RESIZER_WIDTH),
+    Math.min(
+      MAX_STUDIO_SIDEBAR_WIDTH,
+      viewportMaximum,
+      shellWidth - MIN_STUDIO_MAIN_WIDTH - STUDIO_RESIZER_WIDTH,
+    ),
   );
   return { minimum, maximum };
 }
@@ -462,6 +484,7 @@ function applyStudioSidebarWidth(width, options = {}) {
     window.localStorage.setItem(STUDIO_SIDEBAR_WIDTH_STORAGE_KEY, String(clampedWidth));
   }
 
+  scheduleGridWorkspaceScaleUpdate();
   return clampedWidth;
 }
 
@@ -557,11 +580,18 @@ function getWorkspaceAnimationPaneWidthLimits() {
   }
 
   const bodyWidth = elements.workspaceBody.clientWidth;
+  const protectedGridWidth = Math.max(
+    MIN_WORKSPACE_GRID_COMPACT_WIDTH,
+    Math.min(
+      MIN_WORKSPACE_GRID_WIDTH,
+      Math.round(bodyWidth * WORKSPACE_GRID_MIN_WIDTH_RATIO),
+    ),
+  );
   const maximum = Math.max(
     minimum,
     Math.min(
       MAX_WORKSPACE_ANIMATION_PANE_WIDTH,
-      bodyWidth - MIN_WORKSPACE_GRID_WIDTH - WORKSPACE_PANEL_RESIZER_WIDTH,
+      bodyWidth - protectedGridWidth - WORKSPACE_PANEL_RESIZER_WIDTH,
     ),
   );
   return { minimum, maximum };
@@ -615,6 +645,7 @@ function applyWorkspaceAnimationPaneWidth(width, options = {}) {
     window.localStorage.setItem(WORKSPACE_ANIMATION_PANE_WIDTH_STORAGE_KEY, String(clampedWidth));
   }
 
+  scheduleGridWorkspaceScaleUpdate();
   return clampedWidth;
 }
 
@@ -624,6 +655,182 @@ function loadWorkspaceAnimationPaneWidthPreference() {
 
 function resetWorkspaceAnimationPaneWidth() {
   applyWorkspaceAnimationPaneWidth(DEFAULT_WORKSPACE_ANIMATION_PANE_WIDTH, { persist: true });
+}
+
+function getWorkspaceStudioHeightLimits() {
+  const minimum = MIN_WORKSPACE_STUDIO_HEIGHT;
+  if (!elements.workspacePanel || window.matchMedia("(max-width: 900px)").matches) {
+    return { minimum, maximum: minimum };
+  }
+
+  const panelRect = elements.workspacePanel.getBoundingClientRect();
+  const viewportMaximum = Math.round(window.innerHeight - panelRect.top - MIN_WORKSPACE_TIMELINE_HEIGHT - 40);
+  const maximum = Math.max(
+    minimum,
+    Math.min(
+      MAX_WORKSPACE_STUDIO_HEIGHT,
+      viewportMaximum,
+    ),
+  );
+  return { minimum, maximum };
+}
+
+function getStoredWorkspaceStudioHeight() {
+  const rawValue = window.localStorage.getItem(WORKSPACE_STUDIO_HEIGHT_STORAGE_KEY);
+  const parsedValue = Number.parseFloat(rawValue || "");
+  return Number.isFinite(parsedValue) ? parsedValue : DEFAULT_WORKSPACE_STUDIO_HEIGHT;
+}
+
+function getCurrentWorkspaceStudioHeight() {
+  if (!elements.workspacePanel) {
+    return DEFAULT_WORKSPACE_STUDIO_HEIGHT;
+  }
+
+  const rawValue = window.getComputedStyle(elements.workspacePanel).getPropertyValue("--workspace-studio-height");
+  const parsedValue = Number.parseFloat(rawValue);
+  return Number.isFinite(parsedValue) ? parsedValue : DEFAULT_WORKSPACE_STUDIO_HEIGHT;
+}
+
+function updateWorkspaceTimelineResizerAccessibility(height = getCurrentWorkspaceStudioHeight()) {
+  if (!elements.workspaceTimelineResizer) {
+    return;
+  }
+
+  const { minimum, maximum } = getWorkspaceStudioHeightLimits();
+  elements.workspaceTimelineResizer.setAttribute("aria-valuemin", String(minimum));
+  elements.workspaceTimelineResizer.setAttribute("aria-valuemax", String(maximum));
+  elements.workspaceTimelineResizer.setAttribute("aria-valuenow", String(height));
+  elements.workspaceTimelineResizer.setAttribute("aria-valuetext", `${height}px studio height`);
+}
+
+function applyWorkspaceStudioHeight(height, options = {}) {
+  if (!elements.workspacePanel) {
+    return DEFAULT_WORKSPACE_STUDIO_HEIGHT;
+  }
+
+  const { minimum, maximum } = getWorkspaceStudioHeightLimits();
+  const fallback = clampNumber(
+    DEFAULT_WORKSPACE_STUDIO_HEIGHT,
+    minimum,
+    maximum,
+    minimum,
+  );
+  const clampedHeight = clampNumber(height, minimum, maximum, fallback);
+  elements.workspacePanel.style.setProperty("--workspace-studio-height", `${clampedHeight}px`);
+  updateWorkspaceTimelineResizerAccessibility(clampedHeight);
+
+  if (options.persist) {
+    window.localStorage.setItem(WORKSPACE_STUDIO_HEIGHT_STORAGE_KEY, String(clampedHeight));
+  }
+
+  scheduleGridWorkspaceScaleUpdate();
+  return clampedHeight;
+}
+
+function loadWorkspaceStudioHeightPreference() {
+  applyWorkspaceStudioHeight(getStoredWorkspaceStudioHeight());
+}
+
+function resetWorkspaceStudioHeight() {
+  applyWorkspaceStudioHeight(DEFAULT_WORKSPACE_STUDIO_HEIGHT, { persist: true });
+}
+
+function shouldStartWorkspaceTimelineResizeFromPanel(event) {
+  if (!elements.workspaceTimelinePanel) {
+    return false;
+  }
+
+  if (event.button !== 0) {
+    return false;
+  }
+
+  const interactiveTarget = event.target instanceof Element
+    ? event.target.closest("button, input, select, textarea, a, label, summary, [role='button']")
+    : null;
+  if (interactiveTarget) {
+    return false;
+  }
+
+  const panelRect = elements.workspaceTimelinePanel.getBoundingClientRect();
+  return (event.clientY - panelRect.top) <= WORKSPACE_TIMELINE_PANEL_DRAG_ZONE_HEIGHT;
+}
+
+function cleanupWorkspaceTimelineResize() {
+  if (!state.workspaceTimelineResize) {
+    return;
+  }
+
+  const pointerId = state.workspaceTimelineResize.pointerId;
+  if (
+    elements.workspaceTimelineResizer
+    && typeof elements.workspaceTimelineResizer.hasPointerCapture === "function"
+    && typeof elements.workspaceTimelineResizer.releasePointerCapture === "function"
+  ) {
+    try {
+      if (elements.workspaceTimelineResizer.hasPointerCapture(pointerId)) {
+        elements.workspaceTimelineResizer.releasePointerCapture(pointerId);
+      }
+    } catch (error) {
+      // Pointer capture cleanup is optional here, so ignore failures.
+    }
+  }
+
+  state.workspaceTimelineResize = null;
+  elements.workspacePanel?.classList.remove("is-timeline-resizing");
+  document.body.classList.remove("workspace-timeline-resizing");
+}
+
+function startWorkspaceTimelineResize(event) {
+  if (!elements.workspaceTimelineResizer || window.matchMedia("(max-width: 900px)").matches) {
+    return;
+  }
+
+  event.preventDefault();
+  state.isPointerDown = false;
+  state.strokeHasChanges = false;
+  state.workspaceTimelineResize = {
+    pointerId: event.pointerId,
+    startY: event.clientY,
+    startHeight: getCurrentWorkspaceStudioHeight(),
+  };
+  elements.workspacePanel?.classList.add("is-timeline-resizing");
+  document.body.classList.add("workspace-timeline-resizing");
+
+  if (typeof elements.workspaceTimelineResizer.setPointerCapture === "function") {
+    try {
+      elements.workspaceTimelineResizer.setPointerCapture(event.pointerId);
+    } catch (error) {
+      // Pointer capture is helpful but not required for the resize interaction.
+    }
+  }
+}
+
+function updateWorkspaceTimelineResize(event) {
+  if (!state.workspaceTimelineResize || event.pointerId !== state.workspaceTimelineResize.pointerId) {
+    return false;
+  }
+
+  const nextHeight = state.workspaceTimelineResize.startHeight
+    + (event.clientY - state.workspaceTimelineResize.startY);
+  applyWorkspaceStudioHeight(nextHeight);
+  return true;
+}
+
+function finishWorkspaceTimelineResize(event) {
+  if (!state.workspaceTimelineResize) {
+    return false;
+  }
+
+  if (event?.pointerId != null && event.pointerId !== state.workspaceTimelineResize.pointerId) {
+    return false;
+  }
+
+  applyWorkspaceStudioHeight(getCurrentWorkspaceStudioHeight(), { persist: true });
+  cleanupWorkspaceTimelineResize();
+  if (state.project.previewTimer == null) {
+    renderSelectedAnimationPreview();
+  }
+  return true;
 }
 
 function cleanupWorkspaceAnimationPaneResize() {
@@ -1630,6 +1837,89 @@ function calculateWorkspaceSize(boardLayout) {
   return { width, height };
 }
 
+function getCurrentBoardWorkspaceScale() {
+  return Number.isFinite(state.boardWorkspaceScale) && state.boardWorkspaceScale > 0
+    ? state.boardWorkspaceScale
+    : 1;
+}
+
+function getPixelGridContentBoxSize() {
+  if (!elements.grid) {
+    return { width: 0, height: 0 };
+  }
+
+  const styles = window.getComputedStyle(elements.grid);
+  const horizontalPadding = (Number.parseFloat(styles.paddingLeft) || 0)
+    + (Number.parseFloat(styles.paddingRight) || 0);
+  const verticalPadding = (Number.parseFloat(styles.paddingTop) || 0)
+    + (Number.parseFloat(styles.paddingBottom) || 0);
+
+  return {
+    width: Math.max(elements.grid.clientWidth - horizontalPadding, 0),
+    height: Math.max(elements.grid.clientHeight - verticalPadding, 0),
+  };
+}
+
+function updateGridWorkspaceScale() {
+  const stage = elements.grid?.querySelector(".pixel-grid-stage");
+  const workspace = stage?.querySelector(".pixel-grid-workspace");
+
+  if (!stage || !workspace || !elements.grid) {
+    state.boardWorkspaceScale = 1;
+    return 1;
+  }
+
+  const workspaceWidth = Number.parseFloat(workspace.dataset.workspaceWidth || workspace.style.width);
+  const workspaceHeight = Number.parseFloat(workspace.dataset.workspaceHeight || workspace.style.height);
+  if (!Number.isFinite(workspaceWidth) || !Number.isFinite(workspaceHeight) || workspaceWidth <= 0 || workspaceHeight <= 0) {
+    state.boardWorkspaceScale = 1;
+    return 1;
+  }
+
+  const availableSize = getPixelGridContentBoxSize();
+  if (availableSize.width <= 0 || availableSize.height <= 0) {
+    state.boardWorkspaceScale = 1;
+    return 1;
+  }
+
+  const nextScale = Math.min(
+    1,
+    availableSize.width / workspaceWidth,
+    availableSize.height / workspaceHeight,
+  );
+  const safeScale = Number.isFinite(nextScale) && nextScale > 0 ? nextScale : 1;
+  stage.style.width = `${Math.max(1, Math.round(workspaceWidth * safeScale))}px`;
+  stage.style.height = `${Math.max(1, Math.round(workspaceHeight * safeScale))}px`;
+  workspace.style.transform = safeScale < 0.999 ? `scale(${safeScale})` : "";
+  workspace.dataset.workspaceScale = String(safeScale);
+  state.boardWorkspaceScale = safeScale;
+  elements.grid.scrollTop = 0;
+  elements.grid.scrollLeft = 0;
+  return safeScale;
+}
+
+function scheduleGridWorkspaceScaleUpdate() {
+  if (state.boardWorkspaceScaleFrame != null) {
+    window.cancelAnimationFrame(state.boardWorkspaceScaleFrame);
+  }
+
+  state.boardWorkspaceScaleFrame = window.requestAnimationFrame(() => {
+    state.boardWorkspaceScaleFrame = null;
+    updateGridWorkspaceScale();
+  });
+}
+
+function initializeGridWorkspaceObserver() {
+  if (!elements.grid || typeof ResizeObserver !== "function" || state.boardWorkspaceResizeObserver) {
+    return;
+  }
+
+  state.boardWorkspaceResizeObserver = new ResizeObserver(() => {
+    scheduleGridWorkspaceScaleUpdate();
+  });
+  state.boardWorkspaceResizeObserver.observe(elements.grid);
+}
+
 function startBoardDrag(boardId, event) {
   if (event.button !== 0) {
     return;
@@ -1650,6 +1940,7 @@ function startBoardDrag(boardId, event) {
     startClientY: event.clientY,
     originGridX: board.visualGridX,
     originGridY: board.visualGridY,
+    workspaceScale: getCurrentBoardWorkspaceScale(),
     candidateGridX: board.visualGridX,
     candidateGridY: board.visualGridY,
     hasMoved: false,
@@ -1665,13 +1956,14 @@ function updateBoardDrag(event) {
     return;
   }
 
+  const workspaceScale = Math.max(state.boardDrag.workspaceScale || 1, 0.0001);
   const nextGridX = Math.max(
     0,
-    state.boardDrag.originGridX + Math.round((event.clientX - state.boardDrag.startClientX) / BOARD_SLOT_PITCH_X),
+    state.boardDrag.originGridX + Math.round((event.clientX - state.boardDrag.startClientX) / (BOARD_SLOT_PITCH_X * workspaceScale)),
   );
   const nextGridY = Math.max(
     0,
-    state.boardDrag.originGridY + Math.round((event.clientY - state.boardDrag.startClientY) / BOARD_SLOT_PITCH_Y),
+    state.boardDrag.originGridY + Math.round((event.clientY - state.boardDrag.startClientY) / (BOARD_SLOT_PITCH_Y * workspaceScale)),
   );
 
   if (nextGridX === state.boardDrag.candidateGridX && nextGridY === state.boardDrag.candidateGridY) {
@@ -2061,11 +2353,15 @@ function renderGrid() {
   elements.grid.innerHTML = "";
   const boardLayout = getRenderedBoardLayout()
     .sort((left, right) => (left.visualGridY - right.visualGridY) || (left.visualGridX - right.visualGridX) || left.chainIndex - right.chainIndex);
+  const stage = document.createElement("div");
   const workspace = document.createElement("div");
   const workspaceSize = calculateWorkspaceSize(boardLayout);
   const boardsByGroup = new Map();
 
+  stage.className = "pixel-grid-stage";
   workspace.className = "pixel-grid-workspace";
+  workspace.dataset.workspaceWidth = String(workspaceSize.width);
+  workspace.dataset.workspaceHeight = String(workspaceSize.height);
   workspace.style.width = `${workspaceSize.width}px`;
   workspace.style.height = `${workspaceSize.height}px`;
 
@@ -2087,7 +2383,10 @@ function renderGrid() {
     workspace.appendChild(createBoard(board));
   });
 
-  elements.grid.appendChild(workspace);
+  stage.appendChild(workspace);
+  elements.grid.appendChild(stage);
+  updateGridWorkspaceScale();
+  scheduleGridWorkspaceScaleUpdate();
   updateGridMeta();
 
   if (state.project.previewTimer == null) {
@@ -2357,11 +2656,51 @@ function renderSelectedAnimationPreview(statusMessage = null) {
   }
 
   if (activeAnimation) {
-    elements.animationPreviewStatus.textContent = `Ready to preview "${activeAnimation.name}".`;
+    elements.animationPreviewStatus.textContent = `Ready to preview clip "${activeAnimation.name}".`;
     return;
   }
 
-  elements.animationPreviewStatus.textContent = "Select or create an animation to preview timing.";
+  elements.animationPreviewStatus.textContent = "Select or create a clip to preview timing.";
+}
+
+function updateAnimationTimelinePlaybackState() {
+  const activeAnimation = getProjectAnimation();
+  const selectedStepIndex = getSelectedAnimationStepIndex(activeAnimation);
+  const playingStepIndex = activeAnimation && state.project.previewAnimationId === activeAnimation.id
+    ? state.project.previewStepIndex
+    : -1;
+
+  elements.animationStepList.querySelectorAll("[data-step-block='true']").forEach((block) => {
+    const stepIndex = Number(block.dataset.stepIndex);
+    if (!Number.isInteger(stepIndex)) {
+      return;
+    }
+
+    block.classList.toggle("is-selected", stepIndex === selectedStepIndex);
+    block.classList.toggle("is-playing", stepIndex === playingStepIndex);
+
+    const statusBadge = block.querySelector("[data-step-status='true']");
+    if (!statusBadge) {
+      return;
+    }
+
+    if (stepIndex === playingStepIndex) {
+      statusBadge.hidden = false;
+      statusBadge.classList.add("playing");
+      statusBadge.textContent = "Playing";
+      return;
+    }
+
+    if (stepIndex === selectedStepIndex) {
+      statusBadge.hidden = false;
+      statusBadge.classList.remove("playing");
+      statusBadge.textContent = "Selected";
+      return;
+    }
+
+    statusBadge.hidden = true;
+    statusBadge.classList.remove("playing");
+  });
 }
 
 function stopAnimationPreview(options = {}) {
@@ -2382,14 +2721,15 @@ function stopAnimationPreview(options = {}) {
 
   renderSelectedAnimationPreview(statusMessage);
   updateProjectEditorControls();
+  updateAnimationTimelinePlaybackState();
 }
 
 function scheduleAnimationPreviewStep(animation, framesById, stepIndex) {
   const step = animation.steps[stepIndex];
-  const frame = framesById.get(step.frameId);
+  const frame = step ? framesById.get(step.frameId) : null;
   if (!step || !frame) {
     stopAnimationPreview({
-      statusMessage: `Could not preview "${animation.name}" because one of its steps is missing a frame.`,
+      statusMessage: `Could not preview clip "${animation.name}" because one of its steps is missing a frame.`,
     });
     return;
   }
@@ -2397,7 +2737,8 @@ function scheduleAnimationPreviewStep(animation, framesById, stepIndex) {
   state.project.previewAnimationId = animation.id;
   state.project.previewStepIndex = stepIndex;
   renderAnimationPreviewFrame(frame.pixels);
-  elements.animationPreviewStatus.textContent = `Previewing "${animation.name}" step ${stepIndex + 1} of ${animation.steps.length}.`;
+  elements.animationPreviewStatus.textContent = `Previewing clip "${animation.name}" step ${stepIndex + 1} of ${animation.steps.length}.`;
+  updateAnimationTimelinePlaybackState();
 
   state.project.previewTimer = window.setTimeout(() => {
     const nextStepIndex = stepIndex + 1;
@@ -2414,15 +2755,16 @@ function scheduleAnimationPreviewStep(animation, framesById, stepIndex) {
     state.project.previewTimer = null;
     state.project.previewAnimationId = null;
     state.project.previewStepIndex = 0;
-    renderSelectedAnimationPreview(`Previewed "${animation.name}" once.`);
+    renderSelectedAnimationPreview(`Previewed clip "${animation.name}" once.`);
     updateProjectEditorControls();
+    updateAnimationTimelinePlaybackState();
   }, step.durationMs);
 }
 
 function startAnimationPreview() {
   const animation = getProjectAnimation();
   if (!animation) {
-    log("Select or create an animation first.");
+    log("Select or create a clip first.");
     return;
   }
 
@@ -2432,7 +2774,7 @@ function startAnimationPreview() {
   const framesById = new Map(frames.map((frame) => [frame.id, frame]));
   scheduleAnimationPreviewStep(animation, framesById, 0);
   renderProjectEditor();
-  log(`Started previewing animation "${animation.name}".`);
+  log(`Started previewing clip "${animation.name}".`);
 }
 
 function getDefaultTargetValue() {
@@ -2449,18 +2791,18 @@ function updateProjectSummary() {
   const frameCount = state.project.frames.length;
   const animationCount = state.project.animations.length;
   const activeFrame = getProjectFrame();
-  let defaultLabel = "Auto choose first animation or frame";
+  let defaultLabel = "Auto choose first clip or frame";
 
   if (state.project.defaultAnimationId) {
     const defaultAnimation = getProjectAnimation(state.project.defaultAnimationId);
-    defaultLabel = defaultAnimation ? `Default animation: ${defaultAnimation.name}` : defaultLabel;
+    defaultLabel = defaultAnimation ? `Default clip: ${defaultAnimation.name}` : defaultLabel;
   } else if (state.project.defaultFrameId) {
     const defaultFrame = getProjectFrame(state.project.defaultFrameId, getProjectFramesSnapshot());
     defaultLabel = defaultFrame ? `Default frame: ${defaultFrame.name}` : defaultLabel;
   }
 
   elements.projectSummary.textContent = `${frameCount} frame${frameCount === 1 ? "" : "s"}, `
-    + `${animationCount} animation${animationCount === 1 ? "" : "s"}. `
+    + `${animationCount} clip${animationCount === 1 ? "" : "s"}. `
     + `Editing "${activeFrame?.name || DEFAULT_FRAME_NAME}". ${defaultLabel}.`;
 }
 
@@ -2483,7 +2825,7 @@ function syncDefaultTargetOptions() {
 
   const autoOption = document.createElement("option");
   autoOption.value = DEFAULT_TARGET_AUTO_VALUE;
-  autoOption.textContent = "Auto choose first animation or frame";
+  autoOption.textContent = "Auto choose first clip or frame";
   elements.defaultTargetSelect.appendChild(autoOption);
 
   state.project.frames.forEach((frame) => {
@@ -2496,7 +2838,7 @@ function syncDefaultTargetOptions() {
   state.project.animations.forEach((animation) => {
     const option = document.createElement("option");
     option.value = `animation:${animation.id}`;
-    option.textContent = `Animation: ${animation.name}`;
+    option.textContent = `Clip: ${animation.name}`;
     elements.defaultTargetSelect.appendChild(option);
   });
 
@@ -2509,7 +2851,7 @@ function syncAnimationOptions() {
 
   const placeholder = document.createElement("option");
   placeholder.value = "";
-  placeholder.textContent = "No animation selected";
+  placeholder.textContent = "No clip selected";
   elements.animationSelect.appendChild(placeholder);
 
   state.project.animations.forEach((animation) => {
@@ -2522,96 +2864,410 @@ function syncAnimationOptions() {
   elements.animationSelect.value = previousValue;
 }
 
+function formatTimelineDuration(durationMs) {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    return "0 ms";
+  }
+
+  if (durationMs >= 1000) {
+    const seconds = durationMs / 1000;
+    return Number.isInteger(seconds) ? `${seconds} s` : `${seconds.toFixed(1)} s`;
+  }
+
+  return `${durationMs} ms`;
+}
+
+function formatTimelineRange(startMs, endMs) {
+  return `${formatTimelineDuration(startMs)} to ${formatTimelineDuration(endMs)}`;
+}
+
+function buildAnimationTimelineMetrics(steps = []) {
+  const totalDurationMs = steps.reduce((sum, step) => sum + step.durationMs, 0);
+  const baseTimelineWidth = Math.max(540, steps.length * 150);
+  let elapsedMs = 0;
+
+  const stepLayouts = steps.map((step) => {
+    const startMs = elapsedMs;
+    const endMs = startMs + step.durationMs;
+    const proportionalWidth = totalDurationMs > 0
+      ? Math.round((step.durationMs / totalDurationMs) * baseTimelineWidth)
+      : 0;
+
+    elapsedMs = endMs;
+
+    return {
+      startMs,
+      endMs,
+      width: Math.max(120, Math.min(320, proportionalWidth)),
+    };
+  });
+
+  return {
+    totalDurationMs,
+    stepLayouts,
+  };
+}
+
+function countAnimationStepFrameUsage(frameId) {
+  return state.project.animations.reduce((count, animation) => (
+    count + animation.steps.filter((step) => step.frameId === frameId).length
+  ), 0);
+}
+
+function getSelectedAnimationStepIndex(animation = getProjectAnimation()) {
+  if (!animation || !Array.isArray(animation.steps) || animation.steps.length === 0) {
+    return -1;
+  }
+
+  const rawIndex = Number.isInteger(state.project.selectedStepIndex)
+    ? state.project.selectedStepIndex
+    : 0;
+
+  return Math.max(0, Math.min(animation.steps.length - 1, rawIndex));
+}
+
+function createAnimationTimelineBadge(label, value) {
+  const badge = document.createElement("div");
+  badge.className = "animation-timeline-badge";
+
+  const labelElement = document.createElement("span");
+  labelElement.className = "animation-timeline-badge-label";
+  labelElement.textContent = label;
+
+  const valueElement = document.createElement("span");
+  valueElement.className = "animation-timeline-badge-value";
+  valueElement.textContent = value;
+
+  badge.appendChild(labelElement);
+  badge.appendChild(valueElement);
+  return badge;
+}
+
+function createAnimationInsertButton(insertIndex) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "animation-step-insert secondary";
+  button.dataset.stepAction = "insert-at";
+  button.dataset.insertIndex = String(insertIndex);
+  button.textContent = "+";
+  button.title = "Insert the current frame here";
+  button.setAttribute("aria-label", `Insert current frame at position ${insertIndex + 1}`);
+  return button;
+}
+
 function renderAnimationStepList() {
   elements.animationStepList.innerHTML = "";
   const activeAnimation = getProjectAnimation();
 
   if (!activeAnimation) {
-    const emptyMessage = document.createElement("p");
+    const emptyMessage = document.createElement("div");
     emptyMessage.className = "animation-step-empty";
-    emptyMessage.textContent = "Pick or create an animation, then add steps that reference the current frame or any other frame in the strip.";
+
+    const emptyTitle = document.createElement("strong");
+    emptyTitle.textContent = "No clip selected yet.";
+
+    const emptyCopy = document.createElement("p");
+    emptyCopy.textContent = "Create a clip from the current frame, then build timing visually by selecting blocks and inserting frames where the motion should change.";
+
+    const emptyActions = document.createElement("div");
+    emptyActions.className = "animation-step-empty-actions";
+
+    const newClipButton = document.createElement("button");
+    newClipButton.type = "button";
+    newClipButton.className = "secondary";
+    newClipButton.dataset.stepAction = "new-animation";
+    newClipButton.textContent = "New Clip From Current Frame";
+    emptyActions.appendChild(newClipButton);
+
+    const emptyHint = document.createElement("span");
+    emptyHint.className = "animation-step-empty-hint";
+    emptyHint.textContent = `A new clip starts with one ${formatTimelineDuration(DEFAULT_ANIMATION_STEP_DURATION_MS)} block.`;
+
+    emptyMessage.appendChild(emptyTitle);
+    emptyMessage.appendChild(emptyCopy);
+    emptyMessage.appendChild(emptyActions);
+    emptyMessage.appendChild(emptyHint);
     elements.animationStepList.appendChild(emptyMessage);
     return;
   }
 
+  const metrics = buildAnimationTimelineMetrics(activeAnimation.steps);
+  const framesById = new Map(state.project.frames.map((frame) => [frame.id, frame]));
+  const selectedStepIndex = getSelectedAnimationStepIndex(activeAnimation);
+  const selectedStep = activeAnimation.steps[selectedStepIndex];
+  const selectedFrame = framesById.get(selectedStep?.frameId) || null;
+  const selectedLayout = metrics.stepLayouts[selectedStepIndex] || null;
+  const playingStepIndex = state.project.previewAnimationId === activeAnimation.id
+    ? state.project.previewStepIndex
+    : -1;
+
+  const shell = document.createElement("div");
+  shell.className = "animation-timeline-shell";
+
+  const summary = document.createElement("div");
+  summary.className = "animation-timeline-summary";
+
+  const summaryHeading = document.createElement("div");
+  summaryHeading.className = "animation-timeline-summary-heading";
+
+  const summaryTitle = document.createElement("div");
+  summaryTitle.className = "animation-timeline-summary-title";
+
+  const summaryEyebrow = document.createElement("span");
+  summaryEyebrow.className = "animation-timeline-eyebrow";
+  summaryEyebrow.textContent = "Clip Timeline";
+
+  const summaryName = document.createElement("h4");
+  summaryName.textContent = activeAnimation.name;
+
+  const summaryCopy = document.createElement("p");
+  summaryCopy.textContent = `${activeAnimation.loop !== false ? "Looping clip." : "One-shot clip."} `
+    + "Click a block to load that frame into the canvas, then tune timing below.";
+
+  summaryTitle.appendChild(summaryEyebrow);
+  summaryTitle.appendChild(summaryName);
+  summaryTitle.appendChild(summaryCopy);
+
+  const summaryBadges = document.createElement("div");
+  summaryBadges.className = "animation-timeline-badges";
+  summaryBadges.appendChild(createAnimationTimelineBadge("Steps", String(activeAnimation.steps.length)));
+  summaryBadges.appendChild(createAnimationTimelineBadge("Total", formatTimelineDuration(metrics.totalDurationMs)));
+  summaryBadges.appendChild(createAnimationTimelineBadge("Loop", activeAnimation.loop !== false ? "On" : "Off"));
+  summaryBadges.appendChild(createAnimationTimelineBadge("Selected", `Step ${selectedStepIndex + 1}`));
+
+  summaryHeading.appendChild(summaryTitle);
+  summaryHeading.appendChild(summaryBadges);
+  summary.appendChild(summaryHeading);
+  shell.appendChild(summary);
+
+  const trackWrap = document.createElement("div");
+  trackWrap.className = "animation-timeline-track-wrap";
+
+  const track = document.createElement("div");
+  track.className = "animation-timeline-track";
+  track.appendChild(createAnimationInsertButton(0));
+
   activeAnimation.steps.forEach((step, index) => {
-    const row = document.createElement("div");
-    row.className = "animation-step";
-    row.dataset.stepIndex = String(index);
+    const frame = framesById.get(step.frameId);
+    const frameUsageCount = countAnimationStepFrameUsage(step.frameId);
+    const layout = metrics.stepLayouts[index];
+    const stepButton = document.createElement("button");
+    stepButton.type = "button";
+    stepButton.className = "animation-step-block";
+    stepButton.dataset.stepAction = "select";
+    stepButton.dataset.stepIndex = String(index);
+    stepButton.dataset.stepBlock = "true";
+    stepButton.style.width = `${layout.width}px`;
+    stepButton.title = `Load "${frame?.name || "Missing frame"}" into the editor`;
 
-    const header = document.createElement("div");
-    header.className = "animation-step-header";
+    if (index === selectedStepIndex) {
+      stepButton.classList.add("is-selected");
+    }
+    if (index === playingStepIndex) {
+      stepButton.classList.add("is-playing");
+    }
 
-    const stepIndex = document.createElement("span");
-    stepIndex.className = "animation-step-index";
-    stepIndex.textContent = `Step ${index + 1}`;
-    header.appendChild(stepIndex);
+    const stepTop = document.createElement("div");
+    stepTop.className = "animation-step-block-top";
 
-    const controls = document.createElement("div");
-    controls.className = "animation-step-controls";
+    const stepBadge = document.createElement("span");
+    stepBadge.className = "animation-step-badge";
+    stepBadge.textContent = `Step ${index + 1}`;
+    stepTop.appendChild(stepBadge);
 
-    const moveUpButton = document.createElement("button");
-    moveUpButton.type = "button";
-    moveUpButton.className = "secondary";
-    moveUpButton.dataset.stepAction = "move-up";
-    moveUpButton.textContent = "Up";
-    moveUpButton.disabled = index === 0;
-    controls.appendChild(moveUpButton);
+    const statusBadge = document.createElement("span");
+    statusBadge.className = `animation-step-status${index === playingStepIndex ? " playing" : ""}`;
+    statusBadge.dataset.stepStatus = "true";
+    statusBadge.hidden = index !== playingStepIndex && index !== selectedStepIndex;
+    statusBadge.textContent = index === playingStepIndex ? "Playing" : "Selected";
+    stepTop.appendChild(statusBadge);
 
-    const moveDownButton = document.createElement("button");
-    moveDownButton.type = "button";
-    moveDownButton.className = "secondary";
-    moveDownButton.dataset.stepAction = "move-down";
-    moveDownButton.textContent = "Down";
-    moveDownButton.disabled = index >= activeAnimation.steps.length - 1;
-    controls.appendChild(moveDownButton);
+    const stepFrame = document.createElement("div");
+    stepFrame.className = "animation-step-frame";
+    stepFrame.textContent = frame?.name || "Missing frame";
 
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.className = "secondary";
-    deleteButton.dataset.stepAction = "delete";
-    deleteButton.textContent = "Delete";
-    controls.appendChild(deleteButton);
+    const stepSubtle = document.createElement("div");
+    stepSubtle.className = "animation-step-subtle";
+    stepSubtle.textContent = frame
+      ? `${frameUsageCount} clip step${frameUsageCount === 1 ? "" : "s"} use this frame`
+      : "This block points to a frame that no longer exists.";
 
-    header.appendChild(controls);
+    const stepMeta = document.createElement("div");
+    stepMeta.className = "animation-step-meta";
 
-    const frameField = document.createElement("label");
-    frameField.className = "field";
-    const frameLabel = document.createElement("span");
-    frameLabel.textContent = "Frame";
-    const frameSelect = document.createElement("select");
-    frameSelect.dataset.stepField = "frame";
+    const stepDuration = document.createElement("span");
+    stepDuration.className = "animation-step-duration";
+    stepDuration.textContent = formatTimelineDuration(step.durationMs);
 
-    state.project.frames.forEach((frame) => {
-      const option = document.createElement("option");
-      option.value = frame.id;
-      option.textContent = frame.name;
-      frameSelect.appendChild(option);
-    });
+    const stepRange = document.createElement("span");
+    stepRange.className = "animation-step-range";
+    stepRange.textContent = formatTimelineRange(layout.startMs, layout.endMs);
 
-    frameSelect.value = step.frameId;
-    frameField.appendChild(frameLabel);
-    frameField.appendChild(frameSelect);
+    stepMeta.appendChild(stepDuration);
+    stepMeta.appendChild(stepRange);
 
-    const durationField = document.createElement("label");
-    durationField.className = "field";
-    const durationLabel = document.createElement("span");
-    durationLabel.textContent = "Duration (ms)";
-    const durationInput = document.createElement("input");
-    durationInput.type = "number";
-    durationInput.min = String(MIN_ANIMATION_STEP_DURATION_MS);
-    durationInput.max = String(MAX_ANIMATION_STEP_DURATION_MS);
-    durationInput.step = "10";
-    durationInput.value = String(step.durationMs);
-    durationInput.dataset.stepField = "duration";
-    durationField.appendChild(durationLabel);
-    durationField.appendChild(durationInput);
-
-    row.appendChild(header);
-    row.appendChild(frameField);
-    row.appendChild(durationField);
-    elements.animationStepList.appendChild(row);
+    stepButton.appendChild(stepTop);
+    stepButton.appendChild(stepFrame);
+    stepButton.appendChild(stepSubtle);
+    stepButton.appendChild(stepMeta);
+    track.appendChild(stepButton);
+    track.appendChild(createAnimationInsertButton(index + 1));
   });
+
+  trackWrap.appendChild(track);
+  shell.appendChild(trackWrap);
+
+  if (!selectedStep || !selectedLayout) {
+    elements.animationStepList.appendChild(shell);
+    return;
+  }
+
+  const inspector = document.createElement("div");
+  inspector.className = "animation-step-detail";
+  inspector.dataset.stepIndex = String(selectedStepIndex);
+
+  const inspectorHeader = document.createElement("div");
+  inspectorHeader.className = "animation-step-detail-header";
+
+  const inspectorTitle = document.createElement("div");
+  inspectorTitle.className = "animation-step-detail-title";
+
+  const inspectorHeading = document.createElement("h4");
+  inspectorHeading.textContent = `Selected Step ${selectedStepIndex + 1}`;
+
+  const inspectorCopy = document.createElement("p");
+  inspectorCopy.textContent = `This block uses "${selectedFrame?.name || "Missing frame"}" `
+    + `from ${formatTimelineDuration(selectedLayout.startMs)} to ${formatTimelineDuration(selectedLayout.endMs)}.`;
+
+  inspectorTitle.appendChild(inspectorHeading);
+  inspectorTitle.appendChild(inspectorCopy);
+
+  const inspectorBadges = document.createElement("div");
+  inspectorBadges.className = "animation-timeline-badges";
+  inspectorBadges.appendChild(createAnimationTimelineBadge("Start", formatTimelineDuration(selectedLayout.startMs)));
+  inspectorBadges.appendChild(createAnimationTimelineBadge("End", formatTimelineDuration(selectedLayout.endMs)));
+  inspectorBadges.appendChild(createAnimationTimelineBadge("Uses", String(countAnimationStepFrameUsage(selectedStep.frameId))));
+
+  inspectorHeader.appendChild(inspectorTitle);
+  inspectorHeader.appendChild(inspectorBadges);
+  inspector.appendChild(inspectorHeader);
+
+  const inspectorGrid = document.createElement("div");
+  inspectorGrid.className = "animation-step-detail-grid";
+
+  const frameField = document.createElement("label");
+  frameField.className = "field";
+
+  const frameLabel = document.createElement("span");
+  frameLabel.textContent = "Frame";
+
+  const frameSelect = document.createElement("select");
+  frameSelect.dataset.stepField = "frame";
+
+  state.project.frames.forEach((frame) => {
+    const option = document.createElement("option");
+    option.value = frame.id;
+    option.textContent = frame.name;
+    frameSelect.appendChild(option);
+  });
+
+  frameSelect.value = selectedStep.frameId;
+  frameField.appendChild(frameLabel);
+  frameField.appendChild(frameSelect);
+
+  const durationStack = document.createElement("div");
+  durationStack.className = "animation-step-field-stack";
+
+  const durationField = document.createElement("label");
+  durationField.className = "field";
+
+  const durationLabel = document.createElement("span");
+  durationLabel.textContent = "Duration (ms)";
+
+  const durationInput = document.createElement("input");
+  durationInput.type = "number";
+  durationInput.min = String(MIN_ANIMATION_STEP_DURATION_MS);
+  durationInput.max = String(MAX_ANIMATION_STEP_DURATION_MS);
+  durationInput.step = "10";
+  durationInput.value = String(selectedStep.durationMs);
+  durationInput.dataset.stepField = "duration";
+
+  durationField.appendChild(durationLabel);
+  durationField.appendChild(durationInput);
+  durationStack.appendChild(durationField);
+
+  const presetRow = document.createElement("div");
+  presetRow.className = "animation-step-preset-row";
+  [80, 120, 200, 320].forEach((durationMs) => {
+    const presetButton = document.createElement("button");
+    presetButton.type = "button";
+    presetButton.className = "animation-step-preset secondary";
+    presetButton.dataset.stepAction = "duration-preset";
+    presetButton.dataset.durationMs = String(durationMs);
+    presetButton.textContent = `${durationMs} ms`;
+    if (selectedStep.durationMs === durationMs) {
+      presetButton.classList.add("is-active");
+    }
+    presetRow.appendChild(presetButton);
+  });
+  durationStack.appendChild(presetRow);
+
+  inspectorGrid.appendChild(frameField);
+  inspectorGrid.appendChild(durationStack);
+  inspector.appendChild(inspectorGrid);
+
+  const actions = document.createElement("div");
+  actions.className = "animation-step-detail-actions";
+
+  const insertBeforeButton = document.createElement("button");
+  insertBeforeButton.type = "button";
+  insertBeforeButton.className = "secondary";
+  insertBeforeButton.dataset.stepAction = "insert-before";
+  insertBeforeButton.textContent = "Insert Before";
+  actions.appendChild(insertBeforeButton);
+
+  const insertAfterButton = document.createElement("button");
+  insertAfterButton.type = "button";
+  insertAfterButton.className = "secondary";
+  insertAfterButton.dataset.stepAction = "insert-after";
+  insertAfterButton.textContent = "Insert After";
+  actions.appendChild(insertAfterButton);
+
+  const loadFrameButton = document.createElement("button");
+  loadFrameButton.type = "button";
+  loadFrameButton.className = "secondary";
+  loadFrameButton.dataset.stepAction = "focus-frame";
+  loadFrameButton.textContent = "Load Step Frame";
+  loadFrameButton.disabled = selectedStep.frameId === state.project.activeFrameId;
+  actions.appendChild(loadFrameButton);
+
+  const moveUpButton = document.createElement("button");
+  moveUpButton.type = "button";
+  moveUpButton.className = "secondary";
+  moveUpButton.dataset.stepAction = "move-up";
+  moveUpButton.textContent = "Move Earlier";
+  moveUpButton.disabled = selectedStepIndex === 0;
+  actions.appendChild(moveUpButton);
+
+  const moveDownButton = document.createElement("button");
+  moveDownButton.type = "button";
+  moveDownButton.className = "secondary";
+  moveDownButton.dataset.stepAction = "move-down";
+  moveDownButton.textContent = "Move Later";
+  moveDownButton.disabled = selectedStepIndex >= activeAnimation.steps.length - 1;
+  actions.appendChild(moveDownButton);
+
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.className = "secondary";
+  deleteButton.dataset.stepAction = "delete";
+  deleteButton.textContent = "Delete Step";
+  deleteButton.disabled = activeAnimation.steps.length <= 1;
+  actions.appendChild(deleteButton);
+
+  inspector.appendChild(actions);
+  shell.appendChild(inspector);
+  elements.animationStepList.appendChild(shell);
 }
 
 function updateProjectEditorControls() {
@@ -2655,10 +3311,10 @@ function renderProjectEditor() {
   elements.loadButton.textContent = "Load JSON";
   elements.saveWorkflowStatus.textContent = hasProjectSave
     ? `Saving here exports the full project with ${frameCount} frame${frameCount === 1 ? "" : "s"} and `
-      + `${animationCount} animation${animationCount === 1 ? "" : "s"} as one JSON file.`
-    : "Saving here exports a single drawing JSON. Add more frames or animations and it will switch to a full project save.";
+      + `${animationCount} clip${animationCount === 1 ? "" : "s"} as one JSON file.`
+    : "Saving here exports a single drawing JSON. Add more frames or clips and it will switch to a full project save.";
   elements.projectDeployStatus.textContent = animationCount > 0
-    ? `Save Project To Pi uploads all ${frameCount} frames and ${animationCount} animation${animationCount === 1 ? "" : "s"} together. Then choose that project below to run it or set it as boot.`
+    ? `Save Project To Pi uploads all ${frameCount} frames and ${animationCount} clip${animationCount === 1 ? "" : "s"} together. Then choose that project below to run it or set it as boot.`
     : frameCount > 1
       ? `Save Project To Pi uploads all ${frameCount} frames together as one project. Then choose that project below to run it or set it as boot.`
       : "Save Project To Pi uploads the current one-frame project. Choose it below to run it or set it as boot.";
@@ -2688,6 +3344,7 @@ function selectProjectFrame(frameId, reason = "frame switch") {
 function selectProjectAnimation(animationId) {
   if (!animationId) {
     state.project.activeAnimationId = null;
+    state.project.selectedStepIndex = null;
     stopAnimationPreview();
     renderProjectEditor();
     saveAutosave();
@@ -2700,9 +3357,34 @@ function selectProjectAnimation(animationId) {
   }
 
   state.project.activeAnimationId = animation.id;
+  state.project.selectedStepIndex = 0;
   stopAnimationPreview();
   renderProjectEditor();
   saveAutosave();
+}
+
+function selectAnimationStep(index, options = {}) {
+  const animation = getProjectAnimation();
+  const step = animation?.steps?.[index];
+  if (!step) {
+    return;
+  }
+
+  state.project.selectedStepIndex = index;
+
+  if (options.stopPreview !== false && state.project.previewTimer != null) {
+    stopAnimationPreview({
+      statusMessage: "Preview stopped while you edited the clip timeline.",
+    });
+  }
+
+  if (options.syncFrame === false || step.frameId === state.project.activeFrameId) {
+    renderProjectEditor();
+    saveAutosave();
+    return;
+  }
+
+  selectProjectFrame(step.frameId, options.reason || "clip timeline selection");
 }
 
 function addProjectFrame() {
@@ -2838,7 +3520,7 @@ function createProjectAnimation() {
   syncActiveFrameIntoProject();
 
   const existingIds = new Set(state.project.animations.map((animation) => animation.id));
-  const nextAnimationName = `Animation ${state.project.animations.length + 1}`;
+  const nextAnimationName = `Clip ${state.project.animations.length + 1}`;
   const animation = {
     id: createUniqueProjectEntityId(existingIds, nextAnimationName, "animation"),
     name: nextAnimationName,
@@ -2853,27 +3535,29 @@ function createProjectAnimation() {
 
   state.project.animations = [...state.project.animations, animation];
   state.project.activeAnimationId = animation.id;
+  state.project.selectedStepIndex = 0;
   renderProjectEditor();
   pushHistorySnapshot("new animation");
-  log(`Added animation "${animation.name}".`);
+  log(`Created clip "${animation.name}" from frame "${activeFrame.name}".`);
 }
 
 function deleteActiveAnimation() {
   const activeAnimation = getProjectAnimation();
   if (!activeAnimation) {
-    log("Pick an animation first.");
+    log("Pick a clip first.");
     return;
   }
 
   stopAnimationPreview();
   state.project.animations = state.project.animations.filter((animation) => animation.id !== activeAnimation.id);
   state.project.activeAnimationId = state.project.animations[0]?.id || null;
+  state.project.selectedStepIndex = state.project.activeAnimationId ? 0 : null;
   if (state.project.defaultAnimationId === activeAnimation.id) {
     state.project.defaultAnimationId = null;
   }
   renderProjectEditor();
   pushHistorySnapshot("animation delete");
-  log(`Deleted animation "${activeAnimation.name}".`);
+  log(`Deleted clip "${activeAnimation.name}".`);
 }
 
 function renameActiveAnimation() {
@@ -2882,7 +3566,7 @@ function renameActiveAnimation() {
     return;
   }
 
-  const nextName = sanitizeProjectEntityLabel(elements.animationName.value, "Animation");
+  const nextName = sanitizeProjectEntityLabel(elements.animationName.value, "Clip");
   if (state.project.animations[activeAnimationIndex].name === nextName) {
     elements.animationName.value = nextName;
     return;
@@ -2942,27 +3626,32 @@ function setProjectDefaultTarget() {
   pushHistorySnapshot("default target change");
 }
 
-function addAnimationStepFromCurrentFrame() {
+function addAnimationStepFromCurrentFrame(insertIndex = null) {
   const activeAnimationIndex = getProjectAnimationIndex();
   const activeFrame = getProjectFrame();
   if (activeAnimationIndex < 0 || !activeFrame) {
-    log("Pick an animation first.");
+    log("Pick or create a clip first.");
     return;
   }
 
   stopAnimationPreview();
   syncActiveFrameIntoProject();
 
+  const animation = state.project.animations[activeAnimationIndex];
+  const nextSteps = [...animation.steps];
+  const boundedInsertIndex = Number.isInteger(insertIndex)
+    ? Math.max(0, Math.min(nextSteps.length, insertIndex))
+    : nextSteps.length;
+  nextSteps.splice(boundedInsertIndex, 0, {
+    frameId: activeFrame.id,
+    durationMs: DEFAULT_ANIMATION_STEP_DURATION_MS,
+  });
+
   state.project.animations[activeAnimationIndex] = {
-    ...state.project.animations[activeAnimationIndex],
-    steps: [
-      ...state.project.animations[activeAnimationIndex].steps,
-      {
-        frameId: activeFrame.id,
-        durationMs: DEFAULT_ANIMATION_STEP_DURATION_MS,
-      },
-    ],
+    ...animation,
+    steps: nextSteps,
   };
+  state.project.selectedStepIndex = boundedInsertIndex;
   renderProjectEditor();
   pushHistorySnapshot("animation step add");
 }
@@ -3009,7 +3698,17 @@ function updateAnimationStep(index, field, rawValue) {
     ...animation,
     steps: nextSteps,
   };
-  renderProjectEditor();
+  state.project.selectedStepIndex = index;
+
+  if (field === "frame") {
+    if (nextStep.frameId === state.project.activeFrameId) {
+      renderProjectEditor();
+    } else {
+      selectProjectFrame(nextStep.frameId, "clip step frame change");
+    }
+  } else {
+    renderProjectEditor();
+  }
   pushHistorySnapshot("animation step edit");
 }
 
@@ -3033,6 +3732,12 @@ function moveAnimationStep(index, direction) {
     ...animation,
     steps: nextSteps,
   };
+  const selectedStepIndex = getSelectedAnimationStepIndex(animation);
+  if (selectedStepIndex === index) {
+    state.project.selectedStepIndex = targetIndex;
+  } else if (selectedStepIndex === targetIndex) {
+    state.project.selectedStepIndex = index;
+  }
   renderProjectEditor();
   pushHistorySnapshot(direction < 0 ? "animation step move up" : "animation step move down");
 }
@@ -3045,7 +3750,7 @@ function deleteAnimationStep(index) {
 
   const animation = state.project.animations[activeAnimationIndex];
   if (animation.steps.length <= 1) {
-    log("Animations need at least one step. Delete the animation instead.");
+    log("Clips need at least one step. Delete the clip instead.");
     return;
   }
 
@@ -3054,6 +3759,7 @@ function deleteAnimationStep(index) {
     ...animation,
     steps: animation.steps.filter((_, stepIndex) => stepIndex !== index),
   };
+  state.project.selectedStepIndex = Math.max(0, Math.min(index, animation.steps.length - 2));
   renderProjectEditor();
   pushHistorySnapshot("animation step delete");
 }
@@ -3389,6 +4095,17 @@ function normalizeProjectState(projectState = state.project) {
   if (!animationIds.has(projectState.defaultAnimationId)) {
     projectState.defaultAnimationId = null;
   }
+
+  const activeAnimation = getProjectAnimation(projectState.activeAnimationId, projectState.animations);
+  if (!activeAnimation || !Array.isArray(activeAnimation.steps) || activeAnimation.steps.length === 0) {
+    projectState.selectedStepIndex = null;
+    return;
+  }
+
+  const rawStepIndex = Number.isInteger(projectState.selectedStepIndex)
+    ? projectState.selectedStepIndex
+    : 0;
+  projectState.selectedStepIndex = Math.max(0, Math.min(activeAnimation.steps.length - 1, rawStepIndex));
 }
 
 function resolveProjectEditorFrameId(project, preferredFrameId = null) {
@@ -3452,6 +4169,7 @@ function createProjectFromDrawing(drawing, options = {}) {
     defaultAnimationId: null,
     activeFrameId: frameId,
     activeAnimationId: null,
+    selectedStepIndex: null,
   };
 }
 
@@ -3520,6 +4238,9 @@ function buildCurrentProjectPayload(options = {}) {
     payload.activeAnimationId = animationIds.has(state.project.activeAnimationId)
       ? state.project.activeAnimationId
       : null;
+    payload.selectedStepIndex = animationIds.has(state.project.activeAnimationId)
+      ? getSelectedAnimationStepIndex()
+      : null;
   }
 
   return payload;
@@ -3550,6 +4271,7 @@ function createEditorSnapshot() {
       animations: getProjectAnimationsSnapshot(),
       activeFrameId: state.project.activeFrameId,
       activeAnimationId: state.project.activeAnimationId,
+      selectedStepIndex: state.project.selectedStepIndex,
       defaultFrameId: state.project.defaultFrameId,
       defaultAnimationId: state.project.defaultAnimationId,
     },
@@ -3623,6 +4345,9 @@ function applyProjectToEditor(project, reason, options = {}) {
   state.project.animations = cloneProjectAnimations(fittedProject.animations);
   state.project.activeFrameId = activeFrame.id;
   state.project.activeAnimationId = activeAnimationId;
+  state.project.selectedStepIndex = Number.isInteger(fittedProject.selectedStepIndex)
+    ? fittedProject.selectedStepIndex
+    : null;
   state.project.defaultFrameId = fittedProject.defaultFrameId ?? null;
   state.project.defaultAnimationId = fittedProject.defaultAnimationId ?? null;
   normalizeProjectState();
@@ -3664,6 +4389,7 @@ function restoreSnapshot(snapshot, reason, options = {}) {
     defaultAnimationId: snapshot.project.defaultAnimationId,
     activeFrameId: snapshot.project.activeFrameId,
     activeAnimationId: snapshot.project.activeAnimationId,
+    selectedStepIndex: snapshot.project.selectedStepIndex,
   };
 
   applyProjectToEditor(snapshotProject, reason, options);
@@ -3781,6 +4507,9 @@ function loadAutosave() {
       : createProjectFromDrawing(validateLoadedDrawing(parsedAutosave));
     autosaveProject.activeFrameId = typeof parsedAutosave.activeFrameId === "string" ? parsedAutosave.activeFrameId : null;
     autosaveProject.activeAnimationId = typeof parsedAutosave.activeAnimationId === "string" ? parsedAutosave.activeAnimationId : null;
+    autosaveProject.selectedStepIndex = Number.isInteger(parsedAutosave.selectedStepIndex)
+      ? parsedAutosave.selectedStepIndex
+      : null;
     applyProjectToEditor(autosaveProject, "autosave restore", { immediate: true, syncFrame: false });
     pushHistorySnapshot("autosave restore");
     log(`Restored autosaved project "${autosaveProject.name}".`);
@@ -4437,7 +5166,7 @@ function saveDrawing() {
   }
 
   triggerDownload(`${safeFilename}.json`, `${JSON.stringify(project, null, 2)}\n`);
-  log(`Saved project "${state.drawingName}" to JSON with ${project.frames.length} frames and ${project.animations.length} animations.`);
+  log(`Saved project "${state.drawingName}" to JSON with ${project.frames.length} frames and ${project.animations.length} clips.`);
 }
 
 function syncPiDrawingOptions() {
@@ -4604,7 +5333,7 @@ function saveProjectToPi() {
   const project = buildCurrentProjectPayload();
   const sent = sendMessage(buildSaveProjectMessage());
   if (sent) {
-    log(`Sent "${state.drawingName}" to the Pi as a bootable project with ${project.frames.length} frames and ${project.animations.length} animations.`);
+    log(`Sent "${state.drawingName}" to the Pi as a bootable project with ${project.frames.length} frames and ${project.animations.length} clips.`);
   } else {
     log("Not connected. Could not save a project to the Pi.");
   }
@@ -4873,7 +5602,7 @@ function loadProjectIntoEditor(project, sourceLabel) {
   applyProjectToEditor(project, sourceLabel, { syncFrame: false });
   pushHistorySnapshot(sourceLabel);
   scheduleFrameSend(sourceLabel);
-  log(`Loaded project "${project.name}" into the editor with ${project.frames.length} frames and ${project.animations.length} animations.`);
+  log(`Loaded project "${project.name}" into the editor with ${project.frames.length} frames and ${project.animations.length} clips.`);
 }
 
 async function loadEditorStateFromFile(file) {
@@ -5264,6 +5993,60 @@ function bindEvents() {
       resetWorkspaceAnimationPaneWidth();
     }
   });
+  elements.workspaceTimelineResizer.addEventListener("pointerdown", startWorkspaceTimelineResize);
+  elements.workspaceTimelinePanel.addEventListener("pointerdown", (event) => {
+    if (!shouldStartWorkspaceTimelineResizeFromPanel(event)) {
+      return;
+    }
+
+    startWorkspaceTimelineResize(event);
+  });
+  elements.workspaceTimelineResizer.addEventListener("dblclick", () => {
+    resetWorkspaceStudioHeight();
+  });
+  elements.workspaceTimelineResizer.addEventListener("keydown", (event) => {
+    if (window.matchMedia("(max-width: 900px)").matches) {
+      return;
+    }
+
+    const { minimum, maximum } = getWorkspaceStudioHeightLimits();
+    const currentHeight = getCurrentWorkspaceStudioHeight();
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      applyWorkspaceStudioHeight(
+        currentHeight - WORKSPACE_STUDIO_HEIGHT_RESIZE_STEP,
+        { persist: true },
+      );
+      return;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      applyWorkspaceStudioHeight(
+        currentHeight + WORKSPACE_STUDIO_HEIGHT_RESIZE_STEP,
+        { persist: true },
+      );
+      return;
+    }
+
+    if (event.key === "Home") {
+      event.preventDefault();
+      applyWorkspaceStudioHeight(minimum, { persist: true });
+      return;
+    }
+
+    if (event.key === "End") {
+      event.preventDefault();
+      applyWorkspaceStudioHeight(maximum, { persist: true });
+      return;
+    }
+
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      resetWorkspaceStudioHeight();
+    }
+  });
   elements.applySavedEndpointButton.addEventListener("click", applySavedEndpoint);
   elements.deleteSavedEndpointButton.addEventListener("click", deleteSavedEndpoint);
   elements.saveEndpointButton.addEventListener("click", () => {
@@ -5363,6 +6146,19 @@ function bindEvents() {
       return;
     }
 
+    if (target.dataset.stepAction === "new-animation") {
+      createProjectAnimation();
+      return;
+    }
+
+    if (target.dataset.stepAction === "insert-at") {
+      const insertIndex = Number(target.dataset.insertIndex);
+      if (Number.isInteger(insertIndex)) {
+        addAnimationStepFromCurrentFrame(insertIndex);
+      }
+      return;
+    }
+
     const row = target.closest("[data-step-index]");
     if (!row) {
       return;
@@ -5370,6 +6166,26 @@ function bindEvents() {
 
     const stepIndex = Number(row.dataset.stepIndex);
     if (!Number.isInteger(stepIndex)) {
+      return;
+    }
+
+    if (target.dataset.stepAction === "select" || target.dataset.stepAction === "focus-frame") {
+      selectAnimationStep(stepIndex);
+      return;
+    }
+
+    if (target.dataset.stepAction === "insert-before") {
+      addAnimationStepFromCurrentFrame(stepIndex);
+      return;
+    }
+
+    if (target.dataset.stepAction === "insert-after") {
+      addAnimationStepFromCurrentFrame(stepIndex + 1);
+      return;
+    }
+
+    if (target.dataset.stepAction === "duration-preset") {
+      updateAnimationStep(stepIndex, "duration", target.dataset.durationMs);
       return;
     }
 
@@ -5520,6 +6336,10 @@ function bindEvents() {
       return;
     }
 
+    if (updateWorkspaceTimelineResize(event)) {
+      return;
+    }
+
     updateBoardDrag(event);
   });
   window.addEventListener("pointerup", (event) => {
@@ -5528,6 +6348,10 @@ function bindEvents() {
     }
 
     if (finishWorkspaceAnimationPaneResize(event)) {
+      return;
+    }
+
+    if (finishWorkspaceTimelineResize(event)) {
       return;
     }
 
@@ -5544,7 +6368,7 @@ function bindEvents() {
     }
   });
   window.addEventListener("pointerleave", () => {
-    if (state.sidebarResize || state.workspacePaneResize || state.boardDrag) {
+    if (state.sidebarResize || state.workspacePaneResize || state.workspaceTimelineResize || state.boardDrag) {
       return;
     }
 
@@ -5556,6 +6380,10 @@ function bindEvents() {
     }
 
     if (finishWorkspaceAnimationPaneResize(event)) {
+      return;
+    }
+
+    if (finishWorkspaceTimelineResize(event)) {
       return;
     }
 
@@ -5574,6 +6402,7 @@ function bindEvents() {
   window.addEventListener("resize", () => {
     loadStudioSidebarWidthPreference();
     loadWorkspaceAnimationPaneWidthPreference();
+    loadWorkspaceStudioHeightPreference();
     if (state.project.previewTimer == null) {
       renderSelectedAnimationPreview();
     }
@@ -5607,6 +6436,7 @@ function init() {
   loadPixelColorPreference();
   loadStudioSidebarWidthPreference();
   loadWorkspaceAnimationPaneWidthPreference();
+  loadWorkspaceStudioHeightPreference();
   state.boardLayout = createBoardLayoutFromFrame(state.width, state.height, state.pixels);
   syncBoardGroups(state.boardLayout, [DEFAULT_BOARD_GROUP_ID]);
   elements.gridWidth.value = String(state.width);
@@ -5634,6 +6464,8 @@ function init() {
   pushHistorySnapshot("startup");
   loadAutosave();
   bindEvents();
+  initializeGridWorkspaceObserver();
+  scheduleGridWorkspaceScaleUpdate();
   updateHistoryButtons();
   log("Editor ready.");
   log("Set the Pi endpoint, connect, and start drawing.");

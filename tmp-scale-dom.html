@@ -1,0 +1,506 @@
+﻿<!DOCTYPE html>
+<html lang="en" style="--pixel-on-color: #7CF7D4; --pixel-on-glow: rgba(124, 247, 212, 0.3);"><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Fifo Editor</title>
+    <link rel="stylesheet" href="./src/styles.css?v=layout-resizer-23">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="panel hero" id="heroPanel">
+        <div class="hero-copy">
+          <p class="eyebrow">Project Fifo</p>
+          <h1>Draw on your PC. Stream to your Pi.</h1>
+          <p class="subtitle">
+            This editor sends full-frame updates over WebSocket to the Raspberry Pi
+            controller that drives your MAX7219 chain with <code>luma</code>.
+          </p>
+        </div>
+        <div class="connection-card collapsible-card" id="connectionCard" data-collapsible-card="">
+          <div class="card-heading">
+            <button id="connectionCardToggle" type="button" class="card-title-toggle" aria-expanded="true" aria-controls="connectionCardBody">
+              <span class="card-title-toggle-copy">
+                <span class="section-label">Connection</span>
+                <span class="card-title-main card-title-main-large">Pi Link</span>
+              </span>
+            </button>
+            <span id="connectionStatus" class="status-pill idle">Disconnected</span>
+          </div>
+          <div id="connectionCardSummary" class="connection-card-summary" hidden="">
+            <div class="connection-summary-copy">
+              <span class="connection-summary-label">Current endpoint</span>
+              <span id="connectionSummaryText" class="connection-summary-text">Workshop Pi - ws://raspberrypi.local:8765</span>
+            </div>
+          </div>
+          <div id="connectionCardBody" class="connection-card-body">
+            <p class="connection-copy">Keep endpoint management nearby, but out of the way of the drawing surface.</p>
+            <label class="field">
+              <span>Pi Endpoint</span>
+              <input id="endpoint" type="text" value="ws://raspberrypi.local:8765">
+            </label>
+            <div class="header-endpoint-tools">
+              <label class="field">
+                <span>Saved Pi Endpoints</span>
+                <select id="savedEndpointSelect"><option value="">No saved endpoints</option></select>
+              </label>
+              <label class="field">
+                <span>Endpoint Name</span>
+                <input id="endpointName" type="text" value="Workshop Pi" maxlength="80">
+              </label>
+            </div>
+            <div class="button-row wrap">
+              <button id="applySavedEndpointButton" type="button" class="secondary">Use Saved</button>
+              <button id="deleteSavedEndpointButton" type="button" class="secondary">Delete Saved</button>
+              <button id="saveEndpointButton" type="button" class="secondary">Save Endpoint</button>
+            </div>
+            <div class="button-row">
+              <button id="connectButton" type="button">Connect</button>
+              <button id="disconnectButton" type="button" class="secondary">Disconnect</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel studio-shell" id="studioShell" style="--studio-sidebar-width: 330px;">
+        <aside class="controls-sidebar" id="controlsSidebar">
+          <details class="control-group" open="">
+            <summary>
+              <div>
+                <p class="section-label">Canvas</p>
+                <h2>Editor Setup</h2>
+              </div>
+              <span class="summary-meta">Size + output</span>
+            </summary>
+            <div class="control-body">
+              <div class="stacked-fields two-up">
+                <label class="field">
+                  <span>Width</span>
+                  <input id="gridWidth" type="number" min="1" max="128" value="24">
+                </label>
+                <label class="field">
+                  <span>Height</span>
+                  <input id="gridHeight" type="number" min="1" max="64" value="8">
+                </label>
+              </div>
+              <button id="resizeButton" type="button" class="wide-button">Resize Grid</button>
+              <label class="field">
+                <span>Drawing Name</span>
+                <input id="drawingName" type="text" value="fifo-drawing" maxlength="80">
+              </label>
+              <label class="field">
+                <span>Brightness</span>
+                <div class="brightness-control">
+                  <input id="brightnessRange" type="range" min="0" max="15" step="1" value="3">
+                  <input id="brightnessValue" type="number" min="0" max="15" step="1" value="3">
+                </div>
+              </label>
+              <label class="field">
+                <span>Preview Pixel Color</span>
+                <div class="color-control">
+                  <input id="pixelColor" type="color" value="#7cf7d4">
+                  <span id="pixelColorValue" class="color-value">#7CF7D4</span>
+                </div>
+              </label>
+            </div>
+          </details>
+
+          <details class="control-group" open="">
+            <summary>
+              <div>
+                <p class="section-label">Project</p>
+                <h2>Frames + Clips</h2>
+              </div>
+              <span class="summary-meta">Live beside grid</span>
+            </summary>
+            <div class="control-body">
+              <p class="field-hint">
+                The animation panel stays visible next to the grid so you can draw, reorder frames,
+                tweak timings, and preview playback without switching views.
+              </p>
+            </div>
+          </details>
+
+          <details class="control-group" open="">
+            <summary>
+              <div>
+                <p class="section-label">Display</p>
+                <h2>Layout + Orientation</h2>
+              </div>
+              <span class="summary-meta">Live Pi mapping</span>
+            </summary>
+            <div class="control-body">
+              <label class="field">
+                <span>Layout Preset</span>
+                <select id="layoutPreset">
+                  <option value="custom">Custom</option>
+                  <option value="horizontal-ltr">Horizontal L to R</option>
+                  <option value="horizontal-rtl">Horizontal R to L</option>
+                  <option value="horizontal-ltr-flipped">Horizontal L to R Flipped</option>
+                  <option value="horizontal-rtl-flipped">Horizontal R to L Flipped</option>
+                </select>
+              </label>
+              <div class="button-row wrap">
+                <button id="applyLayoutPresetButton" type="button" class="secondary">Apply Preset</button>
+                <button id="refreshLayoutButton" type="button" class="secondary">Read From Pi</button>
+                <button id="saveLayoutButton" type="button" class="secondary">Save To Pi</button>
+              </div>
+              <div class="stacked-fields two-up">
+                <label class="field">
+                  <span>Rotate</span>
+                  <select id="rotateSelect">
+                    <option value="0">0 degrees</option>
+                    <option value="1">90 degrees</option>
+                    <option value="2">180 degrees</option>
+                    <option value="3">270 degrees</option>
+                  </select>
+                </label>
+                <label class="field">
+                  <span>Block Orientation</span>
+                  <select id="blockOrientationSelect">
+                    <option value="90">90 degrees</option>
+                    <option value="-90">-90 degrees</option>
+                    <option value="0">0 degrees</option>
+                    <option value="180">180 degrees</option>
+                  </select>
+                </label>
+              </div>
+              <label class="toggle-field" for="reverseOrderInput">
+                <div>
+                  <span>Reverse Panel Order</span>
+                  <p>Flip the matrix chain direction when the first module starts on the opposite side.</p>
+                </div>
+                <input id="reverseOrderInput" type="checkbox">
+              </label>
+              <label class="field">
+                <span>Panel Order</span>
+                <input id="panelOrderInput" type="text" inputmode="numeric" placeholder="1, 2, 3">
+              </label>
+              <p class="field-hint">
+                Optional custom order. Enter the logical panel numbers in physical left-to-right,
+                top-to-bottom order, for example <code>1, 3, 2, 4</code>. If two panels light at
+                once during <code>Panel Index Test</code>, that usually points to wiring mirroring
+                rather than a panel-order setting.
+              </p>
+              <p class="field-hint">
+                Use the board controls in the workspace below for both LED output correction and
+                website-only board preview correction.
+              </p>
+            </div>
+          </details>
+
+          <details class="control-group" open="">
+            <summary>
+              <div>
+                <p class="section-label">Tools</p>
+                <h2>Draw + Manage</h2>
+              </div>
+              <span class="summary-meta">Core actions</span>
+            </summary>
+            <div class="control-body">
+              <div class="button-row wrap">
+                <button id="paintModeButton" type="button" disabled="">Paint Mode</button>
+                <button id="eraseModeButton" type="button" class="secondary">Erase Mode</button>
+                <button id="undoButton" type="button" class="secondary" disabled="">Undo</button>
+                <button id="redoButton" type="button" class="secondary" disabled="">Redo</button>
+                <button id="clearButton" type="button" class="secondary">Clear</button>
+                <button id="fillButton" type="button" class="secondary">Fill</button>
+              </div>
+              <div class="button-row wrap">
+                <button id="sendButton" type="button" class="secondary">Send Now</button>
+              </div>
+            </div>
+          </details>
+
+          <details class="control-group">
+            <summary>
+              <div>
+                <p class="section-label">Patterns</p>
+                <h2>Test + Motion</h2>
+              </div>
+              <span class="summary-meta">Utilities</span>
+            </summary>
+            <div class="control-body">
+              <div class="button-row wrap">
+                <button id="checkerButton" type="button" class="secondary">Checker</button>
+                <button id="borderButton" type="button" class="secondary">Border</button>
+                <button id="horizontalLineButton" type="button" class="secondary">Horizontal Line</button>
+                <button id="verticalLineButton" type="button" class="secondary">Vertical Line</button>
+                <button id="movingDotButton" type="button" class="secondary">Moving Dot</button>
+                <button id="panelIndexTestButton" type="button" class="secondary">Panel Index Test</button>
+                <button id="stopPatternButton" type="button" class="secondary">Stop Pattern</button>
+              </div>
+              <div class="stacked-fields two-up">
+                <label class="field">
+                  <span>Moving Dot Speed</span>
+                  <input id="movingDotSpeed" type="number" min="1" max="32" step="1" value="1">
+                </label>
+                <label class="field">
+                  <span>Moving Dot FPS</span>
+                  <input id="movingDotFps" type="number" min="1" max="60" step="1" value="12">
+                </label>
+              </div>
+            </div>
+          </details>
+
+          <div class="sidebar-footer">
+            <p class="hint">
+              Left click paints. Right click erases. Drag to draw continuously. Open the nested groups only when you need them.
+            </p>
+            <p id="autosaveStatus" class="hint autosave-status">Restored autosave from 4/20/2026, 1:18:23 AM.</p>
+          </div>
+          <input id="loadInput" type="file" accept="application/json,.json" hidden="">
+        </aside>
+
+        <div id="studioResizer" class="studio-resizer" role="separator" tabindex="0" aria-label="Resize editor panels" aria-orientation="vertical" aria-controls="controlsSidebar studioMain" title="Drag to resize the editor panels. Arrow keys also work." aria-valuemin="280" aria-valuemax="486" aria-valuenow="330" aria-valuetext="330px sidebar width"></div>
+
+        <div class="studio-main" id="studioMain">
+          <section class="workspace-panel" id="workspacePanel" style="--workspace-animation-pane-width: 320px; --workspace-studio-height: 320px;">
+            <div class="workspace-body" id="workspaceBody">
+              <div class="workspace-main-column">
+                <div class="workspace-header">
+                  <div class="workspace-header-copy-block">
+                    <p class="section-label">Workspace</p>
+                    <h2>Studio</h2>
+                    <p class="workspace-copy">
+                      Draw directly on the board layout while keeping clip setup and preview beside it,
+                      then shape timing in the timeline below.
+                    </p>
+                  </div>
+
+                  <div class="workspace-header-side">
+                    <p class="workspace-mode-label">Draw + animate at the same time</p>
+                    <div class="workspace-header-actions">
+                      <section class="animation-studio-card workspace-header-card workspace-header-storage collapsible-card" data-collapsible-card="">
+                        <div class="animation-studio-card-header">
+                          <button type="button" class="card-title-toggle" aria-expanded="true" aria-controls="workspaceStorageCardBody">
+                            <span class="card-title-toggle-copy">
+                              <span class="section-label">Files</span>
+                              <span class="card-title-main">Save + Load</span>
+                            </span>
+                          </button>
+                        </div>
+                        <div id="workspaceStorageCardBody" class="collapsible-card-body">
+                          <p id="saveWorkflowStatus" class="animation-studio-copy">Saving here exports a single drawing JSON. Add more frames or clips and it will switch to a full project save.</p>
+                          <div class="button-row wrap">
+                            <button id="saveButton" type="button" class="secondary">Save Drawing JSON</button>
+                            <button id="loadButton" type="button" class="secondary">Load JSON</button>
+                          </div>
+                          <div class="animation-studio-divider"></div>
+                          <label class="field">
+                            <span>Saved Frames on Pi</span>
+                            <select id="piDrawingSelect"><option value="">No Pi drawings loaded</option></select>
+                          </label>
+                          <div class="button-row wrap">
+                            <button id="refreshPiDrawingsButton" type="button" class="secondary">Refresh Frames</button>
+                            <button id="saveToPiButton" type="button" class="secondary">Save Current Frame</button>
+                            <button id="loadFromPiButton" type="button" class="secondary">Load Saved Frame</button>
+                          </div>
+                        </div>
+                      </section>
+
+                      <section class="animation-studio-card workspace-header-card workspace-header-deploy collapsible-card" data-collapsible-card="">
+                        <div class="animation-studio-card-header">
+                          <button type="button" class="card-title-toggle" aria-expanded="true" aria-controls="workspaceDeployCardBody">
+                            <span class="card-title-toggle-copy">
+                              <span class="section-label">Deploy</span>
+                              <span class="card-title-main">Run On Pi</span>
+                            </span>
+                          </button>
+                        </div>
+                        <div id="workspaceDeployCardBody" class="collapsible-card-body">
+                          <p id="piRuntimeStatus" class="field-hint animation-studio-status">Connect to a Pi to manage bootable projects and temporary live control.</p>
+                          <p id="projectDeployStatus" class="animation-studio-copy">Save Project To Pi uploads the current one-frame project. Choose it below to run it or set it as boot.</p>
+                          <label class="field">
+                            <span>Saved Projects on Pi</span>
+                            <select id="piProjectSelect"><option value="">No Pi projects loaded</option></select>
+                          </label>
+                          <div class="button-row wrap">
+                            <button id="refreshPiProjectsButton" type="button" class="secondary">Refresh Projects</button>
+                            <button id="saveProjectToPiButton" type="button" class="secondary">Save Project To Pi</button>
+                            <button id="loadProjectFromPiButton" type="button" class="secondary">Load Project To Editor</button>
+                          </div>
+                          <div class="button-row wrap">
+                            <button id="activateProjectButton" type="button" class="secondary">Run On Pi</button>
+                            <button id="setBootProjectButton" type="button" class="secondary">Set As Boot</button>
+                            <button id="clearBootProjectButton" type="button" class="secondary">Clear Boot</button>
+                          </div>
+                          <div class="button-row wrap">
+                            <button id="resumeProjectButton" type="button" class="secondary">Resume Saved Project</button>
+                            <button id="deleteProjectButton" type="button" class="secondary">Delete From Pi</button>
+                          </div>
+                        </div>
+                      </section>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="workspace-grid-pane" id="workspaceGridPane">
+                  <div class="grid-header">
+                    <div>
+                      <div class="workspace-tools">
+                        <button id="newBoardGroupButton" type="button" class="secondary">New Group</button>
+                      </div>
+                    </div>
+                    <p class="legend">
+                      <span class="legend-chip on"></span> On
+                      <span class="legend-chip off"></span> Off
+                    </p>
+                  </div>
+                  <div id="grid" class="pixel-grid" aria-label="Pixel editor grid"><div class="pixel-grid-stage" style="width: 504px; height: 226px;"><div class="pixel-grid-workspace" data-workspace-width="993" data-workspace-height="445" style="width: 993px; height: 445px; transform: scale(0.507865);" data-workspace-scale="0.5078651685393258"><div class="pixel-board-group" style="left: 6px; top: 8px; width: 987px; height: 437px;"><div class="pixel-board-group-label">Group 1</div></div><section class="pixel-board" aria-label="Chain 1" data-board-id="board-1" style="left: 24px; top: 40px; width: 305px; height: 387px;"><div class="pixel-board-header" style="min-height: 112px;"><button type="button" class="pixel-board-label" aria-label="Drag Chain 1">Chain 1</button><select class="pixel-board-group-select" aria-label="Chain 1 group"><option value="group-1">Group 1</option></select><button type="button" class="pixel-board-rotation-button" aria-pressed="false" aria-label="Chain 1 maps to physical panel 1 and currently uses 0 degrees of LED output rotation. Click to cycle 0, 90, 180, and 270 degrees." title="Cycle physical panel 1 through 0, 90, 180, and 270 degrees on the LED hardware while keeping the editor preview upright.">LED 0</button><button type="button" class="pixel-board-mirror-button" aria-pressed="false" aria-label="Chain 1 maps to physical panel 1 and currently has horizontal mirroring disabled. Click to toggle hardware mirroring." title="Toggle horizontal mirroring for physical panel 1 on the LED hardware while keeping the editor preview upright.">LED Mir Off</button><button type="button" class="pixel-board-view-rotation-button" aria-pressed="false" aria-label="Chain 1 currently uses 0 degrees of website-only view rotation. Click to cycle 0, 90, 180, and 270 degrees without changing the LED hardware output." title="Cycle how this board is shown on the website only.">View 0</button><button type="button" class="pixel-board-view-mirror-button" aria-pressed="false" aria-label="Chain 1 currently has website-only mirroring disabled. Click to toggle how this board is shown in the editor without changing the LED hardware output." title="Toggle how this board is mirrored on the website only.">View Mir Off</button></div><div class="pixel-board-grid" style="grid-template-columns: repeat(8, 28px); grid-template-rows: repeat(8, 28px);"><button type="button" class="pixel-cell" data-x="0" data-y="0" aria-label="Pixel 0, 0"></button><button type="button" class="pixel-cell" data-x="1" data-y="0" aria-label="Pixel 1, 0"></button><button type="button" class="pixel-cell" data-x="2" data-y="0" aria-label="Pixel 2, 0"></button><button type="button" class="pixel-cell" data-x="3" data-y="0" aria-label="Pixel 3, 0"></button><button type="button" class="pixel-cell" data-x="4" data-y="0" aria-label="Pixel 4, 0"></button><button type="button" class="pixel-cell" data-x="5" data-y="0" aria-label="Pixel 5, 0"></button><button type="button" class="pixel-cell" data-x="6" data-y="0" aria-label="Pixel 6, 0"></button><button type="button" class="pixel-cell" data-x="7" data-y="0" aria-label="Pixel 7, 0"></button><button type="button" class="pixel-cell" data-x="0" data-y="1" aria-label="Pixel 0, 1"></button><button type="button" class="pixel-cell" data-x="1" data-y="1" aria-label="Pixel 1, 1"></button><button type="button" class="pixel-cell" data-x="2" data-y="1" aria-label="Pixel 2, 1"></button><button type="button" class="pixel-cell" data-x="3" data-y="1" aria-label="Pixel 3, 1"></button><button type="button" class="pixel-cell" data-x="4" data-y="1" aria-label="Pixel 4, 1"></button><button type="button" class="pixel-cell" data-x="5" data-y="1" aria-label="Pixel 5, 1"></button><button type="button" class="pixel-cell" data-x="6" data-y="1" aria-label="Pixel 6, 1"></button><button type="button" class="pixel-cell" data-x="7" data-y="1" aria-label="Pixel 7, 1"></button><button type="button" class="pixel-cell" data-x="0" data-y="2" aria-label="Pixel 0, 2"></button><button type="button" class="pixel-cell" data-x="1" data-y="2" aria-label="Pixel 1, 2"></button><button type="button" class="pixel-cell" data-x="2" data-y="2" aria-label="Pixel 2, 2"></button><button type="button" class="pixel-cell" data-x="3" data-y="2" aria-label="Pixel 3, 2"></button><button type="button" class="pixel-cell" data-x="4" data-y="2" aria-label="Pixel 4, 2"></button><button type="button" class="pixel-cell" data-x="5" data-y="2" aria-label="Pixel 5, 2"></button><button type="button" class="pixel-cell" data-x="6" data-y="2" aria-label="Pixel 6, 2"></button><button type="button" class="pixel-cell" data-x="7" data-y="2" aria-label="Pixel 7, 2"></button><button type="button" class="pixel-cell" data-x="0" data-y="3" aria-label="Pixel 0, 3"></button><button type="button" class="pixel-cell" data-x="1" data-y="3" aria-label="Pixel 1, 3"></button><button type="button" class="pixel-cell" data-x="2" data-y="3" aria-label="Pixel 2, 3"></button><button type="button" class="pixel-cell" data-x="3" data-y="3" aria-label="Pixel 3, 3"></button><button type="button" class="pixel-cell" data-x="4" data-y="3" aria-label="Pixel 4, 3"></button><button type="button" class="pixel-cell" data-x="5" data-y="3" aria-label="Pixel 5, 3"></button><button type="button" class="pixel-cell" data-x="6" data-y="3" aria-label="Pixel 6, 3"></button><button type="button" class="pixel-cell" data-x="7" data-y="3" aria-label="Pixel 7, 3"></button><button type="button" class="pixel-cell" data-x="0" data-y="4" aria-label="Pixel 0, 4"></button><button type="button" class="pixel-cell" data-x="1" data-y="4" aria-label="Pixel 1, 4"></button><button type="button" class="pixel-cell" data-x="2" data-y="4" aria-label="Pixel 2, 4"></button><button type="button" class="pixel-cell" data-x="3" data-y="4" aria-label="Pixel 3, 4"></button><button type="button" class="pixel-cell" data-x="4" data-y="4" aria-label="Pixel 4, 4"></button><button type="button" class="pixel-cell" data-x="5" data-y="4" aria-label="Pixel 5, 4"></button><button type="button" class="pixel-cell" data-x="6" data-y="4" aria-label="Pixel 6, 4"></button><button type="button" class="pixel-cell" data-x="7" data-y="4" aria-label="Pixel 7, 4"></button><button type="button" class="pixel-cell" data-x="0" data-y="5" aria-label="Pixel 0, 5"></button><button type="button" class="pixel-cell" data-x="1" data-y="5" aria-label="Pixel 1, 5"></button><button type="button" class="pixel-cell" data-x="2" data-y="5" aria-label="Pixel 2, 5"></button><button type="button" class="pixel-cell" data-x="3" data-y="5" aria-label="Pixel 3, 5"></button><button type="button" class="pixel-cell" data-x="4" data-y="5" aria-label="Pixel 4, 5"></button><button type="button" class="pixel-cell" data-x="5" data-y="5" aria-label="Pixel 5, 5"></button><button type="button" class="pixel-cell" data-x="6" data-y="5" aria-label="Pixel 6, 5"></button><button type="button" class="pixel-cell" data-x="7" data-y="5" aria-label="Pixel 7, 5"></button><button type="button" class="pixel-cell" data-x="0" data-y="6" aria-label="Pixel 0, 6"></button><button type="button" class="pixel-cell" data-x="1" data-y="6" aria-label="Pixel 1, 6"></button><button type="button" class="pixel-cell" data-x="2" data-y="6" aria-label="Pixel 2, 6"></button><button type="button" class="pixel-cell" data-x="3" data-y="6" aria-label="Pixel 3, 6"></button><button type="button" class="pixel-cell" data-x="4" data-y="6" aria-label="Pixel 4, 6"></button><button type="button" class="pixel-cell" data-x="5" data-y="6" aria-label="Pixel 5, 6"></button><button type="button" class="pixel-cell" data-x="6" data-y="6" aria-label="Pixel 6, 6"></button><button type="button" class="pixel-cell" data-x="7" data-y="6" aria-label="Pixel 7, 6"></button><button type="button" class="pixel-cell" data-x="0" data-y="7" aria-label="Pixel 0, 7"></button><button type="button" class="pixel-cell" data-x="1" data-y="7" aria-label="Pixel 1, 7"></button><button type="button" class="pixel-cell" data-x="2" data-y="7" aria-label="Pixel 2, 7"></button><button type="button" class="pixel-cell" data-x="3" data-y="7" aria-label="Pixel 3, 7"></button><button type="button" class="pixel-cell" data-x="4" data-y="7" aria-label="Pixel 4, 7"></button><button type="button" class="pixel-cell" data-x="5" data-y="7" aria-label="Pixel 5, 7"></button><button type="button" class="pixel-cell" data-x="6" data-y="7" aria-label="Pixel 6, 7"></button><button type="button" class="pixel-cell" data-x="7" data-y="7" aria-label="Pixel 7, 7"></button></div></section><section class="pixel-board" aria-label="Chain 2" data-board-id="board-2" style="left: 347px; top: 40px; width: 305px; height: 387px;"><div class="pixel-board-header" style="min-height: 112px;"><button type="button" class="pixel-board-label" aria-label="Drag Chain 2">Chain 2</button><select class="pixel-board-group-select" aria-label="Chain 2 group"><option value="group-1">Group 1</option></select><button type="button" class="pixel-board-rotation-button" aria-pressed="false" aria-label="Chain 2 maps to physical panel 2 and currently uses 0 degrees of LED output rotation. Click to cycle 0, 90, 180, and 270 degrees." title="Cycle physical panel 2 through 0, 90, 180, and 270 degrees on the LED hardware while keeping the editor preview upright.">LED 0</button><button type="button" class="pixel-board-mirror-button" aria-pressed="false" aria-label="Chain 2 maps to physical panel 2 and currently has horizontal mirroring disabled. Click to toggle hardware mirroring." title="Toggle horizontal mirroring for physical panel 2 on the LED hardware while keeping the editor preview upright.">LED Mir Off</button><button type="button" class="pixel-board-view-rotation-button" aria-pressed="false" aria-label="Chain 2 currently uses 0 degrees of website-only view rotation. Click to cycle 0, 90, 180, and 270 degrees without changing the LED hardware output." title="Cycle how this board is shown on the website only.">View 0</button><button type="button" class="pixel-board-view-mirror-button" aria-pressed="false" aria-label="Chain 2 currently has website-only mirroring disabled. Click to toggle how this board is shown in the editor without changing the LED hardware output." title="Toggle how this board is mirrored on the website only.">View Mir Off</button></div><div class="pixel-board-grid" style="grid-template-columns: repeat(8, 28px); grid-template-rows: repeat(8, 28px);"><button type="button" class="pixel-cell" data-x="8" data-y="0" aria-label="Pixel 8, 0"></button><button type="button" class="pixel-cell" data-x="9" data-y="0" aria-label="Pixel 9, 0"></button><button type="button" class="pixel-cell" data-x="10" data-y="0" aria-label="Pixel 10, 0"></button><button type="button" class="pixel-cell" data-x="11" data-y="0" aria-label="Pixel 11, 0"></button><button type="button" class="pixel-cell" data-x="12" data-y="0" aria-label="Pixel 12, 0"></button><button type="button" class="pixel-cell" data-x="13" data-y="0" aria-label="Pixel 13, 0"></button><button type="button" class="pixel-cell" data-x="14" data-y="0" aria-label="Pixel 14, 0"></button><button type="button" class="pixel-cell" data-x="15" data-y="0" aria-label="Pixel 15, 0"></button><button type="button" class="pixel-cell" data-x="8" data-y="1" aria-label="Pixel 8, 1"></button><button type="button" class="pixel-cell" data-x="9" data-y="1" aria-label="Pixel 9, 1"></button><button type="button" class="pixel-cell" data-x="10" data-y="1" aria-label="Pixel 10, 1"></button><button type="button" class="pixel-cell" data-x="11" data-y="1" aria-label="Pixel 11, 1"></button><button type="button" class="pixel-cell" data-x="12" data-y="1" aria-label="Pixel 12, 1"></button><button type="button" class="pixel-cell" data-x="13" data-y="1" aria-label="Pixel 13, 1"></button><button type="button" class="pixel-cell" data-x="14" data-y="1" aria-label="Pixel 14, 1"></button><button type="button" class="pixel-cell" data-x="15" data-y="1" aria-label="Pixel 15, 1"></button><button type="button" class="pixel-cell" data-x="8" data-y="2" aria-label="Pixel 8, 2"></button><button type="button" class="pixel-cell" data-x="9" data-y="2" aria-label="Pixel 9, 2"></button><button type="button" class="pixel-cell" data-x="10" data-y="2" aria-label="Pixel 10, 2"></button><button type="button" class="pixel-cell" data-x="11" data-y="2" aria-label="Pixel 11, 2"></button><button type="button" class="pixel-cell" data-x="12" data-y="2" aria-label="Pixel 12, 2"></button><button type="button" class="pixel-cell" data-x="13" data-y="2" aria-label="Pixel 13, 2"></button><button type="button" class="pixel-cell" data-x="14" data-y="2" aria-label="Pixel 14, 2"></button><button type="button" class="pixel-cell" data-x="15" data-y="2" aria-label="Pixel 15, 2"></button><button type="button" class="pixel-cell" data-x="8" data-y="3" aria-label="Pixel 8, 3"></button><button type="button" class="pixel-cell" data-x="9" data-y="3" aria-label="Pixel 9, 3"></button><button type="button" class="pixel-cell" data-x="10" data-y="3" aria-label="Pixel 10, 3"></button><button type="button" class="pixel-cell" data-x="11" data-y="3" aria-label="Pixel 11, 3"></button><button type="button" class="pixel-cell" data-x="12" data-y="3" aria-label="Pixel 12, 3"></button><button type="button" class="pixel-cell" data-x="13" data-y="3" aria-label="Pixel 13, 3"></button><button type="button" class="pixel-cell" data-x="14" data-y="3" aria-label="Pixel 14, 3"></button><button type="button" class="pixel-cell" data-x="15" data-y="3" aria-label="Pixel 15, 3"></button><button type="button" class="pixel-cell" data-x="8" data-y="4" aria-label="Pixel 8, 4"></button><button type="button" class="pixel-cell" data-x="9" data-y="4" aria-label="Pixel 9, 4"></button><button type="button" class="pixel-cell" data-x="10" data-y="4" aria-label="Pixel 10, 4"></button><button type="button" class="pixel-cell" data-x="11" data-y="4" aria-label="Pixel 11, 4"></button><button type="button" class="pixel-cell" data-x="12" data-y="4" aria-label="Pixel 12, 4"></button><button type="button" class="pixel-cell" data-x="13" data-y="4" aria-label="Pixel 13, 4"></button><button type="button" class="pixel-cell" data-x="14" data-y="4" aria-label="Pixel 14, 4"></button><button type="button" class="pixel-cell" data-x="15" data-y="4" aria-label="Pixel 15, 4"></button><button type="button" class="pixel-cell" data-x="8" data-y="5" aria-label="Pixel 8, 5"></button><button type="button" class="pixel-cell" data-x="9" data-y="5" aria-label="Pixel 9, 5"></button><button type="button" class="pixel-cell" data-x="10" data-y="5" aria-label="Pixel 10, 5"></button><button type="button" class="pixel-cell" data-x="11" data-y="5" aria-label="Pixel 11, 5"></button><button type="button" class="pixel-cell" data-x="12" data-y="5" aria-label="Pixel 12, 5"></button><button type="button" class="pixel-cell" data-x="13" data-y="5" aria-label="Pixel 13, 5"></button><button type="button" class="pixel-cell" data-x="14" data-y="5" aria-label="Pixel 14, 5"></button><button type="button" class="pixel-cell" data-x="15" data-y="5" aria-label="Pixel 15, 5"></button><button type="button" class="pixel-cell" data-x="8" data-y="6" aria-label="Pixel 8, 6"></button><button type="button" class="pixel-cell" data-x="9" data-y="6" aria-label="Pixel 9, 6"></button><button type="button" class="pixel-cell" data-x="10" data-y="6" aria-label="Pixel 10, 6"></button><button type="button" class="pixel-cell" data-x="11" data-y="6" aria-label="Pixel 11, 6"></button><button type="button" class="pixel-cell" data-x="12" data-y="6" aria-label="Pixel 12, 6"></button><button type="button" class="pixel-cell" data-x="13" data-y="6" aria-label="Pixel 13, 6"></button><button type="button" class="pixel-cell" data-x="14" data-y="6" aria-label="Pixel 14, 6"></button><button type="button" class="pixel-cell" data-x="15" data-y="6" aria-label="Pixel 15, 6"></button><button type="button" class="pixel-cell" data-x="8" data-y="7" aria-label="Pixel 8, 7"></button><button type="button" class="pixel-cell" data-x="9" data-y="7" aria-label="Pixel 9, 7"></button><button type="button" class="pixel-cell" data-x="10" data-y="7" aria-label="Pixel 10, 7"></button><button type="button" class="pixel-cell" data-x="11" data-y="7" aria-label="Pixel 11, 7"></button><button type="button" class="pixel-cell" data-x="12" data-y="7" aria-label="Pixel 12, 7"></button><button type="button" class="pixel-cell" data-x="13" data-y="7" aria-label="Pixel 13, 7"></button><button type="button" class="pixel-cell" data-x="14" data-y="7" aria-label="Pixel 14, 7"></button><button type="button" class="pixel-cell" data-x="15" data-y="7" aria-label="Pixel 15, 7"></button></div></section><section class="pixel-board" aria-label="Chain 3" data-board-id="board-3" style="left: 670px; top: 40px; width: 305px; height: 387px;"><div class="pixel-board-header" style="min-height: 112px;"><button type="button" class="pixel-board-label" aria-label="Drag Chain 3">Chain 3</button><select class="pixel-board-group-select" aria-label="Chain 3 group"><option value="group-1">Group 1</option></select><button type="button" class="pixel-board-rotation-button" aria-pressed="false" aria-label="Chain 3 maps to physical panel 3 and currently uses 0 degrees of LED output rotation. Click to cycle 0, 90, 180, and 270 degrees." title="Cycle physical panel 3 through 0, 90, 180, and 270 degrees on the LED hardware while keeping the editor preview upright.">LED 0</button><button type="button" class="pixel-board-mirror-button" aria-pressed="false" aria-label="Chain 3 maps to physical panel 3 and currently has horizontal mirroring disabled. Click to toggle hardware mirroring." title="Toggle horizontal mirroring for physical panel 3 on the LED hardware while keeping the editor preview upright.">LED Mir Off</button><button type="button" class="pixel-board-view-rotation-button" aria-pressed="false" aria-label="Chain 3 currently uses 0 degrees of website-only view rotation. Click to cycle 0, 90, 180, and 270 degrees without changing the LED hardware output." title="Cycle how this board is shown on the website only.">View 0</button><button type="button" class="pixel-board-view-mirror-button" aria-pressed="false" aria-label="Chain 3 currently has website-only mirroring disabled. Click to toggle how this board is shown in the editor without changing the LED hardware output." title="Toggle how this board is mirrored on the website only.">View Mir Off</button></div><div class="pixel-board-grid" style="grid-template-columns: repeat(8, 28px); grid-template-rows: repeat(8, 28px);"><button type="button" class="pixel-cell" data-x="16" data-y="0" aria-label="Pixel 16, 0"></button><button type="button" class="pixel-cell" data-x="17" data-y="0" aria-label="Pixel 17, 0"></button><button type="button" class="pixel-cell" data-x="18" data-y="0" aria-label="Pixel 18, 0"></button><button type="button" class="pixel-cell" data-x="19" data-y="0" aria-label="Pixel 19, 0"></button><button type="button" class="pixel-cell" data-x="20" data-y="0" aria-label="Pixel 20, 0"></button><button type="button" class="pixel-cell" data-x="21" data-y="0" aria-label="Pixel 21, 0"></button><button type="button" class="pixel-cell" data-x="22" data-y="0" aria-label="Pixel 22, 0"></button><button type="button" class="pixel-cell" data-x="23" data-y="0" aria-label="Pixel 23, 0"></button><button type="button" class="pixel-cell" data-x="16" data-y="1" aria-label="Pixel 16, 1"></button><button type="button" class="pixel-cell" data-x="17" data-y="1" aria-label="Pixel 17, 1"></button><button type="button" class="pixel-cell" data-x="18" data-y="1" aria-label="Pixel 18, 1"></button><button type="button" class="pixel-cell" data-x="19" data-y="1" aria-label="Pixel 19, 1"></button><button type="button" class="pixel-cell" data-x="20" data-y="1" aria-label="Pixel 20, 1"></button><button type="button" class="pixel-cell" data-x="21" data-y="1" aria-label="Pixel 21, 1"></button><button type="button" class="pixel-cell" data-x="22" data-y="1" aria-label="Pixel 22, 1"></button><button type="button" class="pixel-cell" data-x="23" data-y="1" aria-label="Pixel 23, 1"></button><button type="button" class="pixel-cell" data-x="16" data-y="2" aria-label="Pixel 16, 2"></button><button type="button" class="pixel-cell" data-x="17" data-y="2" aria-label="Pixel 17, 2"></button><button type="button" class="pixel-cell" data-x="18" data-y="2" aria-label="Pixel 18, 2"></button><button type="button" class="pixel-cell" data-x="19" data-y="2" aria-label="Pixel 19, 2"></button><button type="button" class="pixel-cell" data-x="20" data-y="2" aria-label="Pixel 20, 2"></button><button type="button" class="pixel-cell" data-x="21" data-y="2" aria-label="Pixel 21, 2"></button><button type="button" class="pixel-cell" data-x="22" data-y="2" aria-label="Pixel 22, 2"></button><button type="button" class="pixel-cell" data-x="23" data-y="2" aria-label="Pixel 23, 2"></button><button type="button" class="pixel-cell" data-x="16" data-y="3" aria-label="Pixel 16, 3"></button><button type="button" class="pixel-cell" data-x="17" data-y="3" aria-label="Pixel 17, 3"></button><button type="button" class="pixel-cell" data-x="18" data-y="3" aria-label="Pixel 18, 3"></button><button type="button" class="pixel-cell" data-x="19" data-y="3" aria-label="Pixel 19, 3"></button><button type="button" class="pixel-cell" data-x="20" data-y="3" aria-label="Pixel 20, 3"></button><button type="button" class="pixel-cell" data-x="21" data-y="3" aria-label="Pixel 21, 3"></button><button type="button" class="pixel-cell" data-x="22" data-y="3" aria-label="Pixel 22, 3"></button><button type="button" class="pixel-cell" data-x="23" data-y="3" aria-label="Pixel 23, 3"></button><button type="button" class="pixel-cell" data-x="16" data-y="4" aria-label="Pixel 16, 4"></button><button type="button" class="pixel-cell" data-x="17" data-y="4" aria-label="Pixel 17, 4"></button><button type="button" class="pixel-cell" data-x="18" data-y="4" aria-label="Pixel 18, 4"></button><button type="button" class="pixel-cell" data-x="19" data-y="4" aria-label="Pixel 19, 4"></button><button type="button" class="pixel-cell" data-x="20" data-y="4" aria-label="Pixel 20, 4"></button><button type="button" class="pixel-cell" data-x="21" data-y="4" aria-label="Pixel 21, 4"></button><button type="button" class="pixel-cell" data-x="22" data-y="4" aria-label="Pixel 22, 4"></button><button type="button" class="pixel-cell" data-x="23" data-y="4" aria-label="Pixel 23, 4"></button><button type="button" class="pixel-cell" data-x="16" data-y="5" aria-label="Pixel 16, 5"></button><button type="button" class="pixel-cell" data-x="17" data-y="5" aria-label="Pixel 17, 5"></button><button type="button" class="pixel-cell" data-x="18" data-y="5" aria-label="Pixel 18, 5"></button><button type="button" class="pixel-cell" data-x="19" data-y="5" aria-label="Pixel 19, 5"></button><button type="button" class="pixel-cell" data-x="20" data-y="5" aria-label="Pixel 20, 5"></button><button type="button" class="pixel-cell" data-x="21" data-y="5" aria-label="Pixel 21, 5"></button><button type="button" class="pixel-cell" data-x="22" data-y="5" aria-label="Pixel 22, 5"></button><button type="button" class="pixel-cell" data-x="23" data-y="5" aria-label="Pixel 23, 5"></button><button type="button" class="pixel-cell" data-x="16" data-y="6" aria-label="Pixel 16, 6"></button><button type="button" class="pixel-cell" data-x="17" data-y="6" aria-label="Pixel 17, 6"></button><button type="button" class="pixel-cell" data-x="18" data-y="6" aria-label="Pixel 18, 6"></button><button type="button" class="pixel-cell" data-x="19" data-y="6" aria-label="Pixel 19, 6"></button><button type="button" class="pixel-cell" data-x="20" data-y="6" aria-label="Pixel 20, 6"></button><button type="button" class="pixel-cell" data-x="21" data-y="6" aria-label="Pixel 21, 6"></button><button type="button" class="pixel-cell" data-x="22" data-y="6" aria-label="Pixel 22, 6"></button><button type="button" class="pixel-cell" data-x="23" data-y="6" aria-label="Pixel 23, 6"></button><button type="button" class="pixel-cell" data-x="16" data-y="7" aria-label="Pixel 16, 7"></button><button type="button" class="pixel-cell" data-x="17" data-y="7" aria-label="Pixel 17, 7"></button><button type="button" class="pixel-cell" data-x="18" data-y="7" aria-label="Pixel 18, 7"></button><button type="button" class="pixel-cell" data-x="19" data-y="7" aria-label="Pixel 19, 7"></button><button type="button" class="pixel-cell" data-x="20" data-y="7" aria-label="Pixel 20, 7"></button><button type="button" class="pixel-cell" data-x="21" data-y="7" aria-label="Pixel 21, 7"></button><button type="button" class="pixel-cell" data-x="22" data-y="7" aria-label="Pixel 22, 7"></button><button type="button" class="pixel-cell" data-x="23" data-y="7" aria-label="Pixel 23, 7"></button></div></section></div></div></div>
+                </div>
+              </div>
+
+              <div id="workspacePanelResizer" class="workspace-panel-resizer" role="separator" tabindex="0" aria-label="Resize workspace panels" aria-orientation="vertical" aria-controls="workspaceGridPane workspaceAnimationPane" title="Drag to resize the grid and clip editor. Arrow keys also work." aria-valuemin="320" aria-valuemax="720" aria-valuenow="320" aria-valuetext="320px animation panel width"></div>
+
+              <div class="workspace-side-column">
+                <aside class="workspace-animation-pane" id="workspaceAnimationPane" aria-label="Clip editor">
+                  <div class="animation-studio-shell">
+                    <section class="animation-studio-card animation-studio-overview collapsible-card" data-collapsible-card="">
+                      <div class="animation-studio-card-header">
+                        <button type="button" class="card-title-toggle" aria-expanded="true" aria-controls="projectOverviewCardBody">
+                          <span class="card-title-toggle-copy">
+                            <span class="section-label">Project</span>
+                            <span class="card-title-main">Frames + Runtime Start</span>
+                          </span>
+                        </button>
+                      </div>
+                      <div id="projectOverviewCardBody" class="collapsible-card-body">
+                        <p id="projectSummary" class="field-hint project-summary">1 frame, 0 clips. Editing "Frame 1". Default frame: Frame 1.</p>
+                        <label class="field">
+                          <span>Default Start</span>
+                          <select id="defaultTargetSelect"><option value="__auto__">Auto choose first clip or frame</option><option value="frame:frame-1">Frame: Frame 1</option></select>
+                        </label>
+                      </div>
+                    </section>
+
+                    <section class="animation-studio-card animation-studio-frames collapsible-card" data-collapsible-card="">
+                      <div class="animation-studio-card-header">
+                        <button type="button" class="card-title-toggle" aria-expanded="true" aria-controls="frameStripCardBody">
+                          <span class="card-title-toggle-copy">
+                            <span class="section-label">Frames</span>
+                            <span class="card-title-main">Frame Strip</span>
+                          </span>
+                        </button>
+                      </div>
+                      <div id="frameStripCardBody" class="collapsible-card-body">
+                        <div class="button-row wrap">
+                          <button id="newFrameButton" type="button" class="secondary">New Frame</button>
+                          <button id="duplicateFrameButton" type="button" class="secondary">Duplicate Frame</button>
+                          <button id="deleteFrameButton" type="button" class="secondary" disabled="">Delete Frame</button>
+                        </div>
+                        <div class="button-row wrap">
+                          <button id="moveFrameLeftButton" type="button" class="secondary" disabled="">Move Left</button>
+                          <button id="moveFrameRightButton" type="button" class="secondary" disabled="">Move Right</button>
+                        </div>
+                        <div id="frameStrip" class="frame-strip" aria-label="Project frames"><button type="button" class="frame-chip active" data-frame-id="frame-1">1. Frame 1</button></div>
+                        <label class="field">
+                          <span>Current Frame Name</span>
+                          <input id="frameName" type="text" value="Frame 1" maxlength="80">
+                        </label>
+                      </div>
+                    </section>
+
+                    <section class="animation-studio-card animation-studio-controls collapsible-card" data-collapsible-card="">
+                      <div class="animation-studio-card-header">
+                        <button type="button" class="card-title-toggle" aria-expanded="true" aria-controls="animationSetupCardBody">
+                          <span class="card-title-toggle-copy">
+                            <span class="section-label">Clip</span>
+                            <span class="card-title-main">Clip Setup</span>
+                          </span>
+                        </button>
+                      </div>
+                      <div id="animationSetupCardBody" class="collapsible-card-body">
+                        <label class="field">
+                          <span>Clip</span>
+                          <select id="animationSelect"><option value="">No clip selected</option></select>
+                        </label>
+                        <div class="button-row wrap">
+                          <button id="newAnimationButton" type="button" class="secondary">New Clip</button>
+                          <button id="deleteAnimationButton" type="button" class="secondary" disabled="">Delete Clip</button>
+                        </div>
+                        <label class="field">
+                          <span>Clip Name</span>
+                          <input id="animationName" type="text" value="" maxlength="80" disabled="">
+                        </label>
+                        <label class="toggle-field" for="animationLoopInput">
+                          <div>
+                            <span>Loop Clip</span>
+                            <p>Use the same loop behavior for browser preview and Pi project playback.</p>
+                          </div>
+                          <input id="animationLoopInput" type="checkbox" disabled="">
+                        </label>
+                      </div>
+                    </section>
+
+                    <section class="animation-studio-card animation-studio-preview collapsible-card" data-collapsible-card="">
+                      <div class="animation-studio-card-header">
+                        <button type="button" class="card-title-toggle" aria-expanded="true" aria-controls="animationPreviewCardBody">
+                          <span class="card-title-toggle-copy">
+                            <span class="section-label">Preview</span>
+                            <span class="card-title-main">Playback Preview</span>
+                          </span>
+                        </button>
+                        <div class="button-row wrap">
+                          <button id="previewAnimationButton" type="button" class="secondary" disabled="">Play Preview</button>
+                          <button id="stopAnimationPreviewButton" type="button" class="secondary" disabled="">Stop Preview</button>
+                        </div>
+                      </div>
+                      <div id="animationPreviewCardBody" class="collapsible-card-body">
+                        <div class="animation-preview-shell">
+                          <div class="animation-preview-header">
+                            <span>Browser Playback</span>
+                            <span id="animationPreviewStatus" class="animation-preview-status">Select or create a clip to preview timing.</span>
+                          </div>
+                          <div class="animation-preview-canvas">
+                            <div id="animationPreviewGrid" class="animation-preview-grid" aria-label="Clip preview" style="width: 223px; min-height: 109px;"><div class="animation-preview-workspace" style="width: 223px; height: 109px;"><div class="animation-preview-group" style="left: 4px; top: 2px; width: 219px; height: 107px;"><div class="animation-preview-group-label">Group 1</div></div><section class="animation-preview-board" aria-label="Chain 1 preview" style="left: 12px; top: 18px; width: 61px; height: 83px; padding: 6px;"><div class="animation-preview-board-label" style="min-height: 16px;">Chain 1</div><div class="animation-preview-board-grid" style="--preview-cell-size: 5px; grid-template-columns: repeat(8, 5px); grid-template-rows: repeat(8, 5px); gap: 1px;"><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div></div></section><section class="animation-preview-board" aria-label="Chain 2 preview" style="left: 83px; top: 18px; width: 61px; height: 83px; padding: 6px;"><div class="animation-preview-board-label" style="min-height: 16px;">Chain 2</div><div class="animation-preview-board-grid" style="--preview-cell-size: 5px; grid-template-columns: repeat(8, 5px); grid-template-rows: repeat(8, 5px); gap: 1px;"><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div></div></section><section class="animation-preview-board" aria-label="Chain 3 preview" style="left: 154px; top: 18px; width: 61px; height: 83px; padding: 6px;"><div class="animation-preview-board-label" style="min-height: 16px;">Chain 3</div><div class="animation-preview-board-grid" style="--preview-cell-size: 5px; grid-template-columns: repeat(8, 5px); grid-template-rows: repeat(8, 5px); gap: 1px;"><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div><div class="animation-preview-board-cell"></div></div></section></div></div>
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </aside>
+              </div>
+            </div>
+
+            <div id="workspaceTimelineResizer" class="workspace-timeline-resizer" role="separator" tabindex="0" aria-label="Resize studio and clip timeline" aria-orientation="horizontal" aria-controls="workspaceBody workspaceTimelinePanel" title="Drag to resize the studio and clip timeline. Arrow keys also work." aria-valuemin="320" aria-valuemax="320" aria-valuenow="320" aria-valuetext="320px studio height"></div>
+
+            <section id="workspaceTimelinePanel" class="workspace-timeline-panel animation-studio-card animation-studio-steps collapsible-card" data-collapsible-card="">
+              <div class="animation-studio-card-header">
+                <button type="button" class="card-title-toggle" aria-expanded="true" aria-controls="animationStepsCardBody">
+                  <span class="card-title-toggle-copy">
+                    <span class="section-label">Timeline</span>
+                    <span class="card-title-main">Clip Timeline</span>
+                  </span>
+                </button>
+                <button id="addAnimationStepButton" type="button" class="secondary" disabled="">Insert Current Frame</button>
+              </div>
+              <div id="animationStepsCardBody" class="collapsible-card-body">
+                <div id="animationStepList" class="animation-step-list" aria-label="Clip timeline"><div class="animation-step-empty"><strong>No clip selected yet.</strong><p>Create a clip from the current frame, then build timing visually by selecting blocks and inserting frames where the motion should change.</p><div class="animation-step-empty-actions"><button type="button" class="secondary" data-step-action="new-animation">New Clip From Current Frame</button></div><span class="animation-step-empty-hint">A new clip starts with one 120 ms block.</span></div></div>
+              </div>
+            </section>
+          </section>
+
+          <section class="console-panel collapsible-card" data-collapsible-card="">
+            <div class="console-header">
+              <button type="button" class="card-title-toggle" aria-expanded="true" aria-controls="consolePanelBody">
+                <span class="card-title-toggle-copy">
+                  <span class="section-label">Console</span>
+                  <span class="card-title-main card-title-main-large">Event Log</span>
+                </span>
+              </button>
+              <button id="clearLogButton" type="button" class="secondary">Clear Log</button>
+            </div>
+            <div id="consolePanelBody" class="collapsible-card-body">
+              <pre id="logOutput" class="log-output">[1:18:23 AM] Set the Pi endpoint, connect, and start drawing.
+[1:18:23 AM] Editor ready.
+[1:18:23 AM] Restored autosaved project "fifo-drawing".</pre>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./src/main.js?v=layout-resizer-23"></script>
+  
+
+</body></html>
