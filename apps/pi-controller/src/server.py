@@ -3,12 +3,13 @@ from __future__ import annotations
 import asyncio
 import json
 import signal
-from typing import Any
+from typing import Any, Callable
 
 import websockets
 
 from config import load_config, save_config
 from display import MatrixDisplay
+from oled import DualOledStatus
 from project_store import ProjectStore
 from protocol import (
     ProtocolError,
@@ -99,6 +100,7 @@ async def handle_connection(
     project_store: ProjectStore,
     runtime: ProjectRuntime,
     config: dict[str, Any],
+    refresh_oled: Callable[[], None] | None = None,
 ) -> None:
     runtime.register_client()
 
@@ -322,6 +324,8 @@ async def handle_connection(
                 if message.get("type") == "brightness":
                     brightness = validate_brightness_message(message)
                     applied_value = display.set_brightness(brightness["value"])
+                    if refresh_oled is not None:
+                        refresh_oled()
                     await websocket.send(
                         json.dumps(
                             {
@@ -343,6 +347,8 @@ async def handle_connection(
                         layout.get("panel_flips"),
                     )
                     await runtime.refresh_output()
+                    if refresh_oled is not None:
+                        refresh_oled()
                     await websocket.send(json.dumps(build_layout_state_message(display)))
                     continue
                 if message.get("type") == "save_layout":
@@ -360,6 +366,8 @@ async def handle_connection(
                     config.pop("panel_flips", None)
                     save_config(config)
                     await runtime.refresh_output()
+                    if refresh_oled is not None:
+                        refresh_oled()
                     await websocket.send(
                         json.dumps(build_layout_state_message(display, "layout_saved"))
                     )
@@ -404,12 +412,27 @@ async def wait_for_shutdown() -> None:
 
 async def main() -> None:
     config = load_config()
+    oled_display = DualOledStatus(config)
     display = MatrixDisplay(config)
+    display.frame_callback = oled_display.render_preview
+    display.clear_callback = oled_display.clear_preview
     config.update(display.get_layout())
     config.pop("panel_flips", None)
     drawing_store = DrawingStore()
     project_store = ProjectStore()
-    runtime = ProjectRuntime(display, project_store, config)
+    runtime: ProjectRuntime | None = None
+
+    def refresh_oled() -> None:
+        if runtime is None:
+            return
+        oled_display.update_state(runtime.get_runtime_state(), display.get_state())
+
+    runtime = ProjectRuntime(
+        display,
+        project_store,
+        config,
+        on_state_change=lambda _state: refresh_oled(),
+    )
 
     try:
         try:
@@ -418,6 +441,7 @@ async def main() -> None:
                 print(f'Loaded boot project "{runtime.active_project_name}".')
         except (FileNotFoundError, ProtocolError, ValueError) as error:
             print(f"Could not restore boot project: {error}")
+        refresh_oled()
 
         async with websockets.serve(
             lambda websocket: handle_connection(
@@ -427,6 +451,7 @@ async def main() -> None:
                 project_store,
                 runtime,
                 config,
+                refresh_oled,
             ),
             config["host"],
             config["port"],
@@ -436,6 +461,7 @@ async def main() -> None:
     finally:
         await runtime.shutdown()
         display.shutdown()
+        oled_display.shutdown()
         print("Display cleared.")
 
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Callable
+
 from luma.core.interface.serial import spi, noop
 from luma.core.render import canvas
 from luma.led_matrix.device import max7219
@@ -24,6 +26,8 @@ class MatrixDisplay:
         self.panel_positions = None
         self.panel_rotations = None
         self.panel_mirrors = None
+        self.frame_callback: Callable[[list[int], int, int], None] | None = None
+        self.clear_callback: Callable[[], None] | None = None
         self._set_panel_order(config.get("panel_order"))
         self._set_panel_rotations(
             config.get("panel_rotations"),
@@ -225,9 +229,13 @@ class MatrixDisplay:
                     if physical_pixels[row_offset + x] != 1:
                         continue
                     draw.point((x, y), fill="white")
+        if self.frame_callback is not None:
+            self.frame_callback(physical_pixels, self.width, self.height)
 
     def clear(self) -> None:
         self.device.clear()
+        if self.clear_callback is not None:
+            self.clear_callback()
 
     def shutdown(self) -> None:
         # Leave the panels in a known off state before the process exits.

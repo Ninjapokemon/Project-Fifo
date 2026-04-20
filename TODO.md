@@ -24,6 +24,7 @@ This is the running list of what would make the project nicer to use and easier 
 
 - [ ] Add a Pi install script
 - [ ] Expand unit tests for protocol, mapping, and storage coverage
+- [ ] Add an auxiliary I2C OLED status display on the Pi
 - [ ] Add animation and face-runtime groundwork
 - [ ] Review and reconcile the LED layout branches
 - [ ] Decide whether brightness and similar runtime values belong in project data, global Pi config, or both
@@ -198,6 +199,28 @@ Done when:
 - the accepted work lives on `development`
 - `main` only receives the LED layout changes after they have been validated
 
+### 12. Add an auxiliary I2C OLED status display
+
+Status:
+- [ ] confirm the module controller path with `SSD1306` as the first target and `SH1106` kept as a fallback if the panel needs it
+- [ ] add a small Pi-side status display helper that can render text to the OLED without interfering with the MAX7219 face output
+- [ ] decide how OLED settings should live in `apps/pi-controller/config.json`, such as `enabled`, `address`, `bus`, `width`, `height`, and `rotate`
+- [ ] show first-pass status information such as boot state, Pi network address, WebSocket port, connection state, runtime mode, active project, boot project, and brightness
+- [ ] refresh the OLED whenever live override state, project activation, boot-project selection, or connectivity changes
+- [ ] decide how to handle longer text on `128x64`, whether by truncation, paging, or rotating between small status screens
+
+Done when:
+- boot the Pi with the OLED connected
+- see a useful startup or idle status screen without the browser connected
+- connect from the desktop app and confirm the OLED reflects runtime changes
+- keep the MAX7219 face output and the OLED status output independent from each other
+
+Notes:
+- the OLED should be treated as a secondary status display, not a second copy of the face render
+- the current Pi runtime already knows `runtime_mode`, `active_project`, `boot_project`, `active_target_name`, display size, and brightness, so those are the best first fields to surface
+- local IP address discovery will need a small helper because the current config only knows the bind host and port
+- many `0.96"` `128x64` I2C modules are `SSD1306`, but some are `SH1106`, so the software path should stay slightly flexible
+
 ## Completed Work
 
 ### Desktop editor refresh
@@ -269,3 +292,4 @@ Status:
 9. Unit tests
 10. Animation and face-runtime groundwork
 11. Review and reconcile LED layout branches
+12. Auxiliary I2C OLED status display
