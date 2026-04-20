@@ -135,12 +135,16 @@ class ProjectRuntime:
         animation: dict[str, Any],
     ) -> None:
         frames_by_id = self._build_frames_by_id(project)
+        loop = asyncio.get_running_loop()
 
         while True:
             for step in animation["steps"]:
+                step_started_at = loop.time()
                 frame = frames_by_id[step["frameId"]]
                 self.display.render_frame(frame["pixels"], project["width"], project["height"])
-                await asyncio.sleep(step["durationMs"] / 1000)
+                remaining_seconds = (step["durationMs"] / 1000) - (loop.time() - step_started_at)
+                if remaining_seconds > 0:
+                    await asyncio.sleep(remaining_seconds)
 
             if not animation["loop"]:
                 break

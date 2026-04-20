@@ -3384,7 +3384,7 @@ function selectProjectFrame(frameId, reason = "frame switch") {
   state.project.activeFrameId = nextFrame.id;
   state.pixels = [...nextFrame.pixels];
   syncBoardPixelsFromFrame();
-  renderGrid();
+  syncGridDom();
   renderProjectEditor();
   saveAutosave();
   scheduleFrameSend(reason, { immediate: true, logSend: false });
@@ -3454,7 +3454,7 @@ function addProjectFrame() {
   state.project.activeFrameId = frame.id;
   state.pixels = [...frame.pixels];
   syncBoardPixelsFromFrame();
-  renderGrid();
+  syncGridDom();
   renderProjectEditor();
   pushHistorySnapshot("new frame");
   log(`Added frame "${frame.name}".`);
@@ -3482,7 +3482,7 @@ function duplicateProjectFrame() {
   state.project.activeFrameId = copy.id;
   state.pixels = [...copy.pixels];
   syncBoardPixelsFromFrame();
-  renderGrid();
+  syncGridDom();
   renderProjectEditor();
   pushHistorySnapshot("frame duplicate");
   log(`Duplicated frame "${activeFrame.name}" as "${copy.name}".`);
@@ -3516,7 +3516,7 @@ function deleteProjectFrame() {
   }
   state.pixels = [...nextFrame.pixels];
   syncBoardPixelsFromFrame();
-  renderGrid();
+  syncGridDom();
   renderProjectEditor();
   pushHistorySnapshot("frame delete");
   log(`Deleted frame "${deletedFrame.name}".`);
