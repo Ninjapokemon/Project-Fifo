@@ -88,13 +88,23 @@ class DualOledStatus:
         self._page = 0
         self._last_flip = 0.0
         self._flip_seconds = 5.0
+        self._last_status_render = 0.0
         self._board_layout: list[dict[str, Any]] | None = None
         self._last_preview_render = 0.0
-        preview_fps = oled_config.get("preview_fps", 8)
+        status_fps = oled_config.get("status_fps", 2)
+        try:
+            self._status_fps = float(status_fps)
+        except (TypeError, ValueError):
+            self._status_fps = 2.0
+        self._status_min_interval = 0.0
+        if self._status_fps > 0:
+            self._status_min_interval = 1.0 / self._status_fps
+
+        preview_fps = oled_config.get("preview_fps", 4)
         try:
             self._preview_fps = float(preview_fps)
         except (TypeError, ValueError):
-            self._preview_fps = 8.0
+            self._preview_fps = 4.0
         self._preview_min_interval = 0.0
         if self._preview_fps <= 0:
             self.preview_enabled = False
@@ -150,9 +160,18 @@ class DualOledStatus:
             return
 
         now = time.monotonic()
+        page_flipped = False
         if now - self._last_flip >= self._flip_seconds:
             self._page = (self._page + 1) % 2
             self._last_flip = now
+            page_flipped = True
+        if (
+            self._status_min_interval > 0
+            and not page_flipped
+            and now - self._last_status_render < self._status_min_interval
+        ):
+            return
+        self._last_status_render = now
 
         mode = self._runtime_state.get("runtime_mode", "-")
         project_name = _short(self._runtime_state.get("active_project", "-"), 16)
