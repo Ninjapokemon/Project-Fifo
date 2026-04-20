@@ -18,7 +18,7 @@
     "status_address": 60,
     "preview_address": 61,
     "status_fps": 2,
-    "preview_fps": 8
+    "preview_fps": 10
   },
   "panel_order": null,
   "panel_rotations": null,

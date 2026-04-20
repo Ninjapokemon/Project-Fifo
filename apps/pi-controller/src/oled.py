@@ -106,11 +106,11 @@ class DualOledStatus:
         if self._status_fps > 0:
             self._status_min_interval = 1.0 / self._status_fps
 
-        preview_fps = oled_config.get("preview_fps", 8)
+        preview_fps = oled_config.get("preview_fps", 10)
         try:
             self._preview_fps = float(preview_fps)
         except (TypeError, ValueError):
-            self._preview_fps = 8.0
+            self._preview_fps = 10.0
         self._preview_min_interval = 0.0
         if self._preview_fps <= 0:
             self.preview_enabled = False
