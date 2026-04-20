@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sys
 import tempfile
 import unittest
@@ -38,6 +39,74 @@ class FakeDisplay:
 
 
 class RuntimeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_runtime_emits_secondary_output_callbacks(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_store = ProjectStore(Path(temp_dir))
+            project_store.save(
+                {
+                    "name": "Blink Face",
+                    "width": 16,
+                    "height": 8,
+                    "frames": [
+                        {
+                            "id": "open",
+                            "name": "Open",
+                            "pixels": build_pixels(16, 8, [(0, 0)]),
+                        },
+                        {
+                            "id": "closed",
+                            "name": "Closed",
+                            "pixels": build_pixels(16, 8, [(1, 0)]),
+                        },
+                    ],
+                    "animations": [
+                        {
+                            "id": "blink",
+                            "name": "Blink",
+                            "loop": False,
+                            "steps": [
+                                {"frameId": "open", "durationMs": 1},
+                                {"frameId": "closed", "durationMs": 1},
+                            ],
+                        }
+                    ],
+                    "defaultFrameId": None,
+                    "defaultAnimationId": "blink",
+                }
+            )
+
+            mirrored_frames: list[list[int]] = []
+            clear_calls = 0
+
+            def on_frame_render(pixels: list[int], width: int, height: int) -> None:
+                self.assertEqual(width, 16)
+                self.assertEqual(height, 8)
+                mirrored_frames.append(list(pixels))
+
+            def on_clear_render() -> None:
+                nonlocal clear_calls
+                clear_calls += 1
+
+            config = {"boot_project": None}
+            display = FakeDisplay()
+            runtime = ProjectRuntime(
+                display,
+                project_store,
+                config,
+                lambda updated_config: updated_config,
+                on_frame_render=on_frame_render,
+                on_clear_render=on_clear_render,
+            )
+
+            await runtime.activate_project("Blink Face")
+            await asyncio.sleep(0.02)
+            self.assertGreaterEqual(len(mirrored_frames), 2)
+            self.assertEqual(mirrored_frames[0][0], 1)
+            self.assertEqual(mirrored_frames[1][1], 1)
+
+            await runtime.apply_live_clear()
+            self.assertGreaterEqual(clear_calls, 1)
+
     async def test_live_frame_stream_only_emits_state_change_on_first_live_frame(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_store = ProjectStore(Path(temp_dir))

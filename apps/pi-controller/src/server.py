@@ -439,9 +439,6 @@ async def main() -> None:
     except (TypeError, ValueError):
         oled_coalesce_seconds = 0.15
     display = MatrixDisplay(config)
-    if oled_display.preview_enabled:
-        display.frame_callback = oled_display.render_preview
-        display.clear_callback = oled_display.clear_preview
     config.update(display.get_layout())
     config.pop("panel_flips", None)
     drawing_store = DrawingStore()
@@ -485,6 +482,8 @@ async def main() -> None:
         project_store,
         config,
         on_state_change=lambda _state: refresh_oled(),
+        on_frame_render=oled_display.render_preview,
+        on_clear_render=oled_display.clear_preview,
     )
 
     try:
