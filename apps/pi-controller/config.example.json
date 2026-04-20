@@ -11,6 +11,8 @@
   "serpentine": false,
   "oled": {
     "enabled": true,
+    "status_enabled": true,
+    "preview_enabled": true,
     "port": 1,
     "status_address": 60,
     "preview_address": 61,

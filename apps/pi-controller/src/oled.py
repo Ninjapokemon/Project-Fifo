@@ -75,7 +75,10 @@ class DualOledStatus:
         if not isinstance(oled_config, dict):
             oled_config = {}
 
-        self.enabled = bool(oled_config.get("enabled", True))
+        oled_enabled = bool(oled_config.get("enabled", True))
+        self.status_enabled = oled_enabled and bool(oled_config.get("status_enabled", True))
+        self.preview_enabled = oled_enabled and bool(oled_config.get("preview_enabled", True))
+        self.enabled = self.status_enabled or self.preview_enabled
         self.status_device = None
         self.preview_device = None
         self._runtime_state: dict[str, Any] = {}
@@ -93,7 +96,10 @@ class DualOledStatus:
         except (TypeError, ValueError):
             self._preview_fps = 8.0
         self._preview_min_interval = 0.0
-        if self._preview_fps > 0:
+        if self._preview_fps <= 0:
+            self.preview_enabled = False
+            self.enabled = self.status_enabled or self.preview_enabled
+        elif self.preview_enabled:
             self._preview_min_interval = 1.0 / self._preview_fps
 
         if not self.enabled:
@@ -104,18 +110,27 @@ class DualOledStatus:
         status_addr = int(oled_config.get("status_address", 0x3C))
         preview_addr = int(oled_config.get("preview_address", 0x3D))
 
-        try:
-            self.status_device = ssd1306(i2c(port=bus_port, address=status_addr))
-            self.preview_device = ssd1306(i2c(port=bus_port, address=preview_addr))
-            print(
-                f"OLED online on I2C-{bus_port} "
-                f"(status=0x{status_addr:02x}, preview=0x{preview_addr:02x})."
-            )
-        except Exception as error:  # noqa: BLE001
-            print(f"OLED init failed: {error}")
-            self.enabled = False
-            self.status_device = None
-            self.preview_device = None
+        if self.status_enabled:
+            try:
+                self.status_device = ssd1306(i2c(port=bus_port, address=status_addr))
+                print(f"Status OLED online on I2C-{bus_port} (0x{status_addr:02x}).")
+            except Exception as error:  # noqa: BLE001
+                print(f"Status OLED init failed: {error}")
+                self.status_enabled = False
+                self.status_device = None
+
+        if self.preview_enabled:
+            try:
+                self.preview_device = ssd1306(i2c(port=bus_port, address=preview_addr))
+                print(f"Preview OLED online on I2C-{bus_port} (0x{preview_addr:02x}).")
+            except Exception as error:  # noqa: BLE001
+                print(f"Preview OLED init failed: {error}")
+                self.preview_enabled = False
+                self.preview_device = None
+
+        self.enabled = self.status_enabled or self.preview_enabled
+        if not self.enabled:
+            print("OLED enabled but neither OLED could be initialized.")
 
     def update_state(
         self,
@@ -173,7 +188,7 @@ class DualOledStatus:
                 draw.text((0, index * 9), line, fill="white")
 
     def render_preview(self, pixels: list[int], width: int, height: int) -> None:
-        if not self.enabled or self.preview_device is None:
+        if not self.preview_enabled or self.preview_device is None:
             return
         now = time.monotonic()
         if (
@@ -303,7 +318,7 @@ class DualOledStatus:
                         )
 
     def clear_preview(self) -> None:
-        if not self.enabled or self.preview_device is None:
+        if not self.preview_enabled or self.preview_device is None:
             return
         self.preview_device.clear()
 

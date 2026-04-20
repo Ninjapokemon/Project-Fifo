@@ -434,8 +434,9 @@ async def main() -> None:
     config = load_config()
     oled_display = DualOledStatus(config)
     display = MatrixDisplay(config)
-    display.frame_callback = oled_display.render_preview
-    display.clear_callback = oled_display.clear_preview
+    if oled_display.preview_enabled:
+        display.frame_callback = oled_display.render_preview
+        display.clear_callback = oled_display.clear_preview
     config.update(display.get_layout())
     config.pop("panel_flips", None)
     drawing_store = DrawingStore()
