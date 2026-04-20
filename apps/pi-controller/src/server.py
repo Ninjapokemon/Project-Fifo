@@ -433,11 +433,11 @@ async def wait_for_shutdown() -> None:
 async def main() -> None:
     config = load_config()
     oled_display = DualOledStatus(config)
-    oled_coalesce_seconds = 0.075
+    oled_coalesce_seconds = 0.15
     try:
-        oled_coalesce_seconds = max(0.0, float(config.get("oled_coalesce_seconds", 0.075)))
+        oled_coalesce_seconds = max(0.0, float(config.get("oled_coalesce_seconds", 0.15)))
     except (TypeError, ValueError):
-        oled_coalesce_seconds = 0.075
+        oled_coalesce_seconds = 0.15
     display = MatrixDisplay(config)
     if oled_display.preview_enabled:
         display.frame_callback = oled_display.render_preview

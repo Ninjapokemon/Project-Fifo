@@ -9,7 +9,7 @@
   "block_orientation": 90,
   "reverse_order": false,
   "serpentine": false,
-  "oled_coalesce_seconds": 0.075,
+  "oled_coalesce_seconds": 0.15,
   "oled": {
     "enabled": true,
     "status_enabled": true,
@@ -18,7 +18,7 @@
     "status_address": 60,
     "preview_address": 61,
     "status_fps": 2,
-    "preview_fps": 4
+    "preview_fps": 3
   },
   "panel_order": null,
   "panel_rotations": null,

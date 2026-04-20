@@ -61,11 +61,11 @@ The main fields to care about are:
 - `panel_order`: optional row-major list of logical panel indexes in physical display order
 - `panel_rotations`: optional row-major list of `0`, `90`, `180`, or `270` values for physical panels that need their own rotation
 - `panel_mirrors`: optional row-major list of booleans for physical panels that need horizontal mirroring
-- `oled_coalesce_seconds`: optional debounce window for OLED status refresh requests (default `0.075`)
+- `oled_coalesce_seconds`: optional debounce window for OLED status refresh requests (default `0.15`)
 - `oled.status_enabled`: optionally turn status OLED text updates on or off
 - `oled.preview_enabled`: optionally turn preview OLED rendering on or off
 - `oled.status_fps`: optional status OLED refresh cap (default `2`); set `0` to render status updates on every state change
-- `oled.preview_fps`: optional preview OLED refresh cap (default `4`); set `0` to disable preview rendering entirely
+- `oled.preview_fps`: optional preview OLED refresh cap (default `3`); set `0` to disable preview rendering entirely
 
 Example for three matrices in one horizontal row:
 
