@@ -12,6 +12,8 @@
 - Support Pi project messages for saving, listing, loading back to the editor, activating, deleting, resuming, and choosing a boot project.
 - Treat live frame streaming as temporary control layered on top of the Pi project runtime instead of the only output mode.
 - See `save-project-message.example.json` for a minimal bootable project payload.
+- Project payloads can include optional `channels`, optional `channelDefaults`, and optional animation `channelId` values.
+- Legacy projects without channel fields should be normalized to a default `base` channel during validation/loading.
 
 ## Future Improvements
 

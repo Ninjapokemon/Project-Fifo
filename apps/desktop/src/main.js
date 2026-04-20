@@ -76,6 +76,10 @@ const GROUP_SHELL_SIDE_PADDING = 18;
 const GROUP_SHELL_TOP_PADDING = 32;
 const GROUP_SHELL_BOTTOM_PADDING = 18;
 const DEFAULT_BOARD_GROUP_ID = "group-1";
+const DEFAULT_PROJECT_CHANNEL_ID = "base";
+const DEFAULT_PROJECT_CHANNEL_NAME = "Base";
+const DEFAULT_PROJECT_CHANNEL_PRIORITY = 100;
+const DEFAULT_PROJECT_CHANNEL_BLEND_MODE = "overwrite";
 const DEFAULT_LAYOUT = {
   rotate: 0,
   blockOrientation: 90,
@@ -159,6 +163,16 @@ const state = {
       },
     ],
     animations: [],
+    channels: [
+      {
+        id: DEFAULT_PROJECT_CHANNEL_ID,
+        name: DEFAULT_PROJECT_CHANNEL_NAME,
+        priority: DEFAULT_PROJECT_CHANNEL_PRIORITY,
+        blendMode: DEFAULT_PROJECT_CHANNEL_BLEND_MODE,
+        mask: null,
+      },
+    ],
+    channelDefaults: null,
     activeFrameId: DEFAULT_FRAME_ID,
     activeAnimationId: null,
     selectedStepIndex: null,
@@ -3574,6 +3588,7 @@ function createProjectAnimation() {
     id: createUniqueProjectEntityId(existingIds, nextAnimationName, "animation"),
     name: nextAnimationName,
     loop: true,
+    channelId: DEFAULT_PROJECT_CHANNEL_ID,
     steps: [
       {
         frameId: activeFrame.id,
@@ -4049,6 +4064,70 @@ function createUniqueProjectEntityId(existingIds, preferredLabel, fallbackPrefix
   return `${baseId}-${suffix}`;
 }
 
+function createDefaultProjectChannel() {
+  return {
+    id: DEFAULT_PROJECT_CHANNEL_ID,
+    name: DEFAULT_PROJECT_CHANNEL_NAME,
+    priority: DEFAULT_PROJECT_CHANNEL_PRIORITY,
+    blendMode: DEFAULT_PROJECT_CHANNEL_BLEND_MODE,
+    mask: null,
+  };
+}
+
+function cloneProjectChannel(channel) {
+  return {
+    id: typeof channel?.id === "string" && channel.id.trim() ? channel.id.trim() : DEFAULT_PROJECT_CHANNEL_ID,
+    name: typeof channel?.name === "string" && channel.name.trim()
+      ? channel.name.trim()
+      : (typeof channel?.id === "string" && channel.id.trim() ? channel.id.trim() : DEFAULT_PROJECT_CHANNEL_NAME),
+    priority: Number.isInteger(channel?.priority)
+      ? channel.priority
+      : DEFAULT_PROJECT_CHANNEL_PRIORITY,
+    blendMode: DEFAULT_PROJECT_CHANNEL_BLEND_MODE,
+    mask: null,
+  };
+}
+
+function cloneProjectChannels(channels = state.project.channels) {
+  if (!Array.isArray(channels) || channels.length === 0) {
+    return [createDefaultProjectChannel()];
+  }
+
+  const normalizedChannels = [];
+  const seenIds = new Set();
+  channels.forEach((channel) => {
+    const normalizedChannel = cloneProjectChannel(channel);
+    if (seenIds.has(normalizedChannel.id)) {
+      return;
+    }
+    seenIds.add(normalizedChannel.id);
+    normalizedChannels.push(normalizedChannel);
+  });
+
+  return normalizedChannels.length > 0 ? normalizedChannels : [createDefaultProjectChannel()];
+}
+
+function cloneProjectChannelDefaults(channelDefaults = state.project.channelDefaults, channels = state.project.channels) {
+  if (!channelDefaults || typeof channelDefaults !== "object" || Array.isArray(channelDefaults)) {
+    return null;
+  }
+
+  const channelIds = new Set(cloneProjectChannels(channels).map((channel) => channel.id));
+  const normalizedDefaults = {};
+  Object.entries(channelDefaults).forEach(([rawChannelId, value]) => {
+    const channelId = typeof rawChannelId === "string" ? rawChannelId.trim() : "";
+    if (!channelId || !channelIds.has(channelId)) {
+      return;
+    }
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return;
+    }
+    normalizedDefaults[channelId] = { ...value };
+  });
+
+  return Object.keys(normalizedDefaults).length > 0 ? normalizedDefaults : null;
+}
+
 function cloneProjectFrame(frame) {
   return {
     id: frame.id,
@@ -4066,6 +4145,9 @@ function cloneProjectAnimation(animation) {
     id: animation.id,
     name: animation.name,
     loop: animation.loop !== false,
+    channelId: typeof animation.channelId === "string" && animation.channelId.trim()
+      ? animation.channelId.trim()
+      : DEFAULT_PROJECT_CHANNEL_ID,
     steps: animation.steps.map((step) => ({
       frameId: step.frameId,
       durationMs: step.durationMs,
@@ -4128,6 +4210,9 @@ function normalizeProjectState(projectState = state.project) {
       },
     ];
   }
+  if (!Array.isArray(projectState.animations)) {
+    projectState.animations = [];
+  }
 
   const frameIds = new Set(projectState.frames.map((frame) => frame.id));
   if (!frameIds.has(projectState.activeFrameId)) {
@@ -4136,6 +4221,24 @@ function normalizeProjectState(projectState = state.project) {
   if (!frameIds.has(projectState.defaultFrameId)) {
     projectState.defaultFrameId = null;
   }
+
+  projectState.channels = cloneProjectChannels(projectState.channels);
+  let channelIds = new Set(projectState.channels.map((channel) => channel.id));
+  if (!channelIds.has(DEFAULT_PROJECT_CHANNEL_ID) && projectState.animations.some((animation) => {
+    const channelId = typeof animation?.channelId === "string" ? animation.channelId.trim() : "";
+    return !channelId || !channelIds.has(channelId);
+  })) {
+    projectState.channels = [...projectState.channels, createDefaultProjectChannel()];
+    channelIds = new Set(projectState.channels.map((channel) => channel.id));
+  }
+  projectState.channelDefaults = cloneProjectChannelDefaults(projectState.channelDefaults, projectState.channels);
+  projectState.animations = projectState.animations.map((animation) => {
+    const nextChannelId = typeof animation.channelId === "string" ? animation.channelId.trim() : "";
+    return {
+      ...cloneProjectAnimation(animation),
+      channelId: nextChannelId && channelIds.has(nextChannelId) ? nextChannelId : DEFAULT_PROJECT_CHANNEL_ID,
+    };
+  });
 
   const animationIds = new Set(projectState.animations.map((animation) => animation.id));
   if (!animationIds.has(projectState.activeAnimationId)) {
@@ -4214,6 +4317,8 @@ function createProjectFromDrawing(drawing, options = {}) {
       },
     ],
     animations: [],
+    channels: [createDefaultProjectChannel()],
+    channelDefaults: null,
     defaultFrameId: frameId,
     defaultAnimationId: null,
     activeFrameId: frameId,
@@ -4236,6 +4341,8 @@ function fitProjectToConnectedDisplay(project) {
     ...project,
     frames: cloneProjectFrames(project.frames),
     animations: cloneProjectAnimations(project.animations),
+    channels: cloneProjectChannels(project.channels),
+    channelDefaults: cloneProjectChannelDefaults(project.channelDefaults, project.channels),
   };
 
   if (!Number.isInteger(targetWidth) || targetWidth <= 0 || !Number.isInteger(targetHeight) || targetHeight <= 0) {
@@ -4266,6 +4373,8 @@ function buildCurrentProjectPayload(options = {}) {
 
   const frames = getProjectFramesSnapshot();
   const animations = getProjectAnimationsSnapshot();
+  const channels = cloneProjectChannels();
+  const channelDefaults = cloneProjectChannelDefaults(state.project.channelDefaults, channels);
   const frameIds = new Set(frames.map((frame) => frame.id));
   const animationIds = new Set(animations.map((animation) => animation.id));
   const payload = {
@@ -4276,6 +4385,8 @@ function buildCurrentProjectPayload(options = {}) {
     boardGroups: [...state.boardGroups],
     frames,
     animations,
+    channels,
+    channelDefaults,
     defaultFrameId: frameIds.has(state.project.defaultFrameId) ? state.project.defaultFrameId : null,
     defaultAnimationId: animationIds.has(state.project.defaultAnimationId) ? state.project.defaultAnimationId : null,
   };
@@ -4318,6 +4429,8 @@ function createEditorSnapshot() {
     project: {
       frames: getProjectFramesSnapshot(),
       animations: getProjectAnimationsSnapshot(),
+      channels: cloneProjectChannels(),
+      channelDefaults: cloneProjectChannelDefaults(),
       activeFrameId: state.project.activeFrameId,
       activeAnimationId: state.project.activeAnimationId,
       selectedStepIndex: state.project.selectedStepIndex,
@@ -4358,6 +4471,7 @@ function projectAnimationsMatch(leftAnimations, rightAnimations) {
       animation.id !== candidate.id
       || animation.name !== candidate.name
       || animation.loop !== candidate.loop
+      || animation.channelId !== candidate.channelId
       || animation.steps.length !== candidate.steps.length
     ) {
       return false;
@@ -4368,6 +4482,39 @@ function projectAnimationsMatch(leftAnimations, rightAnimations) {
       && step.durationMs === candidate.steps[stepIndex].durationMs
     ));
   });
+}
+
+function projectChannelsMatch(leftChannels, rightChannels) {
+  if (!Array.isArray(leftChannels) || !Array.isArray(rightChannels) || leftChannels.length !== rightChannels.length) {
+    return false;
+  }
+
+  return leftChannels.every((channel, index) => {
+    const candidate = rightChannels[index];
+    return channel.id === candidate.id
+      && channel.name === candidate.name
+      && channel.priority === candidate.priority
+      && channel.blendMode === candidate.blendMode
+      && channel.mask === candidate.mask;
+  });
+}
+
+function projectChannelDefaultsMatch(leftDefaults, rightDefaults) {
+  if (leftDefaults == null && rightDefaults == null) {
+    return true;
+  }
+  if (!leftDefaults || !rightDefaults) {
+    return false;
+  }
+  const leftKeys = Object.keys(leftDefaults).sort();
+  const rightKeys = Object.keys(rightDefaults).sort();
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+  return leftKeys.every((key, index) => (
+    key === rightKeys[index]
+    && JSON.stringify(leftDefaults[key]) === JSON.stringify(rightDefaults[key])
+  ));
 }
 
 function applyProjectToEditor(project, reason, options = {}) {
@@ -4392,6 +4539,11 @@ function applyProjectToEditor(project, reason, options = {}) {
   state.drawingName = sanitizeDrawingName(fittedProject.name);
   state.project.frames = cloneProjectFrames(fittedProject.frames);
   state.project.animations = cloneProjectAnimations(fittedProject.animations);
+  state.project.channels = cloneProjectChannels(fittedProject.channels);
+  state.project.channelDefaults = cloneProjectChannelDefaults(
+    fittedProject.channelDefaults,
+    fittedProject.channels,
+  );
   state.project.activeFrameId = activeFrame.id;
   state.project.activeAnimationId = activeAnimationId;
   state.project.selectedStepIndex = Number.isInteger(fittedProject.selectedStepIndex)
@@ -4434,6 +4586,11 @@ function restoreSnapshot(snapshot, reason, options = {}) {
     boardGroups: snapshot.boardGroups,
     frames: cloneProjectFrames(snapshot.project.frames),
     animations: cloneProjectAnimations(snapshot.project.animations),
+    channels: cloneProjectChannels(snapshot.project.channels),
+    channelDefaults: cloneProjectChannelDefaults(
+      snapshot.project.channelDefaults,
+      snapshot.project.channels,
+    ),
     defaultFrameId: snapshot.project.defaultFrameId,
     defaultAnimationId: snapshot.project.defaultAnimationId,
     activeFrameId: snapshot.project.activeFrameId,
@@ -4467,6 +4624,14 @@ function snapshotsMatch(left, right) {
   }
 
   if (!projectAnimationsMatch(left.project.animations, right.project.animations)) {
+    return false;
+  }
+
+  if (!projectChannelsMatch(left.project.channels, right.project.channels)) {
+    return false;
+  }
+
+  if (!projectChannelDefaultsMatch(left.project.channelDefaults, right.project.channelDefaults)) {
     return false;
   }
 
@@ -5574,6 +5739,47 @@ function validateLoadedProject(data) {
   if (frameIds.size !== frames.length) {
     throw new Error("Project frame ids must be unique.");
   }
+
+  let channels = Array.isArray(data.channels)
+    ? data.channels.map((channel) => {
+      if (!channel || typeof channel !== "object") {
+        throw new Error("Each project channel must be an object.");
+      }
+
+      const id = typeof channel.id === "string" ? channel.id.trim() : "";
+      if (!id) {
+        throw new Error("Each project channel needs a non-empty id.");
+      }
+      const blendMode = typeof channel.blendMode === "string" ? channel.blendMode.trim() : DEFAULT_PROJECT_CHANNEL_BLEND_MODE;
+      if (blendMode !== DEFAULT_PROJECT_CHANNEL_BLEND_MODE) {
+        throw new Error("Project channel blendMode must be overwrite.");
+      }
+
+      const priority = Number.isInteger(channel.priority)
+        ? channel.priority
+        : DEFAULT_PROJECT_CHANNEL_PRIORITY;
+      const mask = channel.mask == null ? null : channel.mask;
+      if (mask !== null) {
+        throw new Error("Project channel mask must be null.");
+      }
+
+      return {
+        id,
+        name: typeof channel.name === "string" && channel.name.trim() ? channel.name.trim() : id,
+        priority,
+        blendMode,
+        mask: null,
+      };
+    })
+    : [createDefaultProjectChannel()];
+  if (channels.length === 0) {
+    channels = [createDefaultProjectChannel()];
+  }
+  const channelIds = new Set(channels.map((channel) => channel.id));
+  if (channelIds.size !== channels.length) {
+    throw new Error("Project channel ids must be unique.");
+  }
+
   const animations = Array.isArray(data.animations)
     ? data.animations.map((animation) => {
       if (!animation || typeof animation !== "object") {
@@ -5588,10 +5794,24 @@ function validateLoadedProject(data) {
         throw new Error(`Project animation "${id}" must have at least one step.`);
       }
 
+      let channelId = typeof animation.channelId === "string" ? animation.channelId.trim() : "";
+      if (channelId) {
+        if (!channelIds.has(channelId)) {
+          throw new Error(`Project animation "${id}" channelId must reference a known channel.`);
+        }
+      } else {
+        channelId = DEFAULT_PROJECT_CHANNEL_ID;
+        if (!channelIds.has(channelId)) {
+          channels = [...channels, createDefaultProjectChannel()];
+          channelIds.add(channelId);
+        }
+      }
+
       return {
         id,
         name: typeof animation.name === "string" && animation.name.trim() ? animation.name.trim() : id,
         loop: animation.loop !== false,
+        channelId,
         steps: animation.steps.map((step) => {
           if (!step || typeof step !== "object") {
             throw new Error(`Project animation "${id}" steps must be objects.`);
@@ -5632,6 +5852,25 @@ function validateLoadedProject(data) {
     throw new Error("defaultAnimationId must reference a known animation.");
   }
 
+  let channelDefaults = null;
+  if (data.channelDefaults != null) {
+    if (!data.channelDefaults || typeof data.channelDefaults !== "object" || Array.isArray(data.channelDefaults)) {
+      throw new Error("channelDefaults must be an object or null.");
+    }
+    const normalizedDefaults = {};
+    Object.entries(data.channelDefaults).forEach(([rawChannelId, value]) => {
+      const channelId = typeof rawChannelId === "string" ? rawChannelId.trim() : "";
+      if (!channelId || !channelIds.has(channelId)) {
+        throw new Error("channelDefaults keys must reference known channels.");
+      }
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new Error(`channelDefaults entry "${channelId}" must be an object.`);
+      }
+      normalizedDefaults[channelId] = { ...value };
+    });
+    channelDefaults = Object.keys(normalizedDefaults).length > 0 ? normalizedDefaults : null;
+  }
+
   const normalizedWorkspace = normalizePersistedBoardWorkspace(
     width,
     height,
@@ -5646,6 +5885,8 @@ function validateLoadedProject(data) {
     height,
     frames,
     animations,
+    channels,
+    channelDefaults,
     defaultFrameId,
     defaultAnimationId,
     boardLayout: normalizedWorkspace.boardLayout,

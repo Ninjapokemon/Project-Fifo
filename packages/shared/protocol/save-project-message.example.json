@@ -34,7 +34,30 @@
       ]
     }
   ],
-  "animations": [],
-  "defaultFrameId": "idle-open",
-  "defaultAnimationId": null
+  "animations": [
+    {
+      "id": "idle",
+      "name": "Idle",
+      "loop": true,
+      "channelId": "base",
+      "steps": [
+        {
+          "frameId": "idle-open",
+          "durationMs": 200
+        }
+      ]
+    }
+  ],
+  "channels": [
+    {
+      "id": "base",
+      "name": "Base",
+      "priority": 100,
+      "blendMode": "overwrite",
+      "mask": null
+    }
+  ],
+  "channelDefaults": null,
+  "defaultFrameId": null,
+  "defaultAnimationId": "idle"
 }

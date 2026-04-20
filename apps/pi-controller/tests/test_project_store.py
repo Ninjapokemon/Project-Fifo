@@ -31,6 +31,20 @@ class ProjectStoreTests(unittest.TestCase):
                         }
                     ],
                     "animations": [],
+                    "channels": [
+                        {
+                            "id": "base",
+                            "name": "Base",
+                            "priority": 100,
+                            "blendMode": "overwrite",
+                            "mask": None,
+                        }
+                    ],
+                    "channelDefaults": {
+                        "base": {
+                            "startupAnimationId": None,
+                        }
+                    },
                     "defaultFrameId": "frame-1",
                     "defaultAnimationId": None,
                 }
@@ -43,6 +57,8 @@ class ProjectStoreTests(unittest.TestCase):
             self.assertEqual(loaded_project["name"], "Happy-Face")
             self.assertEqual(loaded_project["boardGroups"], ["eyes"])
             self.assertEqual(loaded_project["frames"][0]["id"], "frame-1")
+            self.assertEqual(loaded_project["channels"][0]["id"], "base")
+            self.assertEqual(loaded_project["channelDefaults"]["base"]["startupAnimationId"], None)
 
             deleted_name = store.delete("Happy Face")
             self.assertEqual(deleted_name, "Happy-Face")

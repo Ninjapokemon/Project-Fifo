@@ -11,6 +11,11 @@ ALLOWED_ROTATE_VALUES = {0, 1, 2, 3}
 ALLOWED_BLOCK_ORIENTATION_VALUES = {-90, 0, 90, 180}
 ALLOWED_PANEL_ROTATION_VALUES = {0, 90, 180, 270}
 ALLOWED_VIEW_ROTATION_VALUES = {0, 90, 180, 270}
+ALLOWED_CHANNEL_BLEND_MODES = {"overwrite"}
+DEFAULT_PROJECT_CHANNEL_ID = "base"
+DEFAULT_PROJECT_CHANNEL_NAME = "Base"
+DEFAULT_PROJECT_CHANNEL_PRIORITY = 100
+DEFAULT_PROJECT_CHANNEL_BLEND_MODE = "overwrite"
 
 
 def clamp_brightness_value(value: int) -> int:
@@ -143,6 +148,92 @@ def _attach_board_workspace(
         payload["boardGroups"] = normalized_board_groups
 
     return payload
+
+
+def _build_default_project_channel() -> dict[str, Any]:
+    return {
+        "id": DEFAULT_PROJECT_CHANNEL_ID,
+        "name": DEFAULT_PROJECT_CHANNEL_NAME,
+        "priority": DEFAULT_PROJECT_CHANNEL_PRIORITY,
+        "blendMode": DEFAULT_PROJECT_CHANNEL_BLEND_MODE,
+        "mask": None,
+    }
+
+
+def _normalize_project_channels(channels: Any) -> list[dict[str, Any]]:
+    if channels is None:
+        return [_build_default_project_channel()]
+    if not isinstance(channels, list):
+        raise ProtocolError("project channels must be a list or null")
+
+    normalized_channels: list[dict[str, Any]] = []
+    channel_ids: set[str] = set()
+    for channel in channels:
+        if not isinstance(channel, dict):
+            raise ProtocolError("project channels must contain only objects")
+
+        channel_id = channel.get("id")
+        if not isinstance(channel_id, str) or not channel_id.strip():
+            raise ProtocolError("project channel id must be a non-empty string")
+        normalized_channel_id = channel_id.strip()
+        if normalized_channel_id in channel_ids:
+            raise ProtocolError("project channel ids must be unique")
+
+        channel_name = channel.get("name")
+        if channel_name is not None and (
+            not isinstance(channel_name, str) or not channel_name.strip()
+        ):
+            raise ProtocolError("project channel name must be a non-empty string when provided")
+
+        priority = channel.get("priority", DEFAULT_PROJECT_CHANNEL_PRIORITY)
+        if isinstance(priority, bool) or not isinstance(priority, int):
+            raise ProtocolError("project channel priority must be an integer when provided")
+
+        blend_mode = channel.get("blendMode", DEFAULT_PROJECT_CHANNEL_BLEND_MODE)
+        if not isinstance(blend_mode, str) or blend_mode not in ALLOWED_CHANNEL_BLEND_MODES:
+            raise ProtocolError("project channel blendMode must be overwrite")
+
+        mask = channel.get("mask", None)
+        if mask is not None:
+            raise ProtocolError("project channel mask must be null")
+
+        normalized_channels.append(
+            {
+                "id": normalized_channel_id,
+                "name": channel_name.strip() if isinstance(channel_name, str) else normalized_channel_id,
+                "priority": priority,
+                "blendMode": blend_mode,
+                "mask": None,
+            }
+        )
+        channel_ids.add(normalized_channel_id)
+
+    if len(normalized_channels) == 0:
+        return [_build_default_project_channel()]
+    return normalized_channels
+
+
+def _normalize_channel_defaults(
+    channel_defaults: Any,
+    channel_ids: set[str],
+) -> dict[str, Any] | None:
+    if channel_defaults is None:
+        return None
+    if not isinstance(channel_defaults, dict):
+        raise ProtocolError("project channelDefaults must be an object or null")
+
+    normalized_channel_defaults: dict[str, Any] = {}
+    for channel_id, value in channel_defaults.items():
+        if not isinstance(channel_id, str) or not channel_id.strip():
+            raise ProtocolError("project channelDefaults keys must be non-empty strings")
+        normalized_channel_id = channel_id.strip()
+        if normalized_channel_id not in channel_ids:
+            raise ProtocolError("project channelDefaults keys must reference known channels")
+        if not isinstance(value, dict):
+            raise ProtocolError("project channelDefaults values must be objects")
+        normalized_channel_defaults[normalized_channel_id] = dict(value)
+
+    return normalized_channel_defaults
 
 
 def validate_layout_message(message: dict[str, Any], expected_type: str) -> dict[str, Any]:
@@ -290,6 +381,8 @@ def validate_project_payload(project: dict[str, Any]) -> dict[str, Any]:
         project.get("boardLayout"),
         project.get("boardGroups"),
     )
+    normalized_channels = _normalize_project_channels(project.get("channels"))
+    channel_ids = {channel["id"] for channel in normalized_channels}
 
     normalized_frames: list[dict[str, Any]] = []
     frame_ids: set[str] = set()
@@ -346,6 +439,20 @@ def validate_project_payload(project: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(loop, bool):
             raise ProtocolError("project animation loop must be a boolean when provided")
 
+        channel_id = animation.get("channelId")
+        if channel_id is None:
+            if DEFAULT_PROJECT_CHANNEL_ID not in channel_ids:
+                default_channel = _build_default_project_channel()
+                normalized_channels.append(default_channel)
+                channel_ids.add(default_channel["id"])
+            normalized_channel_id = DEFAULT_PROJECT_CHANNEL_ID
+        else:
+            if not isinstance(channel_id, str) or not channel_id.strip():
+                raise ProtocolError("project animation channelId must be a non-empty string when provided")
+            normalized_channel_id = channel_id.strip()
+            if normalized_channel_id not in channel_ids:
+                raise ProtocolError("project animation channelId must reference a known channel")
+
         steps = animation.get("steps")
         if not isinstance(steps, list) or len(steps) == 0:
             raise ProtocolError("project animation steps must be a non-empty list")
@@ -378,6 +485,7 @@ def validate_project_payload(project: dict[str, Any]) -> dict[str, Any]:
                 "id": normalized_animation_id,
                 "name": animation_name.strip() if isinstance(animation_name, str) else normalized_animation_id,
                 "loop": loop,
+                "channelId": normalized_channel_id,
                 "steps": normalized_steps,
             }
         )
@@ -399,10 +507,17 @@ def validate_project_payload(project: dict[str, Any]) -> dict[str, Any]:
         if default_animation_id not in animation_ids:
             raise ProtocolError("defaultAnimationId must reference a known animation")
 
+    normalized_channel_defaults = _normalize_channel_defaults(
+        project.get("channelDefaults"),
+        channel_ids,
+    )
+
     normalized_project["frames"] = normalized_frames
     normalized_project["animations"] = normalized_animations
     normalized_project["defaultFrameId"] = default_frame_id
     normalized_project["defaultAnimationId"] = default_animation_id
+    normalized_project["channels"] = normalized_channels
+    normalized_project["channelDefaults"] = normalized_channel_defaults
     return normalized_project
 
 

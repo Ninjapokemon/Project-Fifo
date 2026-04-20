@@ -104,6 +104,7 @@ class ProtocolTests(unittest.TestCase):
                         "id": "idle",
                         "name": "Idle",
                         "loop": True,
+                        "channelId": "eyes",
                         "steps": [
                             {
                                 "frameId": "idle-open",
@@ -116,6 +117,20 @@ class ProtocolTests(unittest.TestCase):
                         ],
                     }
                 ],
+                "channels": [
+                    {
+                        "id": "eyes",
+                        "name": "Eyes",
+                        "priority": 200,
+                        "blendMode": "overwrite",
+                        "mask": None,
+                    }
+                ],
+                "channelDefaults": {
+                    "eyes": {
+                        "startupAnimationId": "idle",
+                    }
+                },
                 "defaultAnimationId": "idle",
                 "defaultFrameId": "idle-open",
             }
@@ -125,6 +140,9 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(project["boardGroups"], ["eyes"])
         self.assertEqual(project["frames"][0]["id"], "idle-open")
         self.assertEqual(project["animations"][0]["steps"][1]["durationMs"], 80)
+        self.assertEqual(project["animations"][0]["channelId"], "eyes")
+        self.assertEqual(project["channels"][0]["id"], "eyes")
+        self.assertEqual(project["channelDefaults"]["eyes"]["startupAnimationId"], "idle")
         self.assertEqual(project["defaultAnimationId"], "idle")
 
     def test_validate_project_payload_rejects_unknown_animation_frame(self) -> None:
@@ -146,6 +164,71 @@ class ProtocolTests(unittest.TestCase):
                             "steps": [
                                 {
                                     "frameId": "missing-frame",
+                                    "durationMs": 120,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+
+    def test_validate_project_payload_adds_default_base_channel_for_legacy_projects(self) -> None:
+        project = validate_project_payload(
+            {
+                "name": "legacy-face",
+                "width": 8,
+                "height": 8,
+                "frames": [
+                    {
+                        "id": "frame-1",
+                        "pixels": [0] * 64,
+                    }
+                ],
+                "animations": [
+                    {
+                        "id": "idle",
+                        "steps": [
+                            {
+                                "frameId": "frame-1",
+                                "durationMs": 120,
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(project["channels"][0]["id"], "base")
+        self.assertEqual(project["animations"][0]["channelId"], "base")
+        self.assertIsNone(project["channelDefaults"])
+
+    def test_validate_project_payload_rejects_unknown_animation_channel(self) -> None:
+        with self.assertRaises(ProtocolError):
+            validate_project_payload(
+                {
+                    "name": "broken-channel-face",
+                    "width": 8,
+                    "height": 8,
+                    "frames": [
+                        {
+                            "id": "frame-1",
+                            "pixels": [0] * 64,
+                        }
+                    ],
+                    "channels": [
+                        {
+                            "id": "eyes",
+                            "blendMode": "overwrite",
+                            "mask": None,
+                        }
+                    ],
+                    "animations": [
+                        {
+                            "id": "idle",
+                            "channelId": "mouth",
+                            "steps": [
+                                {
+                                    "frameId": "frame-1",
                                     "durationMs": 120,
                                 }
                             ],

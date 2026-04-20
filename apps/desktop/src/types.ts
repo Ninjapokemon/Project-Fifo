@@ -100,8 +100,19 @@ export type ProjectAnimation = {
   id: string;
   name: string;
   loop: boolean;
+  channelId?: string | null;
   steps: ProjectAnimationStep[];
 };
+
+export type ProjectChannel = {
+  id: string;
+  name: string;
+  priority: number;
+  blendMode: "overwrite";
+  mask: null;
+};
+
+export type ProjectChannelDefaults = Record<string, unknown> | null;
 
 export type SavedProject = {
   name: string;
@@ -111,6 +122,8 @@ export type SavedProject = {
   boardGroups?: string[];
   frames: ProjectFrame[];
   animations: ProjectAnimation[];
+  channels?: ProjectChannel[];
+  channelDefaults?: ProjectChannelDefaults;
   defaultFrameId: string | null;
   defaultAnimationId: string | null;
 };
