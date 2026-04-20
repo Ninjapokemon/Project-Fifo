@@ -64,8 +64,12 @@ The main fields to care about are:
 - `oled_coalesce_seconds`: optional debounce window for OLED status refresh requests (default `0.15`)
 - `oled.status_enabled`: optionally turn status OLED text updates on or off
 - `oled.preview_enabled`: optionally turn preview OLED rendering on or off
+- `oled.preview_mode`: preview source mode: `preset` (default) runs Pi-side prerendered animations by event, `mirror` shows transformed live LED pixels
 - `oled.status_fps`: optional status OLED refresh cap (default `2`); set `0` to render status updates on every state change
 - `oled.preview_fps`: optional preview OLED refresh cap (default `10`); set `0` to disable preview rendering entirely
+- `oled.preview_event_map`: optional substring match map for runtime target/mode to preset animation names (for example map `talk` or `speak` to the `talk` preset)
+
+Built-in preset animation names today are `idle`, `blink`, `talk`, and `live`.
 
 Example for three matrices in one horizontal row:
 

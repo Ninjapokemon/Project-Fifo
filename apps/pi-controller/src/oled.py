@@ -70,6 +70,77 @@ def _lan_ip() -> str:
         sock.close()
 
 
+def _blank_pixels(width: int, height: int) -> list[int]:
+    return [0] * (width * height)
+
+
+def _fill_rect(
+    pixels: list[int],
+    width: int,
+    height: int,
+    left: int,
+    top: int,
+    right: int,
+    bottom: int,
+) -> None:
+    clamped_left = max(0, left)
+    clamped_top = max(0, top)
+    clamped_right = min(width - 1, right)
+    clamped_bottom = min(height - 1, bottom)
+    if clamped_left > clamped_right or clamped_top > clamped_bottom:
+        return
+    for y in range(clamped_top, clamped_bottom + 1):
+        row_offset = y * width
+        for x in range(clamped_left, clamped_right + 1):
+            pixels[row_offset + x] = 1
+
+
+def _build_face_frame(width: int, height: int, eye_height: int, mouth_height: int = 0) -> list[int]:
+    pixels = _blank_pixels(width, height)
+    eye_width = max(2, width // 6)
+    eye_half_width = max(1, eye_width // 2)
+    center_y = max(1, (height // 3))
+    left_center_x = max(2, width // 4)
+    right_center_x = min(width - 3, (width * 3) // 4)
+    eye_half_height = max(0, eye_height // 2)
+
+    _fill_rect(
+        pixels,
+        width,
+        height,
+        left_center_x - eye_half_width,
+        center_y - eye_half_height,
+        left_center_x + eye_half_width,
+        center_y + eye_half_height,
+    )
+    _fill_rect(
+        pixels,
+        width,
+        height,
+        right_center_x - eye_half_width,
+        center_y - eye_half_height,
+        right_center_x + eye_half_width,
+        center_y + eye_half_height,
+    )
+
+    if mouth_height > 0:
+        mouth_width = max(3, width // 3)
+        mouth_center_x = width // 2
+        mouth_top = min(height - 2, center_y + max(2, height // 4))
+        mouth_bottom = min(height - 1, mouth_top + mouth_height - 1)
+        _fill_rect(
+            pixels,
+            width,
+            height,
+            mouth_center_x - (mouth_width // 2),
+            mouth_top,
+            mouth_center_x + (mouth_width // 2),
+            mouth_bottom,
+        )
+
+    return pixels
+
+
 class DualOledStatus:
     def __init__(self, config: dict[str, Any]):
         oled_config = config.get("oled")
@@ -94,9 +165,29 @@ class DualOledStatus:
         self._board_layout: list[dict[str, Any]] | None = None
         self._board_layout_signature: int = 0
         self._last_preview_render = 0.0
-        self._last_preview_signature: tuple[int, int, int, int] | None = None
+        self._last_preview_signature: tuple[Any, ...] | None = None
         self._preview_plan_key: tuple[int, int, int, int, int] | None = None
         self._preview_plan: dict[str, Any] | None = None
+        preview_mode = str(oled_config.get("preview_mode", "preset")).strip().lower()
+        if preview_mode not in ("preset", "mirror"):
+            preview_mode = "preset"
+        self._preview_mode = preview_mode
+        preview_event_map = oled_config.get("preview_event_map")
+        self._preview_event_map = (
+            dict(preview_event_map)
+            if isinstance(preview_event_map, dict)
+            else {
+                "blink": "blink",
+                "talk": "talk",
+                "speak": "talk",
+                "live": "live",
+                "default": "idle",
+            }
+        )
+        self._active_preview_event = "idle"
+        self._active_preview_started_at = time.monotonic()
+        self._preset_animation_cache_key: tuple[int, int] | None = None
+        self._preset_animation_cache: dict[str, dict[str, Any]] | None = None
         status_fps = oled_config.get("status_fps", 2)
         try:
             self._status_fps = float(status_fps)
@@ -147,6 +238,8 @@ class DualOledStatus:
         self.enabled = self.status_enabled or self.preview_enabled
         if not self.enabled:
             print("OLED enabled but neither OLED could be initialized.")
+        elif self.preview_enabled:
+            print(f"OLED preview mode: {self._preview_mode}.")
 
     def update_state(
         self,
@@ -154,7 +247,7 @@ class DualOledStatus:
         display_state: dict[str, Any],
         board_layout: list[dict[str, Any]] | None = None,
     ) -> None:
-        if not self.enabled or self.status_device is None:
+        if not self.enabled:
             return
         self._runtime_state = dict(runtime_state)
         self._display_state = dict(display_state)
@@ -167,7 +260,13 @@ class DualOledStatus:
             )
         self._preview_plan_key = None
         self._preview_plan = None
-        self._render_status()
+        self._update_preview_event()
+        if self.status_device is not None:
+            self._render_status()
+        if self.preview_enabled and self._preview_mode == "preset":
+            width = int(self._display_state.get("width", 16))
+            height = int(self._display_state.get("height", 8))
+            self.render_preview([], width, height)
 
     def _build_preview_plan(self, safe_width: int, safe_height: int) -> dict[str, Any]:
         if self.preview_device is None:
@@ -290,6 +389,137 @@ class DualOledStatus:
         self._preview_plan_key = plan_key
         return self._preview_plan
 
+    def _resolve_preview_event(self) -> str:
+        mapped_default = str(self._preview_event_map.get("default", "idle")).strip().lower()
+        default_event = mapped_default or "idle"
+        active_name = str(self._runtime_state.get("active_target_name", "")).strip().lower()
+        active_id = str(self._runtime_state.get("active_target_id", "")).strip().lower()
+        active_type = str(self._runtime_state.get("active_target_type", "")).strip().lower()
+        runtime_mode = str(self._runtime_state.get("runtime_mode", "")).strip().lower()
+        explicit_event = str(self._runtime_state.get("oled_event", "")).strip().lower()
+        search_text = " ".join(
+            token
+            for token in (explicit_event, active_name, active_id, active_type, runtime_mode)
+            if token
+        )
+        for trigger, event_name in self._preview_event_map.items():
+            trigger_text = str(trigger).strip().lower()
+            if not trigger_text or trigger_text == "default":
+                continue
+            if trigger_text in search_text:
+                candidate = str(event_name).strip().lower()
+                if candidate:
+                    return candidate
+        if runtime_mode == "live":
+            return "live"
+        return default_event
+
+    def _update_preview_event(self) -> None:
+        next_event = self._resolve_preview_event()
+        if next_event == self._active_preview_event:
+            return
+        self._active_preview_event = next_event
+        self._active_preview_started_at = time.monotonic()
+        self._last_preview_render = 0.0
+        self._last_preview_signature = None
+
+    def _build_preset_animations(self, width: int, height: int) -> dict[str, dict[str, Any]]:
+        open_eyes = _build_face_frame(width, height, eye_height=max(2, height // 3))
+        half_eyes = _build_face_frame(width, height, eye_height=max(1, height // 5))
+        closed_eyes = _build_face_frame(width, height, eye_height=1)
+        talk_small = _build_face_frame(width, height, eye_height=max(2, height // 3), mouth_height=1)
+        talk_medium = _build_face_frame(width, height, eye_height=max(2, height // 3), mouth_height=2)
+        talk_large = _build_face_frame(width, height, eye_height=max(2, height // 3), mouth_height=3)
+
+        raw_animations: dict[str, tuple[list[list[int]], list[int]]] = {
+            "idle": ([open_eyes], [300]),
+            "live": ([open_eyes], [200]),
+            "blink": ([open_eyes, half_eyes, closed_eyes, half_eyes, open_eyes], [120, 90, 80, 90, 180]),
+            "talk": ([talk_small, talk_medium, talk_large, talk_medium], [90, 90, 90, 90]),
+        }
+
+        built: dict[str, dict[str, Any]] = {}
+        for name, (frames, durations_ms) in raw_animations.items():
+            total_ms = max(1, sum(durations_ms))
+            cumulative: list[int] = []
+            elapsed = 0
+            for duration in durations_ms:
+                elapsed += max(1, int(duration))
+                cumulative.append(elapsed)
+            built[name] = {
+                "frames": frames,
+                "durations_ms": durations_ms,
+                "cumulative_ms": cumulative,
+                "total_ms": total_ms,
+            }
+        return built
+
+    def _get_preset_animations(self, width: int, height: int) -> dict[str, dict[str, Any]]:
+        cache_key = (width, height)
+        if self._preset_animation_cache is not None and self._preset_animation_cache_key == cache_key:
+            return self._preset_animation_cache
+        self._preset_animation_cache = self._build_preset_animations(width, height)
+        self._preset_animation_cache_key = cache_key
+        return self._preset_animation_cache
+
+    def _select_preset_frame(self, width: int, height: int) -> tuple[list[int], str, int]:
+        animations = self._get_preset_animations(width, height)
+        event_name = self._active_preview_event
+        if event_name not in animations:
+            fallback = str(self._preview_event_map.get("default", "idle")).strip().lower() or "idle"
+            event_name = fallback if fallback in animations else "idle"
+        animation = animations[event_name]
+        frames: list[list[int]] = animation["frames"]
+        if len(frames) <= 1:
+            return frames[0], event_name, 0
+
+        now_ms = int((time.monotonic() - self._active_preview_started_at) * 1000)
+        loop_ms = int(animation["total_ms"])
+        phase_ms = now_ms % max(1, loop_ms)
+        cumulative: list[int] = animation["cumulative_ms"]
+        frame_index = len(frames) - 1
+        for index, limit in enumerate(cumulative):
+            if phase_ms < limit:
+                frame_index = index
+                break
+        return frames[frame_index], event_name, frame_index
+
+    def _draw_preview_bitmap(self, pixels: list[int], safe_width: int, safe_height: int) -> None:
+        if self.preview_device is None:
+            return
+        scale = max(
+            1,
+            min(
+                self.preview_device.width // safe_width,
+                self.preview_device.height // safe_height,
+            ),
+        )
+        draw_width = safe_width * scale
+        draw_height = safe_height * scale
+        origin_x = (self.preview_device.width - draw_width) // 2
+        origin_y = (self.preview_device.height - draw_height) // 2
+
+        with canvas(self.preview_device) as draw:
+            draw.rectangle(
+                (0, 0, self.preview_device.width - 1, self.preview_device.height - 1),
+                outline="white",
+                fill="black",
+            )
+            for y in range(safe_height):
+                row_offset = y * safe_width
+                for x in range(safe_width):
+                    if pixels[row_offset + x] != 1:
+                        continue
+                    if scale == 1:
+                        draw.point((origin_x + x, origin_y + y), fill="white")
+                        continue
+                    left = origin_x + (x * scale)
+                    top = origin_y + (y * scale)
+                    draw.rectangle(
+                        (left, top, left + scale - 1, top + scale - 1),
+                        fill="white",
+                    )
+
     def _render_status(self) -> None:
         if self.status_device is None:
             return
@@ -355,6 +585,19 @@ class DualOledStatus:
             and now - self._last_preview_render < self._preview_min_interval
         ):
             return
+        self._last_preview_render = now
+
+        safe_width = max(1, int(self._display_state.get("width", width if width > 0 else 16)))
+        safe_height = max(1, int(self._display_state.get("height", height if height > 0 else 8)))
+
+        if self._preview_mode == "preset":
+            frame_pixels, event_name, frame_index = self._select_preset_frame(safe_width, safe_height)
+            frame_signature = ("preset", event_name, frame_index, safe_width, safe_height)
+            if frame_signature == self._last_preview_signature:
+                return
+            self._last_preview_signature = frame_signature
+            self._draw_preview_bitmap(frame_pixels, safe_width, safe_height)
+            return
 
         try:
             frame_crc = zlib.crc32(bytes(pixels))
@@ -364,6 +607,7 @@ class DualOledStatus:
             )
 
         frame_signature = (
+            "mirror",
             int(width),
             int(height),
             frame_crc,
@@ -372,11 +616,7 @@ class DualOledStatus:
         if frame_signature == self._last_preview_signature:
             return
 
-        self._last_preview_render = now
         self._last_preview_signature = frame_signature
-
-        safe_width = max(1, int(width))
-        safe_height = max(1, int(height))
         preview_plan = self._get_preview_plan(safe_width, safe_height)
         scale = int(preview_plan["scale"])
 
@@ -421,6 +661,8 @@ class DualOledStatus:
         self._last_preview_signature = None
         self._preview_plan_key = None
         self._preview_plan = None
+        self._preset_animation_cache_key = None
+        self._preset_animation_cache = None
         self.preview_device.clear()
 
     def shutdown(self) -> None:
@@ -432,3 +674,5 @@ class DualOledStatus:
         self._last_preview_signature = None
         self._preview_plan_key = None
         self._preview_plan = None
+        self._preset_animation_cache_key = None
+        self._preset_animation_cache = None

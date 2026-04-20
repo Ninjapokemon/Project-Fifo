@@ -14,11 +14,19 @@
     "enabled": true,
     "status_enabled": true,
     "preview_enabled": true,
+    "preview_mode": "preset",
     "port": 1,
     "status_address": 60,
     "preview_address": 61,
     "status_fps": 2,
-    "preview_fps": 10
+    "preview_fps": 10,
+    "preview_event_map": {
+      "blink": "blink",
+      "talk": "talk",
+      "speak": "talk",
+      "live": "live",
+      "default": "idle"
+    }
   },
   "panel_order": null,
   "panel_rotations": null,
