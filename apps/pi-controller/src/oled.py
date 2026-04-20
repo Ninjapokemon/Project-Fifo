@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import socket
 import time
+import zlib
 from typing import Any
 
 from luma.core.interface.serial import i2c
@@ -89,8 +90,11 @@ class DualOledStatus:
         self._last_flip = 0.0
         self._flip_seconds = 5.0
         self._last_status_render = 0.0
+        self._last_status_lines: tuple[str, ...] | None = None
         self._board_layout: list[dict[str, Any]] | None = None
+        self._board_layout_signature: int = 0
         self._last_preview_render = 0.0
+        self._last_preview_signature: tuple[int, int, int, int] | None = None
         status_fps = oled_config.get("status_fps", 2)
         try:
             self._status_fps = float(status_fps)
@@ -153,6 +157,12 @@ class DualOledStatus:
         self._runtime_state = dict(runtime_state)
         self._display_state = dict(display_state)
         self._board_layout = list(board_layout) if isinstance(board_layout, list) else None
+        if self._board_layout is None:
+            self._board_layout_signature = 0
+        else:
+            self._board_layout_signature = zlib.crc32(
+                repr(self._board_layout).encode("utf-8")
+            )
         self._render_status()
 
     def _render_status(self) -> None:
@@ -202,6 +212,11 @@ class DualOledStatus:
                 _short(f"ip:{self._ip_address}", 21),
             ]
 
+        rendered_lines = tuple(lines)
+        if rendered_lines == self._last_status_lines:
+            return
+        self._last_status_lines = rendered_lines
+
         with canvas(self.status_device) as draw:
             for index, line in enumerate(lines):
                 draw.text((0, index * 9), line, fill="white")
@@ -215,7 +230,25 @@ class DualOledStatus:
             and now - self._last_preview_render < self._preview_min_interval
         ):
             return
+
+        try:
+            frame_crc = zlib.crc32(bytes(pixels))
+        except ValueError:
+            frame_crc = zlib.crc32(
+                bytes((1 if int(pixel) != 0 else 0) for pixel in pixels)
+            )
+
+        frame_signature = (
+            int(width),
+            int(height),
+            frame_crc,
+            self._board_layout_signature,
+        )
+        if frame_signature == self._last_preview_signature:
+            return
+
         self._last_preview_render = now
+        self._last_preview_signature = frame_signature
 
         safe_width = max(1, int(width))
         safe_height = max(1, int(height))
@@ -339,6 +372,7 @@ class DualOledStatus:
     def clear_preview(self) -> None:
         if not self.preview_enabled or self.preview_device is None:
             return
+        self._last_preview_signature = None
         self.preview_device.clear()
 
     def shutdown(self) -> None:
@@ -346,3 +380,5 @@ class DualOledStatus:
             self.status_device.clear()
         if self.preview_device is not None:
             self.preview_device.clear()
+        self._last_status_lines = None
+        self._last_preview_signature = None
