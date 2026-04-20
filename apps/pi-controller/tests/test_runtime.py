@@ -38,6 +38,30 @@ class FakeDisplay:
 
 
 class RuntimeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_live_frame_stream_only_emits_state_change_on_first_live_frame(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_store = ProjectStore(Path(temp_dir))
+            state_updates: list[dict[str, object]] = []
+            config = {"boot_project": None}
+            display = FakeDisplay()
+            runtime = ProjectRuntime(
+                display,
+                project_store,
+                config,
+                lambda updated_config: updated_config,
+                on_state_change=lambda state: state_updates.append(dict(state)),
+            )
+
+            # Constructor emits one initial state.
+            self.assertEqual(len(state_updates), 1)
+
+            await runtime.apply_live_frame(build_pixels(16, 8, [(0, 0)]), 16, 8)
+            self.assertEqual(len(state_updates), 2)
+
+            await runtime.apply_live_frame(build_pixels(16, 8, [(1, 0)]), 16, 8)
+            await runtime.apply_live_frame(build_pixels(16, 8, [(2, 0)]), 16, 8)
+            self.assertEqual(len(state_updates), 2)
+
     async def test_live_disconnect_resumes_active_project(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_store = ProjectStore(Path(temp_dir))

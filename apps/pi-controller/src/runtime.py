@@ -202,10 +202,12 @@ class ProjectRuntime:
             "height": height,
             "pixels": list(pixels),
         }
+        state_changed = self.runtime_mode != "live" or not self.live_override_active
         self.live_override_active = True
         self.runtime_mode = "live"
         self.display.render_frame(pixels, width, height)
-        self._emit_state_change()
+        if state_changed:
+            self._emit_state_change()
 
     async def apply_live_clear(self) -> None:
         await self._stop_playback()
@@ -214,10 +216,12 @@ class ProjectRuntime:
             "height": self.display.height,
             "pixels": [0] * (self.display.width * self.display.height),
         }
+        state_changed = self.runtime_mode != "live" or not self.live_override_active
         self.live_override_active = True
         self.runtime_mode = "live"
         self.display.clear()
-        self._emit_state_change()
+        if state_changed:
+            self._emit_state_change()
 
     async def refresh_output(self) -> None:
         if self.live_override_active:
