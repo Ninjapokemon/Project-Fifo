@@ -4713,12 +4713,16 @@ function sendMessage(message) {
   return true;
 }
 
-function scheduleFrameSend(reason, options = {}) {
-  const { logSend = true, immediate = false } = options;
+function cancelPendingFrameSend() {
   if (state.sendTimer) {
     window.clearTimeout(state.sendTimer);
     state.sendTimer = null;
   }
+}
+
+function scheduleFrameSend(reason, options = {}) {
+  const { logSend = true, immediate = false } = options;
+  cancelPendingFrameSend();
 
   if (immediate) {
     const sent = sendMessage(buildFrameMessage());
@@ -5410,6 +5414,7 @@ function activateProjectOnPi() {
     return;
   }
 
+  cancelPendingFrameSend();
   const sent = sendMessage(buildActivateProjectMessage(projectName));
   if (sent) {
     log(`Asked the Pi to run project "${projectName}".`);
@@ -5443,6 +5448,7 @@ function clearBootProjectOnPi() {
 }
 
 function resumeProjectOnPi() {
+  cancelPendingFrameSend();
   const sent = sendMessage(buildResumeProjectMessage());
   if (sent) {
     log("Asked the Pi to resume its active project runtime.");
@@ -5698,6 +5704,7 @@ function handleServerMessage(message) {
     && Number.isInteger(message.block_orientation)
     && typeof message.reverse_order === "boolean"
   ) {
+    const previousRuntime = { ...state.runtime };
     setConnectedDisplaySize(message.width, message.height);
     state.brightness = clampBrightness(message.brightness);
     syncBrightnessInputs();
@@ -5737,14 +5744,36 @@ function handleServerMessage(message) {
     if (message.brightness_persisted === false) {
       log("Pi brightness is currently a live value and is not saved to config yet.");
     }
-    if (state.runtime.mode === "project" && state.runtime.activeProject) {
+    const enteredProjectMode = state.runtime.mode === "project"
+      && state.runtime.activeProject
+      && (
+        previousRuntime.mode !== "project"
+        || previousRuntime.activeProject !== state.runtime.activeProject
+        || previousRuntime.activeTargetType !== state.runtime.activeTargetType
+        || previousRuntime.activeTargetName !== state.runtime.activeTargetName
+      );
+    const enteredLiveMode = state.runtime.mode === "live"
+      && (
+        previousRuntime.mode !== "live"
+        || previousRuntime.liveOverrideActive !== state.runtime.liveOverrideActive
+      );
+    const enteredIdleMode = state.runtime.mode === "idle" && previousRuntime.mode !== "idle";
+
+    if (enteredProjectMode) {
       log(
         `Pi is running project "${state.runtime.activeProject}". `
         + "Draw on the website or click Send Now when you want temporary live control.",
       );
-    } else if (state.runtime.mode === "live") {
-      log("Pi is already in live-control mode. Resume Project or disconnect when you want the Pi runtime back.");
-    } else {
+    } else if (enteredLiveMode) {
+      if (state.runtime.activeProject) {
+        log(
+          `Website live control is now overriding project "${state.runtime.activeProject}". `
+          + "Use Resume Saved Project or disconnect when you want the Pi runtime back.",
+        );
+      } else {
+        log("Pi switched into live website control.");
+      }
+    } else if (enteredIdleMode || previousRuntime.mode == null) {
       log("Pi is ready. Draw on the website or click Send Now to start a temporary live session.");
     }
     return;

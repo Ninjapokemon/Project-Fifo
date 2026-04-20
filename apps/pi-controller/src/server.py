@@ -125,7 +125,17 @@ async def handle_connection(
                     continue
                 if message.get("type") == "clear":
                     validate_simple_request_message(message, "clear")
+                    was_live_override = runtime.live_override_active
                     await runtime.apply_live_clear()
+                    if not was_live_override:
+                        await send_state_message(
+                            websocket,
+                            display,
+                            drawing_store,
+                            project_store,
+                            runtime,
+                            config,
+                        )
                     continue
                 if message.get("type") == "save_drawing":
                     drawing = validate_named_drawing(message)
@@ -374,7 +384,17 @@ async def handle_connection(
                     continue
 
                 frame = validate_frame_message(message)
+                was_live_override = runtime.live_override_active
                 await runtime.apply_live_frame(frame["pixels"], frame["width"], frame["height"])
+                if not was_live_override:
+                    await send_state_message(
+                        websocket,
+                        display,
+                        drawing_store,
+                        project_store,
+                        runtime,
+                        config,
+                    )
             except (json.JSONDecodeError, ProtocolError, ValueError, FileNotFoundError) as error:
                 await websocket.send(
                     json.dumps(
