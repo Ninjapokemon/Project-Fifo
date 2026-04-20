@@ -699,6 +699,10 @@ function finishWorkspaceAnimationPaneResize(event) {
 }
 
 function updateGridMeta() {
+  if (!elements.gridMeta) {
+    return;
+  }
+
   const boardCount = Math.max(state.boardLayout.length, 1);
   const groupCount = Math.max(getBoardGroups().length, 1);
   elements.gridMeta.textContent = `${state.width} x ${state.height} - ${boardCount} board${boardCount === 1 ? "" : "s"} - ${groupCount} group${groupCount === 1 ? "" : "s"}`;

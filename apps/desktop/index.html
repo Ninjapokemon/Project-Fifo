@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Project Fifo Editor</title>
-    <link rel="stylesheet" href="./src/styles.css?v=layout-resizer-15" />
+    <link rel="stylesheet" href="./src/styles.css?v=layout-resizer-18" />
   </head>
   <body>
     <main class="app-shell">
@@ -28,7 +28,7 @@
             >
               <span class="card-title-toggle-copy">
                 <span class="section-label">Connection</span>
-                <h2>Pi Link</h2>
+                <span class="card-title-main card-title-main-large">Pi Link</span>
               </span>
             </button>
             <span id="connectionStatus" class="status-pill idle">Disconnected</span>
@@ -305,7 +305,7 @@
                           >
                             <span class="card-title-toggle-copy">
                               <span class="section-label">Files</span>
-                              <h3>Save + Load</h3>
+                              <span class="card-title-main">Save + Load</span>
                             </span>
                           </button>
                         </div>
@@ -342,7 +342,7 @@
                           >
                             <span class="card-title-toggle-copy">
                               <span class="section-label">Deploy</span>
-                              <h3>Run On Pi</h3>
+                              <span class="card-title-main">Run On Pi</span>
                             </span>
                           </button>
                         </div>
@@ -382,6 +382,8 @@
                 <div class="workspace-grid-pane" id="workspaceGridPane">
                   <div class="grid-header">
                     <div>
+                      <p id="gridMeta" class="grid-meta">24 x 8</p>
+                      <p class="board-layout-hint">Drag chain boards anywhere in the workspace, use groups to split eyes, nose, and mouth visually, then use the <code>LED</code> controls for hardware output and the <code>View</code> controls to make the website match real-world panel orientation without changing the LEDs.</p>
                       <div class="workspace-tools">
                         <button id="newBoardGroupButton" type="button" class="secondary">New Group</button>
                       </div>
@@ -419,7 +421,7 @@
                         >
                           <span class="card-title-toggle-copy">
                             <span class="section-label">Project</span>
-                            <h3>Frames + Runtime Start</h3>
+                            <span class="card-title-main">Frames + Runtime Start</span>
                           </span>
                         </button>
                       </div>
@@ -446,7 +448,7 @@
                         >
                           <span class="card-title-toggle-copy">
                             <span class="section-label">Frames</span>
-                            <h3>Frame Strip</h3>
+                            <span class="card-title-main">Frame Strip</span>
                           </span>
                         </button>
                       </div>
@@ -478,7 +480,7 @@
                         >
                           <span class="card-title-toggle-copy">
                             <span class="section-label">Animation</span>
-                            <h3>Clip Setup</h3>
+                            <span class="card-title-main">Clip Setup</span>
                           </span>
                         </button>
                       </div>
@@ -517,7 +519,7 @@
                         >
                           <span class="card-title-toggle-copy">
                             <span class="section-label">Preview</span>
-                            <h3>Playback Preview</h3>
+                            <span class="card-title-main">Playback Preview</span>
                           </span>
                         </button>
                         <div class="button-row wrap">
@@ -548,7 +550,7 @@
                         >
                           <span class="card-title-toggle-copy">
                             <span class="section-label">Steps</span>
-                            <h3>Sequence Builder</h3>
+                            <span class="card-title-main">Sequence Builder</span>
                           </span>
                         </button>
                         <button id="addAnimationStepButton" type="button" class="secondary">Add Current Frame</button>
@@ -573,7 +575,7 @@
               >
                 <span class="card-title-toggle-copy">
                   <span class="section-label">Console</span>
-                  <h2>Event Log</h2>
+                  <span class="card-title-main card-title-main-large">Event Log</span>
                 </span>
               </button>
               <button id="clearLogButton" type="button" class="secondary">Clear Log</button>
@@ -586,6 +588,6 @@
       </section>
     </main>
 
-    <script type="module" src="./src/main.js?v=layout-resizer-15"></script>
+    <script type="module" src="./src/main.js?v=layout-resizer-18"></script>
   </body>
 </html>
