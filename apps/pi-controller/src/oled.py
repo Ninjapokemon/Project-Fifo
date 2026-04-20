@@ -86,6 +86,15 @@ class DualOledStatus:
         self._last_flip = 0.0
         self._flip_seconds = 5.0
         self._board_layout: list[dict[str, Any]] | None = None
+        self._last_preview_render = 0.0
+        preview_fps = oled_config.get("preview_fps", 8)
+        try:
+            self._preview_fps = float(preview_fps)
+        except (TypeError, ValueError):
+            self._preview_fps = 8.0
+        self._preview_min_interval = 0.0
+        if self._preview_fps > 0:
+            self._preview_min_interval = 1.0 / self._preview_fps
 
         if not self.enabled:
             print("OLED status disabled by config.")
@@ -166,6 +175,13 @@ class DualOledStatus:
     def render_preview(self, pixels: list[int], width: int, height: int) -> None:
         if not self.enabled or self.preview_device is None:
             return
+        now = time.monotonic()
+        if (
+            self._preview_min_interval > 0
+            and now - self._last_preview_render < self._preview_min_interval
+        ):
+            return
+        self._last_preview_render = now
 
         safe_width = max(1, int(width))
         safe_height = max(1, int(height))

@@ -13,7 +13,8 @@
     "enabled": true,
     "port": 1,
     "status_address": 60,
-    "preview_address": 61
+    "preview_address": 61,
+    "preview_fps": 8
   },
   "panel_order": null,
   "panel_rotations": null,
