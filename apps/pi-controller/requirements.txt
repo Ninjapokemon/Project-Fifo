@@ -3,3 +3,4 @@ luma.core>=2.4.2
 luma.oled>=3.14.0
 spidev>=3.6
 websockets>=12.0
+smbus2>=0.4.3

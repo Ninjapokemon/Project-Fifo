@@ -11,6 +11,14 @@
   "reverse_order": false,
   "serpentine": false,
   "oled_coalesce_seconds": 0.15,
+  "microphone": {
+    "enabled": false,
+    "test_mode": false,
+    "i2c_bus": 1,
+    "address": 72,
+    "channel": 0,
+    "sample_hz": 20
+  },
   "oled": {
     "enabled": true,
     "status_enabled": true,

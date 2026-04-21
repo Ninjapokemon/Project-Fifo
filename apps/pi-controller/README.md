@@ -17,6 +17,7 @@ Today it can already run a saved default project on boot while still allowing th
 - load a saved boot project from disk on startup
 - play saved default frames or animations locally without needing a browser connection
 - drive auxiliary OLED status and preview output with runtime-aware mode selection
+- sample MAX9814 microphone input through ADS1115 and show live diagnostics on OLED
 - eventually react to inputs such as GPIO buttons or microphone activity
 
 ## Main Files
@@ -75,6 +76,21 @@ Relevant config keys in `apps/pi-controller/config.json`:
 - `oled.preview_fps`
 - `oled.status_fps`
 - `oled_coalesce_seconds`
+
+## Microphone Test Mode (MAX9814 + ADS1115)
+
+Raspberry Pi GPIO cannot read analog directly, so `MAX9814` requires an ADC. This branch includes a simple ADS1115 mic sampler that can feed OLED diagnostics.
+
+Config keys:
+
+- `microphone.enabled`
+- `microphone.test_mode`
+- `microphone.i2c_bus`
+- `microphone.address`
+- `microphone.channel`
+- `microphone.sample_hz`
+
+When `microphone.test_mode` is `true`, the OLED status page stays on a microphone diagnostics view (`raw`, `mV`, bias, level, peak) for bring-up testing.
 
 ## Future Runtime Direction
 

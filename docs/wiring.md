@@ -21,6 +21,37 @@ Typical `0.96"` `128x64` I2C OLED wiring on a Raspberry Pi:
 
 Common I2C addresses are `0x3C` and `0x3D`.
 
+## Optional MAX9814 Microphone (via ADS1115 ADC)
+
+The `MAX9814` output is analog. Raspberry Pi GPIO has no built-in analog input, so use an ADC.
+This branch supports `ADS1115` on I2C.
+
+Typical wiring:
+
+- `MAX9814 VDD` -> `3V3` (Pin 1)
+- `MAX9814 GND` -> `GND` (Pin 9)
+- `MAX9814 OUT` -> `ADS1115 A0`
+- `ADS1115 VDD` -> `3V3` (Pin 17)
+- `ADS1115 GND` -> `GND` (Pin 20)
+- `ADS1115 SCL` -> `SCL1` / `GPIO3` (Pin 5)
+- `ADS1115 SDA` -> `SDA1` / `GPIO2` (Pin 3)
+- `ADS1115 ADDR` -> `GND` for `0x48` (default in config)
+
+After wiring, enable in `apps/pi-controller/config.json`:
+
+```json
+"microphone": {
+  "enabled": true,
+  "test_mode": true,
+  "i2c_bus": 1,
+  "address": 72,
+  "channel": 0,
+  "sample_hz": 20
+}
+```
+
+`test_mode: true` makes the status OLED stay on a dedicated mic diagnostics page.
+
 ## Reminder
 
 Actual pin labels vary by breakout board. Confirm your module's labeling and power requirements before powering the chain.

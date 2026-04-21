@@ -156,6 +156,17 @@ class DualOledStatus:
         self._runtime_state: dict[str, Any] = {}
         self._display_state: dict[str, Any] = {}
         self._active_project: dict[str, Any] | None = None
+        self._mic_state: dict[str, Any] = {
+            "enabled": False,
+            "test_mode": False,
+            "available": False,
+            "message": "disabled",
+            "raw": 0,
+            "millivolts": 0,
+            "dc_bias_mv": 0,
+            "level_percent": 0,
+            "peak_percent": 0,
+        }
         self._hostname = socket.gethostname()
         self._ip_address = _lan_ip()
         self._page = 0
@@ -282,6 +293,16 @@ class DualOledStatus:
             width = int(self._display_state.get("width", 16))
             height = int(self._display_state.get("height", 8))
             self.render_preview([], width, height)
+
+    def update_microphone_state(self, mic_state: dict[str, Any]) -> None:
+        if not isinstance(mic_state, dict):
+            return
+        self._mic_state = {
+            **self._mic_state,
+            **mic_state,
+        }
+        if self.status_device is not None:
+            self._render_status()
 
     def _build_preview_plan(self, safe_width: int, safe_height: int) -> dict[str, Any]:
         if self.preview_device is None:
@@ -690,9 +711,12 @@ class DualOledStatus:
             return
 
         now = time.monotonic()
+        mic_enabled = bool(self._mic_state.get("enabled", False))
+        mic_test_mode = bool(self._mic_state.get("test_mode", False))
+        page_count = 1 if mic_test_mode else (3 if mic_enabled else 2)
         page_flipped = False
         if now - self._last_flip >= self._flip_seconds:
-            self._page = (self._page + 1) % 2
+            self._page = (self._page + 1) % page_count
             self._last_flip = now
             page_flipped = True
         if (
@@ -710,7 +734,7 @@ class DualOledStatus:
         height = self._display_state.get("height", "?")
         brightness = self._display_state.get("brightness", "?")
 
-        if self._page == 0:
+        if self._page == 0 and not mic_test_mode:
             lines = [
                 "Project Fifo",
                 _short(self._hostname, 21),
@@ -720,7 +744,7 @@ class DualOledStatus:
                 f"tgt:{target_name}",
                 f"mx:{width}x{height} b:{brightness}",
             ]
-        else:
+        elif self._page == 1 and not mic_test_mode:
             now_local = time.strftime("%H:%M:%S")
             lines = [
                 "Pi Stats",
@@ -730,6 +754,18 @@ class DualOledStatus:
                 f"time:{now_local}",
                 _short(f"mode:{mode}", 21),
                 _short(f"ip:{self._ip_address}", 21),
+            ]
+        else:
+            mic_message = _short(self._mic_state.get("message", "-"), 21)
+            mic_available = bool(self._mic_state.get("available", False))
+            lines = [
+                "Mic Test",
+                f"adc:{'ok' if mic_available else 'down'}",
+                f"raw:{self._mic_state.get('raw', 0)}",
+                f"mv:{self._mic_state.get('millivolts', 0)}",
+                f"bias:{self._mic_state.get('dc_bias_mv', 0)}",
+                f"lvl:{self._mic_state.get('level_percent', 0)}%",
+                f"pk:{self._mic_state.get('peak_percent', 0)}% {mic_message}",
             ]
 
         rendered_lines = tuple(lines)

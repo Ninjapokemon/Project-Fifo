@@ -10,6 +10,7 @@ import websockets
 
 from config import load_config, save_config
 from display import MatrixDisplay
+from microphone import Ads1115MicrophoneMonitor
 from oled import DualOledStatus
 from project_store import ProjectStore
 from protocol import (
@@ -434,6 +435,7 @@ async def wait_for_shutdown() -> None:
 async def main() -> None:
     config = load_config()
     oled_display = DualOledStatus(config)
+    microphone_monitor = Ads1115MicrophoneMonitor(config)
     oled_coalesce_seconds = 0.15
     try:
         oled_coalesce_seconds = max(0.0, float(config.get("oled_coalesce_seconds", 0.15)))
@@ -448,6 +450,7 @@ async def main() -> None:
     loop = asyncio.get_running_loop()
     pending_oled_refresh: asyncio.TimerHandle | None = None
     preset_preview_task: asyncio.Task[None] | None = None
+    microphone_task: asyncio.Task[None] | None = None
 
     def refresh_oled_immediate() -> None:
         if runtime is None:
@@ -495,6 +498,11 @@ async def main() -> None:
             oled_display.tick_preview()
             await asyncio.sleep(0.02)
 
+    async def run_microphone_loop() -> None:
+        while True:
+            oled_display.update_microphone_state(microphone_monitor.sample_state())
+            await asyncio.sleep(microphone_monitor.sample_interval)
+
     try:
         try:
             await runtime.restore_boot_project()
@@ -503,6 +511,17 @@ async def main() -> None:
         except (FileNotFoundError, ProtocolError, ValueError) as error:
             print(f"Could not restore boot project: {error}")
         refresh_oled_immediate()
+        if microphone_monitor.enabled:
+            print(
+                f"Microphone monitor online on ADS1115 I2C-{microphone_monitor.bus_id} "
+                f"0x{microphone_monitor.address:02x} channel {microphone_monitor.channel}."
+            )
+            microphone_task = asyncio.create_task(run_microphone_loop())
+        else:
+            mic_state = microphone_monitor.get_last_state()
+            oled_display.update_microphone_state(mic_state)
+            if mic_state.get("test_mode"):
+                print(f"Microphone test mode requested but monitor unavailable: {mic_state.get('message')}")
         if oled_display.preview_enabled and oled_display.preview_mode == "preset":
             preset_preview_task = asyncio.create_task(run_preset_preview_loop())
 
@@ -522,6 +541,11 @@ async def main() -> None:
             print(f"Listening on ws://{config['host']}:{config['port']}")
             await wait_for_shutdown()
     finally:
+        if microphone_task is not None:
+            microphone_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await microphone_task
+        microphone_monitor.close()
         if preset_preview_task is not None:
             preset_preview_task.cancel()
             with suppress(asyncio.CancelledError):
