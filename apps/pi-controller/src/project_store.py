@@ -35,6 +35,7 @@ class ProjectStore:
             "defaultAnimationId": project.get("defaultAnimationId"),
             "channels": project.get("channels"),
             "channelDefaults": project.get("channelDefaults"),
+            "channelGroupMap": project.get("channelGroupMap"),
         }
         if "boardLayout" in project:
             payload["boardLayout"] = project["boardLayout"]

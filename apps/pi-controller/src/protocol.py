@@ -16,6 +16,7 @@ DEFAULT_PROJECT_CHANNEL_ID = "base"
 DEFAULT_PROJECT_CHANNEL_NAME = "Base"
 DEFAULT_PROJECT_CHANNEL_PRIORITY = 100
 DEFAULT_PROJECT_CHANNEL_BLEND_MODE = "overwrite"
+DEFAULT_BOARD_GROUP_ID = "group-1"
 
 
 def clamp_brightness_value(value: int) -> int:
@@ -234,6 +235,51 @@ def _normalize_channel_defaults(
         normalized_channel_defaults[normalized_channel_id] = dict(value)
 
     return normalized_channel_defaults
+
+
+def _collect_project_group_ids(project: dict[str, Any]) -> set[str]:
+    group_ids: set[str] = set()
+    board_groups = project.get("boardGroups")
+    if isinstance(board_groups, list):
+        for group_id in board_groups:
+            if isinstance(group_id, str) and group_id.strip():
+                group_ids.add(group_id.strip())
+
+    board_layout = project.get("boardLayout")
+    if isinstance(board_layout, list):
+        for board in board_layout:
+            if not isinstance(board, dict):
+                continue
+            group_id = board.get("groupId")
+            if isinstance(group_id, str) and group_id.strip():
+                group_ids.add(group_id.strip())
+
+    if len(group_ids) == 0:
+        group_ids.add(DEFAULT_BOARD_GROUP_ID)
+    return group_ids
+
+
+def _normalize_channel_group_map(
+    channel_group_map: Any,
+    channel_ids: set[str],
+    group_ids: set[str],
+) -> dict[str, str]:
+    if channel_group_map is None:
+        return {}
+    if not isinstance(channel_group_map, dict):
+        raise ProtocolError("project channelGroupMap must be an object or null")
+
+    normalized_map: dict[str, str] = {}
+    for raw_channel_id, raw_group_id in channel_group_map.items():
+        channel_id = raw_channel_id.strip() if isinstance(raw_channel_id, str) else ""
+        group_id = raw_group_id.strip() if isinstance(raw_group_id, str) else ""
+        if not channel_id or channel_id not in channel_ids:
+            raise ProtocolError("project channelGroupMap keys must reference known channels")
+        if not group_id or group_id not in group_ids:
+            raise ProtocolError("project channelGroupMap values must reference known board groups")
+        normalized_map[channel_id] = group_id
+
+    return normalized_map
 
 
 def validate_layout_message(message: dict[str, Any], expected_type: str) -> dict[str, Any]:
@@ -511,6 +557,11 @@ def validate_project_payload(project: dict[str, Any]) -> dict[str, Any]:
         project.get("channelDefaults"),
         channel_ids,
     )
+    normalized_channel_group_map = _normalize_channel_group_map(
+        project.get("channelGroupMap"),
+        channel_ids,
+        _collect_project_group_ids(normalized_project),
+    )
 
     normalized_project["frames"] = normalized_frames
     normalized_project["animations"] = normalized_animations
@@ -518,6 +569,7 @@ def validate_project_payload(project: dict[str, Any]) -> dict[str, Any]:
     normalized_project["defaultAnimationId"] = default_animation_id
     normalized_project["channels"] = normalized_channels
     normalized_project["channelDefaults"] = normalized_channel_defaults
+    normalized_project["channelGroupMap"] = normalized_channel_group_map
     return normalized_project
 
 

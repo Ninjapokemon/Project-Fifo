@@ -45,6 +45,9 @@ class ProjectStoreTests(unittest.TestCase):
                             "startupAnimationId": None,
                         }
                     },
+                    "channelGroupMap": {
+                        "base": "eyes",
+                    },
                     "defaultFrameId": "frame-1",
                     "defaultAnimationId": None,
                 }
@@ -59,6 +62,7 @@ class ProjectStoreTests(unittest.TestCase):
             self.assertEqual(loaded_project["frames"][0]["id"], "frame-1")
             self.assertEqual(loaded_project["channels"][0]["id"], "base")
             self.assertEqual(loaded_project["channelDefaults"]["base"]["startupAnimationId"], None)
+            self.assertEqual(loaded_project["channelGroupMap"]["base"], "eyes")
 
             deleted_name = store.delete("Happy Face")
             self.assertEqual(deleted_name, "Happy-Face")

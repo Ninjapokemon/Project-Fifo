@@ -131,6 +131,9 @@ class ProtocolTests(unittest.TestCase):
                         "startupAnimationId": "idle",
                     }
                 },
+                "channelGroupMap": {
+                    "eyes": "eyes",
+                },
                 "defaultAnimationId": "idle",
                 "defaultFrameId": "idle-open",
             }
@@ -143,6 +146,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertEqual(project["animations"][0]["channelId"], "eyes")
         self.assertEqual(project["channels"][0]["id"], "eyes")
         self.assertEqual(project["channelDefaults"]["eyes"]["startupAnimationId"], "idle")
+        self.assertEqual(project["channelGroupMap"]["eyes"], "eyes")
         self.assertEqual(project["defaultAnimationId"], "idle")
 
     def test_validate_project_payload_rejects_unknown_animation_frame(self) -> None:
@@ -234,6 +238,45 @@ class ProtocolTests(unittest.TestCase):
                             ],
                         }
                     ],
+                }
+            )
+
+    def test_validate_project_payload_rejects_unknown_channel_group_map_group(self) -> None:
+        with self.assertRaises(ProtocolError):
+            validate_project_payload(
+                {
+                    "name": "broken-group-map",
+                    "width": 8,
+                    "height": 8,
+                    "boardGroups": ["eyes"],
+                    "frames": [
+                        {
+                            "id": "frame-1",
+                            "pixels": [0] * 64,
+                        }
+                    ],
+                    "animations": [
+                        {
+                            "id": "idle",
+                            "channelId": "base",
+                            "steps": [
+                                {
+                                    "frameId": "frame-1",
+                                    "durationMs": 120,
+                                }
+                            ],
+                        }
+                    ],
+                    "channels": [
+                        {
+                            "id": "base",
+                            "blendMode": "overwrite",
+                            "mask": None,
+                        }
+                    ],
+                    "channelGroupMap": {
+                        "base": "mouth",
+                    },
                 }
             )
 

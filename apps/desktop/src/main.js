@@ -76,6 +76,7 @@ const GROUP_SHELL_SIDE_PADDING = 18;
 const GROUP_SHELL_TOP_PADDING = 32;
 const GROUP_SHELL_BOTTOM_PADDING = 18;
 const DEFAULT_BOARD_GROUP_ID = "group-1";
+const MAX_BOARD_GROUP_NAME_LENGTH = 40;
 const DEFAULT_PROJECT_CHANNEL_ID = "base";
 const DEFAULT_PROJECT_CHANNEL_NAME = "Base";
 const DEFAULT_PROJECT_CHANNEL_PRIORITY = 100;
@@ -154,6 +155,7 @@ const state = {
   pixelColor: DEFAULT_PIXEL_COLOR,
   boardLayout: [],
   boardGroups: [DEFAULT_BOARD_GROUP_ID],
+  boardGroupNames: {},
   project: {
     frames: [
       {
@@ -173,6 +175,7 @@ const state = {
       },
     ],
     channelDefaults: null,
+    channelGroupMap: {},
     activeFrameId: DEFAULT_FRAME_ID,
     activeAnimationId: null,
     selectedStepIndex: null,
@@ -255,9 +258,16 @@ const elements = {
   animationSelect: document.querySelector("#animationSelect"),
   newAnimationButton: document.querySelector("#newAnimationButton"),
   deleteAnimationButton: document.querySelector("#deleteAnimationButton"),
+  syncChannelsFromGroupsButton: document.querySelector("#syncChannelsFromGroupsButton"),
+  channelSectionChannelSelect: document.querySelector("#channelSectionChannelSelect"),
+  channelSectionGroupSelect: document.querySelector("#channelSectionGroupSelect"),
+  linkChannelSectionButton: document.querySelector("#linkChannelSectionButton"),
+  unlinkChannelSectionButton: document.querySelector("#unlinkChannelSectionButton"),
+  channelSectionStatus: document.querySelector("#channelSectionStatus"),
   previewAnimationButton: document.querySelector("#previewAnimationButton"),
   stopAnimationPreviewButton: document.querySelector("#stopAnimationPreviewButton"),
   animationName: document.querySelector("#animationName"),
+  animationChannelSelect: document.querySelector("#animationChannelSelect"),
   animationLoopInput: document.querySelector("#animationLoopInput"),
   animationPreviewStatus: document.querySelector("#animationPreviewStatus"),
   animationPreviewGrid: document.querySelector("#animationPreviewGrid"),
@@ -1275,6 +1285,10 @@ function compareGroupIds(left, right) {
 }
 
 function getBoardGroupLabel(groupId) {
+  const customLabel = sanitizeBoardGroupName(state.boardGroupNames?.[groupId], "");
+  if (customLabel) {
+    return customLabel;
+  }
   return `Group ${extractBoardGroupNumber(groupId)}`;
 }
 
@@ -1295,8 +1309,35 @@ function getBoardGroups(layout = state.boardLayout, preferredGroups = state.boar
   return [...groups].sort(compareGroupIds);
 }
 
+function normalizeBoardGroupNames(boardGroupNames = state.boardGroupNames, groups = state.boardGroups) {
+  if (!boardGroupNames || typeof boardGroupNames !== "object" || Array.isArray(boardGroupNames)) {
+    return {};
+  }
+
+  const groupIds = new Set(groups || []);
+  const normalizedNames = {};
+  Object.entries(boardGroupNames).forEach(([rawGroupId, rawName]) => {
+    const groupId = typeof rawGroupId === "string" ? rawGroupId.trim() : "";
+    if (!groupId || !groupIds.has(groupId)) {
+      return;
+    }
+    const name = sanitizeBoardGroupName(rawName, "");
+    if (!name) {
+      return;
+    }
+    normalizedNames[groupId] = name;
+  });
+
+  return normalizedNames;
+}
+
+function cloneBoardGroupNames(boardGroupNames = state.boardGroupNames, groups = state.boardGroups) {
+  return normalizeBoardGroupNames(boardGroupNames, groups);
+}
+
 function syncBoardGroups(layout = state.boardLayout, preferredGroups = state.boardGroups) {
   state.boardGroups = getBoardGroups(layout, preferredGroups);
+  state.boardGroupNames = normalizeBoardGroupNames(state.boardGroupNames, state.boardGroups);
   return state.boardGroups;
 }
 
@@ -2119,7 +2160,7 @@ function createCell(x, y, value) {
 
 function createGroupShell(groupId, boards) {
   const shell = document.createElement("div");
-  const label = document.createElement("div");
+  const label = document.createElement("button");
   const left = Math.min(...boards.map((board) => boardVisualLeft(board))) - GROUP_SHELL_SIDE_PADDING;
   const top = Math.min(...boards.map((board) => boardVisualTop(board))) - GROUP_SHELL_TOP_PADDING;
   const right = Math.max(...boards.map((board) => boardVisualLeft(board) + boardOuterWidth(board))) + GROUP_SHELL_SIDE_PADDING;
@@ -2131,11 +2172,62 @@ function createGroupShell(groupId, boards) {
   shell.style.width = `${Math.max(right - left, boardOuterWidth(boards[0]) + (GROUP_SHELL_SIDE_PADDING * 2))}px`;
   shell.style.height = `${Math.max(bottom - top, boardOuterHeight(boards[0]) + GROUP_SHELL_TOP_PADDING + GROUP_SHELL_BOTTOM_PADDING)}px`;
 
+  label.type = "button";
   label.className = "pixel-board-group-label";
+  label.style.left = `${left + 14}px`;
+  label.style.top = `${top + 10}px`;
   label.textContent = getBoardGroupLabel(groupId);
+  label.title = "Rename this group";
+  label.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+  });
+  label.addEventListener("click", (event) => {
+    event.stopPropagation();
+    renameBoardGroup(groupId);
+  });
 
-  shell.appendChild(label);
-  return shell;
+  return { shell, label };
+}
+
+function renameBoardGroup(groupId) {
+  const normalizedGroupId = typeof groupId === "string" ? groupId.trim() : "";
+  if (!normalizedGroupId || !state.boardGroups.includes(normalizedGroupId)) {
+    return;
+  }
+
+  const currentCustomName = sanitizeBoardGroupName(state.boardGroupNames?.[normalizedGroupId], "");
+  const currentLabel = getBoardGroupLabel(normalizedGroupId);
+  const nextValue = window.prompt(
+    `Rename ${currentLabel}. Leave blank to reset to default naming.`,
+    currentCustomName || currentLabel,
+  );
+  if (nextValue == null) {
+    return;
+  }
+
+  const defaultLabel = `Group ${extractBoardGroupNumber(normalizedGroupId)}`;
+  const nextNameRaw = sanitizeBoardGroupName(nextValue, "");
+  const nextName = nextNameRaw === defaultLabel ? "" : nextNameRaw;
+  if (nextName === currentCustomName) {
+    return;
+  }
+
+  if (nextName) {
+    state.boardGroupNames = {
+      ...state.boardGroupNames,
+      [normalizedGroupId]: nextName,
+    };
+    log(`Renamed ${currentLabel} to "${nextName}".`);
+  } else {
+    const { [normalizedGroupId]: _removed, ...remainingNames } = state.boardGroupNames;
+    state.boardGroupNames = remainingNames;
+    log(`Reset ${currentLabel} to default naming.`);
+  }
+
+  state.boardGroupNames = normalizeBoardGroupNames(state.boardGroupNames, state.boardGroups);
+  renderGrid();
+  saveAutosave();
+  pushHistorySnapshot("board group rename");
 }
 
 function assignBoardToGroup(boardId, nextGroupId) {
@@ -2438,7 +2530,9 @@ function renderGrid() {
   getBoardGroups(boardLayout).forEach((groupId) => {
     const groupedBoards = boardsByGroup.get(groupId) || [];
     if (groupedBoards.length > 0) {
-      workspace.appendChild(createGroupShell(groupId, groupedBoards));
+      const groupShell = createGroupShell(groupId, groupedBoards);
+      workspace.appendChild(groupShell.shell);
+      workspace.appendChild(groupShell.label);
     }
   });
 
@@ -2766,6 +2860,190 @@ function updateAnimationTimelinePlaybackState() {
   });
 }
 
+function getAnimationChannelId(animation) {
+  const channelId = typeof animation?.channelId === "string" ? animation.channelId.trim() : "";
+  return channelId || DEFAULT_PROJECT_CHANNEL_ID;
+}
+
+function getCompositePreviewAnimations(activeAnimation = getProjectAnimation()) {
+  const animationsByChannel = new Map();
+  if (activeAnimation) {
+    animationsByChannel.set(getAnimationChannelId(activeAnimation), activeAnimation);
+  }
+
+  state.project.animations.forEach((animation) => {
+    const channelId = getAnimationChannelId(animation);
+    if (!animationsByChannel.has(channelId)) {
+      animationsByChannel.set(channelId, animation);
+    }
+  });
+
+  return [...animationsByChannel.values()];
+}
+
+function buildCompositePreviewTiming(animation, framesById, channelNameById) {
+  if (!Array.isArray(animation.steps) || animation.steps.length === 0) {
+    throw new Error(`Clip "${animation.name}" has no steps to preview.`);
+  }
+
+  const channelId = getAnimationChannelId(animation);
+  const steps = animation.steps.map((step) => {
+    const frame = framesById.get(step.frameId);
+    if (!frame) {
+      throw new Error(`Could not preview clip "${animation.name}" because one of its steps is missing a frame.`);
+    }
+    return {
+      frameId: step.frameId,
+      durationMs: Math.max(1, Number.isInteger(step.durationMs) ? step.durationMs : DEFAULT_ANIMATION_STEP_DURATION_MS),
+    };
+  });
+
+  let totalMs = 0;
+  const cumulativeLimits = steps.map((step) => {
+    totalMs += step.durationMs;
+    return totalMs;
+  });
+
+  return {
+    animationId: animation.id,
+    animationName: animation.name,
+    channelId,
+    channelName: channelNameById.get(channelId) || channelId,
+    loop: animation.loop !== false,
+    steps,
+    cumulativeLimits,
+    totalMs: Math.max(1, totalMs),
+  };
+}
+
+function getPreviewStepIndexAtElapsed(timing, elapsedMs) {
+  const safeElapsed = Math.max(0, elapsedMs);
+  const phaseMs = timing.loop
+    ? safeElapsed % timing.totalMs
+    : Math.min(safeElapsed, timing.totalMs - 1);
+
+  for (let index = 0; index < timing.cumulativeLimits.length; index += 1) {
+    if (phaseMs < timing.cumulativeLimits[index]) {
+      return index;
+    }
+  }
+
+  return timing.steps.length - 1;
+}
+
+function getNextCompositePreviewDelayMs(timings, elapsedMs) {
+  let nextDelayMs = Number.POSITIVE_INFINITY;
+
+  timings.forEach((timing) => {
+    if (!timing.loop && elapsedMs >= timing.totalMs - 1) {
+      return;
+    }
+
+    const safeElapsed = Math.max(0, elapsedMs);
+    const phaseMs = timing.loop
+      ? safeElapsed % timing.totalMs
+      : Math.min(safeElapsed, timing.totalMs - 1);
+    const nextBoundary = timing.cumulativeLimits.find((limit) => phaseMs < limit);
+    if (!Number.isFinite(nextBoundary)) {
+      return;
+    }
+
+    const remainingMs = Math.max(1, nextBoundary - phaseMs);
+    nextDelayMs = Math.min(nextDelayMs, remainingMs);
+  });
+
+  if (!Number.isFinite(nextDelayMs)) {
+    return null;
+  }
+
+  return Math.max(16, Math.min(200, nextDelayMs));
+}
+
+function buildGroupPixelIndexSets(boardLayout = state.boardLayout, width = state.width, height = state.height) {
+  const groupPixelIndexSets = new Map();
+  boardLayout.forEach((board) => {
+    const groupId = board.groupId || DEFAULT_BOARD_GROUP_ID;
+    const pixelIndexes = groupPixelIndexSets.get(groupId) || new Set();
+    const startX = boardOriginX(board);
+    const startY = boardOriginY(board);
+    for (let localY = 0; localY < board.height; localY += 1) {
+      for (let localX = 0; localX < board.width; localX += 1) {
+        const frameX = startX + localX;
+        const frameY = startY + localY;
+        if (frameX < 0 || frameX >= width || frameY < 0 || frameY >= height) {
+          continue;
+        }
+        pixelIndexes.add(indexForDimensions(frameX, frameY, width));
+      }
+    }
+    groupPixelIndexSets.set(groupId, pixelIndexes);
+  });
+  return groupPixelIndexSets;
+}
+
+function scheduleCompositeAnimationPreview(timings, framesById, selectedAnimationId) {
+  const previewStartMs = window.performance.now();
+  const channelGroupMap = cloneProjectChannelGroupMap();
+  const groupPixelIndexSets = buildGroupPixelIndexSets();
+
+  const tick = () => {
+    const elapsedMs = Math.max(0, Math.floor(window.performance.now() - previewStartMs));
+    const composedPixels = Array(state.width * state.height).fill(0);
+    const statusParts = [];
+    let selectedStepIndex = 0;
+    let hasSelectedStep = false;
+
+    timings.forEach((timing) => {
+      const stepIndex = getPreviewStepIndexAtElapsed(timing, elapsedMs);
+      const step = timing.steps[stepIndex];
+      const frame = framesById.get(step.frameId);
+      if (!frame) {
+        return;
+      }
+
+      const mappedGroupId = channelGroupMap[timing.channelId];
+      const mappedIndexes = mappedGroupId ? groupPixelIndexSets.get(mappedGroupId) : null;
+      if (mappedIndexes) {
+        mappedIndexes.forEach((pixelIndex) => {
+          composedPixels[pixelIndex] = frame.pixels[pixelIndex] === 1 ? 1 : 0;
+        });
+      }
+
+      if (timing.animationId === selectedAnimationId) {
+        selectedStepIndex = stepIndex;
+        hasSelectedStep = true;
+      }
+
+      statusParts.push(
+        mappedIndexes
+          ? `${timing.channelName}: ${timing.animationName} ${stepIndex + 1}/${timing.steps.length}`
+          : `${timing.channelName}: unlinked`,
+      );
+    });
+
+    renderAnimationPreviewFrame(composedPixels);
+    state.project.previewAnimationId = hasSelectedStep ? selectedAnimationId : null;
+    state.project.previewStepIndex = hasSelectedStep ? selectedStepIndex : 0;
+    elements.animationPreviewStatus.textContent = `Previewing composite: ${statusParts.join(" | ")}.`;
+    updateAnimationTimelinePlaybackState();
+
+    const nextDelayMs = getNextCompositePreviewDelayMs(timings, elapsedMs);
+    if (nextDelayMs == null) {
+      state.project.previewTimer = null;
+      state.project.previewAnimationId = null;
+      state.project.previewStepIndex = 0;
+      renderSelectedAnimationPreview("Previewed composite once.");
+      updateProjectEditorControls();
+      updateAnimationTimelinePlaybackState();
+      return;
+    }
+
+    state.project.previewTimer = window.setTimeout(tick, nextDelayMs);
+  };
+
+  tick();
+}
+
 function stopAnimationPreview(options = {}) {
   const { logStop = false, statusMessage = null } = options;
   const wasRunning = state.project.previewTimer != null;
@@ -2835,9 +3113,45 @@ function startAnimationPreview() {
 
   const frames = getProjectFramesSnapshot();
   const framesById = new Map(frames.map((frame) => [frame.id, frame]));
-  scheduleAnimationPreviewStep(animation, framesById, 0);
+  const previewAnimations = getCompositePreviewAnimations(animation);
+  const channelNameById = new Map(
+    state.project.channels.map((channel) => [channel.id, channel.name]),
+  );
+  const timings = [];
+
+  try {
+    previewAnimations.forEach((candidate) => {
+      timings.push(buildCompositePreviewTiming(candidate, framesById, channelNameById));
+    });
+  } catch (error) {
+    stopAnimationPreview({
+      statusMessage: error instanceof Error ? error.message : "Could not start preview.",
+    });
+    return;
+  }
+
+  if (timings.length <= 1) {
+    scheduleAnimationPreviewStep(animation, framesById, 0);
+    renderProjectEditor();
+    log(`Started previewing clip "${animation.name}".`);
+    return;
+  }
+
+  const channelGroupMap = cloneProjectChannelGroupMap();
+  const hasMappedChannel = timings.some((timing) => {
+    const groupId = channelGroupMap[timing.channelId];
+    return typeof groupId === "string" && groupId.trim();
+  });
+  if (!hasMappedChannel) {
+    stopAnimationPreview({
+      statusMessage: "Composite preview needs at least one channel linked to a section group.",
+    });
+    return;
+  }
+
+  scheduleCompositeAnimationPreview(timings, framesById, animation.id);
   renderProjectEditor();
-  log(`Started previewing clip "${animation.name}".`);
+  log(`Started composite preview across ${timings.length} channels from selected clip "${animation.name}".`);
 }
 
 function getDefaultTargetValue() {
@@ -2925,6 +3239,82 @@ function syncAnimationOptions() {
   });
 
   elements.animationSelect.value = previousValue;
+}
+
+function syncAnimationChannelOptions() {
+  const activeAnimation = getProjectAnimation();
+  const previousValue = activeAnimation?.channelId || DEFAULT_PROJECT_CHANNEL_ID;
+  elements.animationChannelSelect.innerHTML = "";
+
+  state.project.channels.forEach((channel) => {
+    const option = document.createElement("option");
+    option.value = channel.id;
+    option.textContent = channel.name;
+    elements.animationChannelSelect.appendChild(option);
+  });
+
+  elements.animationChannelSelect.value = previousValue;
+  if (elements.animationChannelSelect.value !== previousValue) {
+    elements.animationChannelSelect.value = state.project.channels[0]?.id || DEFAULT_PROJECT_CHANNEL_ID;
+  }
+}
+
+function syncChannelSectionControls() {
+  const previousChannelId = elements.channelSectionChannelSelect.value || state.project.channels[0]?.id || "";
+  const previousGroupId = elements.channelSectionGroupSelect.value || state.boardGroups[0] || "";
+  const channelGroupMap = cloneProjectChannelGroupMap();
+
+  elements.channelSectionChannelSelect.innerHTML = "";
+  state.project.channels.forEach((channel) => {
+    const option = document.createElement("option");
+    option.value = channel.id;
+    option.textContent = channel.name;
+    elements.channelSectionChannelSelect.appendChild(option);
+  });
+
+  elements.channelSectionGroupSelect.innerHTML = "";
+  getBoardGroups().forEach((groupId) => {
+    const option = document.createElement("option");
+    option.value = groupId;
+    option.textContent = getBoardGroupLabel(groupId);
+    elements.channelSectionGroupSelect.appendChild(option);
+  });
+
+  if (elements.channelSectionChannelSelect.options.length > 0) {
+    elements.channelSectionChannelSelect.value = previousChannelId;
+    if (!elements.channelSectionChannelSelect.value) {
+      elements.channelSectionChannelSelect.selectedIndex = 0;
+    }
+  }
+
+  const selectedChannelId = elements.channelSectionChannelSelect.value;
+  const mappedGroupId = selectedChannelId ? channelGroupMap[selectedChannelId] : null;
+  if (elements.channelSectionGroupSelect.options.length > 0) {
+    elements.channelSectionGroupSelect.value = mappedGroupId || previousGroupId;
+    if (!elements.channelSectionGroupSelect.value) {
+      elements.channelSectionGroupSelect.selectedIndex = 0;
+    }
+  }
+
+  const mappings = Object.entries(channelGroupMap)
+    .map(([channelId, groupId]) => {
+      const channel = state.project.channels.find((candidate) => candidate.id === channelId);
+      if (!channel) {
+        return null;
+      }
+      return `${channel.name} -> ${getBoardGroupLabel(groupId)}`;
+    })
+    .filter((value) => value);
+  elements.channelSectionStatus.textContent = mappings.length > 0
+    ? `Section links: ${mappings.join(" | ")}`
+    : "No section links yet.";
+
+  const hasChannels = elements.channelSectionChannelSelect.options.length > 0;
+  const hasGroups = elements.channelSectionGroupSelect.options.length > 0;
+  elements.channelSectionChannelSelect.disabled = !hasChannels;
+  elements.channelSectionGroupSelect.disabled = !hasGroups;
+  elements.linkChannelSectionButton.disabled = !hasChannels || !hasGroups;
+  elements.unlinkChannelSectionButton.disabled = !hasChannels;
 }
 
 function formatTimelineDuration(durationMs) {
@@ -3345,6 +3735,7 @@ function updateProjectEditorControls() {
   elements.defaultTargetSelect.disabled = state.project.frames.length === 0;
   elements.deleteAnimationButton.disabled = !activeAnimation;
   elements.animationName.disabled = !activeAnimation;
+  elements.animationChannelSelect.disabled = !activeAnimation;
   elements.animationLoopInput.disabled = !activeAnimation;
   elements.addAnimationStepButton.disabled = !activeAnimation;
   elements.previewAnimationButton.disabled = !activeAnimation || state.project.previewTimer != null;
@@ -3357,6 +3748,8 @@ function renderProjectEditor() {
   renderFrameStrip();
   syncDefaultTargetOptions();
   syncAnimationOptions();
+  syncAnimationChannelOptions();
+  syncChannelSectionControls();
   renderAnimationStepList();
   updateProjectEditorControls();
 
@@ -3365,6 +3758,7 @@ function renderProjectEditor() {
 
   const activeAnimation = getProjectAnimation();
   elements.animationName.value = activeAnimation?.name || "";
+  elements.animationChannelSelect.value = activeAnimation?.channelId || state.project.channels[0]?.id || DEFAULT_PROJECT_CHANNEL_ID;
   elements.animationLoopInput.checked = activeAnimation?.loop !== false;
 
   const frameCount = state.project.frames.length;
@@ -3663,6 +4057,172 @@ function setActiveAnimationLoop(loopValue) {
   pushHistorySnapshot(loop ? "animation loop on" : "animation loop off");
 }
 
+function setActiveAnimationChannel(channelIdValue) {
+  const activeAnimationIndex = getProjectAnimationIndex();
+  if (activeAnimationIndex < 0) {
+    return;
+  }
+
+  const nextChannelId = typeof channelIdValue === "string" ? channelIdValue.trim() : "";
+  const channel = state.project.channels.find((candidate) => candidate.id === nextChannelId);
+  if (!channel) {
+    renderProjectEditor();
+    return;
+  }
+
+  if (state.project.animations[activeAnimationIndex].channelId === channel.id) {
+    return;
+  }
+
+  state.project.animations[activeAnimationIndex] = {
+    ...state.project.animations[activeAnimationIndex],
+    channelId: channel.id,
+  };
+  renderProjectEditor();
+  pushHistorySnapshot("animation channel change");
+}
+
+function syncChannelsFromNamedGroups() {
+  const namedGroups = getBoardGroups().map((groupId) => ({
+    groupId,
+    name: sanitizeBoardGroupName(state.boardGroupNames?.[groupId], ""),
+  })).filter((group) => group.name);
+
+  if (namedGroups.length === 0) {
+    log("Name at least one board group first, then sync channels.");
+    return;
+  }
+
+  const existingChannels = cloneProjectChannels();
+  const channelsById = new Map(existingChannels.map((channel) => [channel.id, channel]));
+  const baseChannel = channelsById.get(DEFAULT_PROJECT_CHANNEL_ID) || createDefaultProjectChannel();
+  const nextChannels = [
+    {
+      ...cloneProjectChannel(baseChannel),
+      id: DEFAULT_PROJECT_CHANNEL_ID,
+      name: sanitizeProjectEntityLabel(baseChannel.name, DEFAULT_PROJECT_CHANNEL_NAME),
+    },
+  ];
+  const usedChannelIds = new Set(nextChannels.map((channel) => channel.id));
+  let createdCount = 0;
+  let reusedCount = 0;
+  let preservedCount = 0;
+
+  namedGroups.forEach((group) => {
+    const matchingExistingChannel = existingChannels.find((channel) => (
+      channel.id !== DEFAULT_PROJECT_CHANNEL_ID
+      && !usedChannelIds.has(channel.id)
+      && typeof channel.name === "string"
+      && channel.name.trim().toLowerCase() === group.name.toLowerCase()
+    ));
+
+    if (matchingExistingChannel) {
+      nextChannels.push({
+        ...cloneProjectChannel(matchingExistingChannel),
+        name: group.name,
+      });
+      usedChannelIds.add(matchingExistingChannel.id);
+      reusedCount += 1;
+      return;
+    }
+
+    const nextId = createUniqueChannelIdFromName(group.name, usedChannelIds);
+    nextChannels.push({
+      id: nextId,
+      name: group.name,
+      priority: DEFAULT_PROJECT_CHANNEL_PRIORITY,
+      blendMode: DEFAULT_PROJECT_CHANNEL_BLEND_MODE,
+      mask: null,
+    });
+    usedChannelIds.add(nextId);
+    createdCount += 1;
+  });
+
+  const referencedChannelIds = new Set(
+    state.project.animations
+      .map((animation) => (typeof animation.channelId === "string" ? animation.channelId.trim() : ""))
+      .filter((channelId) => channelId),
+  );
+  referencedChannelIds.forEach((channelId) => {
+    if (usedChannelIds.has(channelId)) {
+      return;
+    }
+    const existingChannel = channelsById.get(channelId);
+    if (!existingChannel) {
+      return;
+    }
+    nextChannels.push(cloneProjectChannel(existingChannel));
+    usedChannelIds.add(channelId);
+    preservedCount += 1;
+  });
+
+  state.project.channels = nextChannels;
+  normalizeProjectState();
+  renderProjectEditor();
+  saveAutosave();
+  pushHistorySnapshot("channel sync from groups");
+  log(
+    `Synced channels from group names: ${namedGroups.length} named group${namedGroups.length === 1 ? "" : "s"}, `
+    + `${createdCount} new, ${reusedCount} reused, ${preservedCount} preserved for existing clip references.`,
+  );
+}
+
+function linkSelectedChannelToGroup() {
+  const channelId = typeof elements.channelSectionChannelSelect.value === "string"
+    ? elements.channelSectionChannelSelect.value.trim()
+    : "";
+  const groupId = typeof elements.channelSectionGroupSelect.value === "string"
+    ? elements.channelSectionGroupSelect.value.trim()
+    : "";
+  if (!channelId || !groupId) {
+    log("Choose both a channel and group before linking.");
+    return;
+  }
+
+  const channel = state.project.channels.find((candidate) => candidate.id === channelId);
+  if (!channel || !state.boardGroups.includes(groupId)) {
+    renderProjectEditor();
+    return;
+  }
+
+  const currentMap = cloneProjectChannelGroupMap();
+  if (currentMap[channelId] === groupId) {
+    return;
+  }
+
+  state.project.channelGroupMap = {
+    ...currentMap,
+    [channelId]: groupId,
+  };
+  renderProjectEditor();
+  saveAutosave();
+  pushHistorySnapshot("channel section link");
+  log(`Linked channel "${channel.name}" to section "${getBoardGroupLabel(groupId)}".`);
+}
+
+function unlinkSelectedChannelFromGroup() {
+  const channelId = typeof elements.channelSectionChannelSelect.value === "string"
+    ? elements.channelSectionChannelSelect.value.trim()
+    : "";
+  if (!channelId) {
+    log("Choose a channel first.");
+    return;
+  }
+
+  const currentMap = cloneProjectChannelGroupMap();
+  if (!currentMap[channelId]) {
+    return;
+  }
+
+  const channel = state.project.channels.find((candidate) => candidate.id === channelId);
+  const { [channelId]: _removed, ...remainingMap } = currentMap;
+  state.project.channelGroupMap = remainingMap;
+  renderProjectEditor();
+  saveAutosave();
+  pushHistorySnapshot("channel section unlink");
+  log(`Unlinked section mapping for channel "${channel?.name || channelId}".`);
+}
+
 function setProjectDefaultTarget() {
   const selectedValue = elements.defaultTargetSelect.value;
   if (selectedValue === DEFAULT_TARGET_AUTO_VALUE) {
@@ -3909,6 +4469,7 @@ function buildSaveDrawingMessage() {
     pixels: [...state.pixels],
     boardLayout: serializeBoardLayout(),
     boardGroups: [...state.boardGroups],
+    boardGroupNames: cloneBoardGroupNames(),
   };
 }
 
@@ -4036,6 +4597,12 @@ function sanitizeProjectEntityLabel(value, fallback) {
   return trimmed || fallback;
 }
 
+function sanitizeBoardGroupName(value, fallback = "") {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  const normalized = trimmed.slice(0, MAX_BOARD_GROUP_NAME_LENGTH);
+  return normalized || fallback;
+}
+
 function clampAnimationStepDuration(value) {
   return clampNumber(
     value,
@@ -4051,6 +4618,25 @@ function createUniqueProjectEntityId(existingIds, preferredLabel, fallbackPrefix
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || fallbackPrefix;
+
+  if (!existingIds.has(baseId)) {
+    return baseId;
+  }
+
+  let suffix = 2;
+  while (existingIds.has(`${baseId}-${suffix}`)) {
+    suffix += 1;
+  }
+
+  return `${baseId}-${suffix}`;
+}
+
+function createUniqueChannelIdFromName(channelName, existingIds) {
+  const baseId = String(channelName || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "channel";
 
   if (!existingIds.has(baseId)) {
     return baseId;
@@ -4126,6 +4712,30 @@ function cloneProjectChannelDefaults(channelDefaults = state.project.channelDefa
   });
 
   return Object.keys(normalizedDefaults).length > 0 ? normalizedDefaults : null;
+}
+
+function cloneProjectChannelGroupMap(
+  channelGroupMap = state.project.channelGroupMap,
+  channels = state.project.channels,
+  groups = state.boardGroups,
+) {
+  if (!channelGroupMap || typeof channelGroupMap !== "object" || Array.isArray(channelGroupMap)) {
+    return {};
+  }
+
+  const channelIds = new Set(cloneProjectChannels(channels).map((channel) => channel.id));
+  const groupIds = new Set(getBoardGroups(state.boardLayout, groups));
+  const normalizedMap = {};
+  Object.entries(channelGroupMap).forEach(([rawChannelId, rawGroupId]) => {
+    const channelId = typeof rawChannelId === "string" ? rawChannelId.trim() : "";
+    const groupId = typeof rawGroupId === "string" ? rawGroupId.trim() : "";
+    if (!channelId || !groupId || !channelIds.has(channelId) || !groupIds.has(groupId)) {
+      return;
+    }
+    normalizedMap[channelId] = groupId;
+  });
+
+  return normalizedMap;
 }
 
 function cloneProjectFrame(frame) {
@@ -4232,6 +4842,11 @@ function normalizeProjectState(projectState = state.project) {
     channelIds = new Set(projectState.channels.map((channel) => channel.id));
   }
   projectState.channelDefaults = cloneProjectChannelDefaults(projectState.channelDefaults, projectState.channels);
+  projectState.channelGroupMap = cloneProjectChannelGroupMap(
+    projectState.channelGroupMap,
+    projectState.channels,
+    state.boardGroups,
+  );
   projectState.animations = projectState.animations.map((animation) => {
     const nextChannelId = typeof animation.channelId === "string" ? animation.channelId.trim() : "";
     return {
@@ -4309,6 +4924,7 @@ function createProjectFromDrawing(drawing, options = {}) {
     height: drawing.height,
     boardLayout: drawing.boardLayout,
     boardGroups: drawing.boardGroups,
+    boardGroupNames: cloneBoardGroupNames(drawing.boardGroupNames, drawing.boardGroups),
     frames: [
       {
         id: frameId,
@@ -4319,6 +4935,7 @@ function createProjectFromDrawing(drawing, options = {}) {
     animations: [],
     channels: [createDefaultProjectChannel()],
     channelDefaults: null,
+    channelGroupMap: {},
     defaultFrameId: frameId,
     defaultAnimationId: null,
     activeFrameId: frameId,
@@ -4343,6 +4960,7 @@ function fitProjectToConnectedDisplay(project) {
     animations: cloneProjectAnimations(project.animations),
     channels: cloneProjectChannels(project.channels),
     channelDefaults: cloneProjectChannelDefaults(project.channelDefaults, project.channels),
+    channelGroupMap: cloneProjectChannelGroupMap(project.channelGroupMap, project.channels, project.boardGroups),
   };
 
   if (!Number.isInteger(targetWidth) || targetWidth <= 0 || !Number.isInteger(targetHeight) || targetHeight <= 0) {
@@ -4383,10 +5001,12 @@ function buildCurrentProjectPayload(options = {}) {
     height: state.height,
     boardLayout: serializeBoardLayout(),
     boardGroups: [...state.boardGroups],
+    boardGroupNames: cloneBoardGroupNames(),
     frames,
     animations,
     channels,
     channelDefaults,
+    channelGroupMap: cloneProjectChannelGroupMap(state.project.channelGroupMap, channels, state.boardGroups),
     defaultFrameId: frameIds.has(state.project.defaultFrameId) ? state.project.defaultFrameId : null,
     defaultAnimationId: animationIds.has(state.project.defaultAnimationId) ? state.project.defaultAnimationId : null,
   };
@@ -4426,11 +5046,13 @@ function createEditorSnapshot() {
     drawingName: state.drawingName,
     boardLayout: cloneBoardLayout(),
     boardGroups: [...state.boardGroups],
+    boardGroupNames: cloneBoardGroupNames(),
     project: {
       frames: getProjectFramesSnapshot(),
       animations: getProjectAnimationsSnapshot(),
       channels: cloneProjectChannels(),
       channelDefaults: cloneProjectChannelDefaults(),
+      channelGroupMap: cloneProjectChannelGroupMap(),
       activeFrameId: state.project.activeFrameId,
       activeAnimationId: state.project.activeAnimationId,
       selectedStepIndex: state.project.selectedStepIndex,
@@ -4517,6 +5139,28 @@ function projectChannelDefaultsMatch(leftDefaults, rightDefaults) {
   ));
 }
 
+function projectChannelGroupMapMatch(
+  leftMap,
+  rightMap,
+  leftChannels = state.project.channels,
+  rightChannels = state.project.channels,
+  leftGroups = state.boardGroups,
+  rightGroups = state.boardGroups,
+) {
+  const leftNormalized = cloneProjectChannelGroupMap(leftMap, leftChannels, leftGroups);
+  const rightNormalized = cloneProjectChannelGroupMap(rightMap, rightChannels, rightGroups);
+  const leftKeys = Object.keys(leftNormalized).sort();
+  const rightKeys = Object.keys(rightNormalized).sort();
+  if (leftKeys.length !== rightKeys.length) {
+    return false;
+  }
+
+  return leftKeys.every((key, index) => (
+    key === rightKeys[index]
+    && leftNormalized[key] === rightNormalized[key]
+  ));
+}
+
 function applyProjectToEditor(project, reason, options = {}) {
   stopPatternPlayback(`for ${reason}`);
   stopAnimationPreview();
@@ -4535,6 +5179,10 @@ function applyProjectToEditor(project, reason, options = {}) {
     fittedProject.boardLayout,
     fittedProject.boardGroups,
   );
+  const normalizedBoardGroupNames = cloneBoardGroupNames(
+    project.boardGroupNames,
+    normalizedWorkspace.boardGroups,
+  );
 
   state.drawingName = sanitizeDrawingName(fittedProject.name);
   state.project.frames = cloneProjectFrames(fittedProject.frames);
@@ -4544,6 +5192,11 @@ function applyProjectToEditor(project, reason, options = {}) {
     fittedProject.channelDefaults,
     fittedProject.channels,
   );
+  state.project.channelGroupMap = cloneProjectChannelGroupMap(
+    fittedProject.channelGroupMap,
+    fittedProject.channels,
+    normalizedWorkspace.boardGroups,
+  );
   state.project.activeFrameId = activeFrame.id;
   state.project.activeAnimationId = activeAnimationId;
   state.project.selectedStepIndex = Number.isInteger(fittedProject.selectedStepIndex)
@@ -4551,9 +5204,11 @@ function applyProjectToEditor(project, reason, options = {}) {
     : null;
   state.project.defaultFrameId = fittedProject.defaultFrameId ?? null;
   state.project.defaultAnimationId = fittedProject.defaultAnimationId ?? null;
+  state.boardGroups = [...normalizedWorkspace.boardGroups];
   normalizeProjectState();
 
   applyBoardFrame(normalizedWorkspace.boardLayout, normalizedWorkspace.boardGroups);
+  state.boardGroupNames = normalizeBoardGroupNames(normalizedBoardGroupNames, state.boardGroups);
   elements.gridWidth.value = String(state.width);
   elements.gridHeight.value = String(state.height);
   elements.drawingName.value = state.drawingName;
@@ -4584,12 +5239,18 @@ function restoreSnapshot(snapshot, reason, options = {}) {
     height: snapshot.height,
     boardLayout: snapshot.boardLayout,
     boardGroups: snapshot.boardGroups,
+    boardGroupNames: cloneBoardGroupNames(snapshot.boardGroupNames, snapshot.boardGroups),
     frames: cloneProjectFrames(snapshot.project.frames),
     animations: cloneProjectAnimations(snapshot.project.animations),
     channels: cloneProjectChannels(snapshot.project.channels),
     channelDefaults: cloneProjectChannelDefaults(
       snapshot.project.channelDefaults,
       snapshot.project.channels,
+    ),
+    channelGroupMap: cloneProjectChannelGroupMap(
+      snapshot.project.channelGroupMap,
+      snapshot.project.channels,
+      snapshot.boardGroups,
     ),
     defaultFrameId: snapshot.project.defaultFrameId,
     defaultAnimationId: snapshot.project.defaultAnimationId,
@@ -4635,6 +5296,17 @@ function snapshotsMatch(left, right) {
     return false;
   }
 
+  if (!projectChannelGroupMapMatch(
+    left.project.channelGroupMap,
+    right.project.channelGroupMap,
+    left.project.channels,
+    right.project.channels,
+    left.boardGroups,
+    right.boardGroups,
+  )) {
+    return false;
+  }
+
   if (!boardLayoutMetadataMatches(left.boardLayout, right.boardLayout)) {
     return false;
   }
@@ -4645,7 +5317,22 @@ function snapshotsMatch(left, right) {
     return false;
   }
 
-  return leftGroups.every((value, index) => value === rightGroups[index]);
+  if (!leftGroups.every((value, index) => value === rightGroups[index])) {
+    return false;
+  }
+
+  const leftGroupNames = cloneBoardGroupNames(left.boardGroupNames, left.boardGroups);
+  const rightGroupNames = cloneBoardGroupNames(right.boardGroupNames, right.boardGroups);
+  const leftNameKeys = Object.keys(leftGroupNames).sort();
+  const rightNameKeys = Object.keys(rightGroupNames).sort();
+  if (leftNameKeys.length !== rightNameKeys.length) {
+    return false;
+  }
+
+  return leftNameKeys.every((key, index) => (
+    key === rightNameKeys[index]
+    && leftGroupNames[key] === rightGroupNames[key]
+  ));
 }
 
 function pushHistorySnapshot(reason) {
@@ -5377,6 +6064,7 @@ function saveDrawing() {
       pixels: [...project.frames[0].pixels],
       boardLayout: project.boardLayout,
       boardGroups: project.boardGroups,
+      boardGroupNames: project.boardGroupNames,
     };
     triggerDownload(`${safeFilename}.json`, `${JSON.stringify(drawing, null, 2)}\n`);
     log(`Saved drawing "${state.drawingName}" to JSON.`);
@@ -5672,6 +6360,9 @@ function validateLoadedDrawing(data) {
   if (data.boardGroups != null && !Array.isArray(data.boardGroups)) {
     throw new Error("boardGroups must be an array when provided.");
   }
+  if (data.boardGroupNames != null && (!data.boardGroupNames || typeof data.boardGroupNames !== "object" || Array.isArray(data.boardGroupNames))) {
+    throw new Error("boardGroupNames must be an object when provided.");
+  }
 
   const normalizedWorkspace = normalizePersistedBoardWorkspace(
     width,
@@ -5688,6 +6379,7 @@ function validateLoadedDrawing(data) {
     pixels: normalizedPixels,
     boardLayout: normalizedWorkspace.boardLayout,
     boardGroups: normalizedWorkspace.boardGroups,
+    boardGroupNames: cloneBoardGroupNames(data.boardGroupNames, normalizedWorkspace.boardGroups),
   };
 }
 
@@ -5879,6 +6571,24 @@ function validateLoadedProject(data) {
     data.boardGroups ?? null,
   );
 
+  let channelGroupMap = {};
+  if (data.channelGroupMap != null) {
+    if (!data.channelGroupMap || typeof data.channelGroupMap !== "object" || Array.isArray(data.channelGroupMap)) {
+      throw new Error("channelGroupMap must be an object when provided.");
+    }
+    Object.entries(data.channelGroupMap).forEach(([rawChannelId, rawGroupId]) => {
+      const channelId = typeof rawChannelId === "string" ? rawChannelId.trim() : "";
+      const groupId = typeof rawGroupId === "string" ? rawGroupId.trim() : "";
+      if (!channelId || !channelIds.has(channelId)) {
+        throw new Error("channelGroupMap keys must reference known channels.");
+      }
+      if (!groupId || !normalizedWorkspace.boardGroups.includes(groupId)) {
+        throw new Error("channelGroupMap values must reference known board groups.");
+      }
+      channelGroupMap[channelId] = groupId;
+    });
+  }
+
   return {
     name: typeof data.name === "string" ? sanitizeDrawingName(data.name) : "fifo-project",
     width,
@@ -5887,10 +6597,12 @@ function validateLoadedProject(data) {
     animations,
     channels,
     channelDefaults,
+    channelGroupMap,
     defaultFrameId,
     defaultAnimationId,
     boardLayout: normalizedWorkspace.boardLayout,
     boardGroups: normalizedWorkspace.boardGroups,
+    boardGroupNames: cloneBoardGroupNames(data.boardGroupNames, normalizedWorkspace.boardGroups),
   };
 }
 
@@ -6421,6 +7133,12 @@ function bindEvents() {
   });
   elements.newAnimationButton.addEventListener("click", createProjectAnimation);
   elements.deleteAnimationButton.addEventListener("click", deleteActiveAnimation);
+  elements.syncChannelsFromGroupsButton.addEventListener("click", syncChannelsFromNamedGroups);
+  elements.channelSectionChannelSelect.addEventListener("change", () => {
+    syncChannelSectionControls();
+  });
+  elements.linkChannelSectionButton.addEventListener("click", linkSelectedChannelToGroup);
+  elements.unlinkChannelSectionButton.addEventListener("click", unlinkSelectedChannelFromGroup);
   elements.previewAnimationButton.addEventListener("click", startAnimationPreview);
   elements.stopAnimationPreviewButton.addEventListener("click", () => {
     if (state.project.previewTimer == null) {
@@ -6435,6 +7153,9 @@ function bindEvents() {
     updateProjectEditorControls();
   });
   elements.animationName.addEventListener("change", renameActiveAnimation);
+  elements.animationChannelSelect.addEventListener("change", () => {
+    setActiveAnimationChannel(elements.animationChannelSelect.value);
+  });
   elements.animationLoopInput.addEventListener("change", () => {
     setActiveAnimationLoop(elements.animationLoopInput.checked);
   });

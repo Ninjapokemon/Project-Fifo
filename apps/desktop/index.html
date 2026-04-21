@@ -532,6 +532,32 @@
                           <span>Clip Name</span>
                           <input id="animationName" type="text" value="" maxlength="80" />
                         </label>
+                        <label class="field">
+                          <span>Channel</span>
+                          <select id="animationChannelSelect">
+                            <option value="base">Base</option>
+                          </select>
+                        </label>
+                        <div class="button-row wrap">
+                          <button id="syncChannelsFromGroupsButton" type="button" class="secondary">Sync Channels From Groups</button>
+                        </div>
+                        <label class="field">
+                          <span>Section Channel</span>
+                          <select id="channelSectionChannelSelect">
+                            <option value="">Select channel</option>
+                          </select>
+                        </label>
+                        <label class="field">
+                          <span>Section Group</span>
+                          <select id="channelSectionGroupSelect">
+                            <option value="">Select group</option>
+                          </select>
+                        </label>
+                        <div class="button-row wrap">
+                          <button id="linkChannelSectionButton" type="button" class="secondary">Link Section</button>
+                          <button id="unlinkChannelSectionButton" type="button" class="secondary">Unlink Section</button>
+                        </div>
+                        <p id="channelSectionStatus" class="field-hint">No section links yet.</p>
                         <label class="toggle-field" for="animationLoopInput">
                           <div>
                             <span>Loop Clip</span>

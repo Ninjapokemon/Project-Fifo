@@ -314,6 +314,109 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
             channel_ids = {channel["channel_id"] for channel in runtime_channels}
             self.assertSetEqual(channel_ids, {"base", "eyes", "mouth"})
 
+    async def test_runtime_applies_channel_section_mappings(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_store = ProjectStore(Path(temp_dir))
+            project_store.save(
+                {
+                    "name": "Sectioned Face",
+                    "width": 16,
+                    "height": 8,
+                    "boardLayout": [
+                        {
+                            "id": "board-1",
+                            "chainIndex": 0,
+                            "groupId": "eyes",
+                            "width": 8,
+                            "height": 8,
+                        },
+                        {
+                            "id": "board-2",
+                            "chainIndex": 1,
+                            "groupId": "mouth",
+                            "width": 8,
+                            "height": 8,
+                        },
+                    ],
+                    "boardGroups": ["eyes", "mouth"],
+                    "frames": [
+                        {
+                            "id": "eyes-on",
+                            "name": "Eyes On",
+                            "pixels": [1] * (16 * 8),
+                        },
+                        {
+                            "id": "mouth-off",
+                            "name": "Mouth Off",
+                            "pixels": [0] * (16 * 8),
+                        },
+                    ],
+                    "animations": [
+                        {
+                            "id": "eyes-idle",
+                            "name": "Eyes Idle",
+                            "loop": True,
+                            "channelId": "eyes",
+                            "steps": [
+                                {"frameId": "eyes-on", "durationMs": 120},
+                            ],
+                        },
+                        {
+                            "id": "mouth-idle",
+                            "name": "Mouth Idle",
+                            "loop": True,
+                            "channelId": "mouth",
+                            "steps": [
+                                {"frameId": "mouth-off", "durationMs": 120},
+                            ],
+                        },
+                    ],
+                    "channels": [
+                        {
+                            "id": "eyes",
+                            "name": "Eyes",
+                            "priority": 100,
+                            "blendMode": "overwrite",
+                            "mask": None,
+                        },
+                        {
+                            "id": "mouth",
+                            "name": "Mouth",
+                            "priority": 200,
+                            "blendMode": "overwrite",
+                            "mask": None,
+                        },
+                    ],
+                    "channelDefaults": {
+                        "eyes": {"startupAnimationId": "eyes-idle"},
+                        "mouth": {"startupAnimationId": "mouth-idle"},
+                    },
+                    "channelGroupMap": {
+                        "eyes": "eyes",
+                        "mouth": "mouth",
+                    },
+                    "defaultFrameId": None,
+                    "defaultAnimationId": "eyes-idle",
+                }
+            )
+
+            config = {"boot_project": None}
+            display = FakeDisplay()
+            runtime = ProjectRuntime(display, project_store, config, lambda updated_config: updated_config)
+
+            await runtime.activate_project("Sectioned Face")
+            await asyncio.sleep(0.02)
+
+            self.assertGreaterEqual(len(display.frames), 1)
+            last_frame = display.frames[-1]
+            for y in range(8):
+                for x in range(16):
+                    index = (y * 16) + x
+                    if x < 8:
+                        self.assertEqual(last_frame[index], 1)
+                    else:
+                        self.assertEqual(last_frame[index], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

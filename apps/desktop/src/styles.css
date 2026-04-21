@@ -1631,7 +1631,10 @@ body.workspace-timeline-resizing * {
 }
 
 .pixel-board-group-label {
+  appearance: none;
   position: absolute;
+  display: inline-flex;
+  align-items: center;
   top: 10px;
   left: 14px;
   z-index: 1;
@@ -1643,6 +1646,16 @@ body.workspace-timeline-resizing * {
   font-size: 0.72rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  box-shadow: none;
+  transform: none;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.pixel-board-group-label:hover {
+  transform: none;
+  border-color: rgba(255, 122, 61, 0.34);
+  color: var(--accent-strong);
 }
 
 .pixel-board {

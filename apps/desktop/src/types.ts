@@ -67,6 +67,7 @@ export type SavedDrawing = FrameMessage & {
   name: string;
   boardLayout?: SavedBoardLayoutEntry[];
   boardGroups?: string[];
+  boardGroupNames?: Record<string, string>;
 };
 
 export type SaveDrawingMessage = SavedDrawing & {
@@ -120,10 +121,12 @@ export type SavedProject = {
   height: number;
   boardLayout?: SavedBoardLayoutEntry[];
   boardGroups?: string[];
+  boardGroupNames?: Record<string, string>;
   frames: ProjectFrame[];
   animations: ProjectAnimation[];
   channels?: ProjectChannel[];
   channelDefaults?: ProjectChannelDefaults;
+  channelGroupMap?: Record<string, string>;
   defaultFrameId: string | null;
   defaultAnimationId: string | null;
 };

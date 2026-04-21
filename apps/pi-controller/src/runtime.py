@@ -8,6 +8,9 @@ from config import save_config
 from project_store import ProjectStore, sanitize_project_name
 from protocol import validate_project_payload
 
+PANEL_SIZE = 8
+DEFAULT_BOARD_GROUP_ID = "group-1"
+
 
 class RuntimeDisplay(Protocol):
     width: int
@@ -367,18 +370,81 @@ class ProjectRuntime:
             return None
         return frame["pixels"]
 
+    def _build_group_pixel_index_sets(self, project: dict[str, Any]) -> dict[str, set[int]]:
+        board_layout = project.get("boardLayout")
+        if not isinstance(board_layout, list):
+            return {}
+
+        width = project["width"]
+        height = project["height"]
+        board_columns = max(1, (width + PANEL_SIZE - 1) // PANEL_SIZE)
+        group_pixel_index_sets: dict[str, set[int]] = {}
+        for board_index, board in enumerate(board_layout):
+            if not isinstance(board, dict):
+                continue
+
+            chain_index = board.get("chainIndex")
+            if isinstance(chain_index, bool) or not isinstance(chain_index, int) or chain_index < 0:
+                chain_index = board_index
+            origin_x = (chain_index % board_columns) * PANEL_SIZE
+            origin_y = (chain_index // board_columns) * PANEL_SIZE
+
+            board_width = board.get("width")
+            if isinstance(board_width, bool) or not isinstance(board_width, int) or board_width <= 0:
+                board_width = PANEL_SIZE
+            board_height = board.get("height")
+            if isinstance(board_height, bool) or not isinstance(board_height, int) or board_height <= 0:
+                board_height = PANEL_SIZE
+
+            raw_group_id = board.get("groupId")
+            group_id = (
+                raw_group_id.strip()
+                if isinstance(raw_group_id, str) and raw_group_id.strip()
+                else DEFAULT_BOARD_GROUP_ID
+            )
+            pixel_indexes = group_pixel_index_sets.get(group_id)
+            if pixel_indexes is None:
+                pixel_indexes = set()
+                group_pixel_index_sets[group_id] = pixel_indexes
+
+            for local_y in range(board_height):
+                for local_x in range(board_width):
+                    x = origin_x + local_x
+                    y = origin_y + local_y
+                    if x < 0 or x >= width or y < 0 or y >= height:
+                        continue
+                    pixel_indexes.add((y * width) + x)
+
+        return group_pixel_index_sets
+
     def _compose_project_frame(self, project: dict[str, Any]) -> list[int]:
         if not self._channel_states:
             return [0] * (project["width"] * project["height"])
 
         frames_by_id = self._build_frames_by_id(project)
         composed = [0] * (project["width"] * project["height"])
+        channel_group_map = project.get("channelGroupMap")
+        if not isinstance(channel_group_map, dict):
+            channel_group_map = {}
+        group_pixel_index_sets = self._build_group_pixel_index_sets(project)
         now_seconds = asyncio.get_running_loop().time()
 
         for channel_state in self._channel_states:
             channel_pixels = self._resolve_channel_pixels(channel_state, now_seconds, frames_by_id)
             if channel_pixels is None:
                 continue
+            mapped_group_id = channel_group_map.get(channel_state["channel_id"])
+            mapped_indexes = (
+                group_pixel_index_sets.get(mapped_group_id)
+                if isinstance(mapped_group_id, str)
+                else None
+            )
+            if mapped_indexes is not None:
+                for pixel_index in mapped_indexes:
+                    composed[pixel_index] = 1 if channel_pixels[pixel_index] == 1 else 0
+                continue
+
+            # Preserve legacy projects where channels are not mapped to sections.
             for pixel_index, pixel_value in enumerate(channel_pixels):
                 if pixel_value == 1:
                     composed[pixel_index] = 1
