@@ -13,7 +13,7 @@
   "oled_coalesce_seconds": 0.15,
   "microphone": {
     "enabled": true,
-    "test_mode": false,
+    "test_mode": true,
     "i2c_bus": 1,
     "address": 72,
     "channel": 0,

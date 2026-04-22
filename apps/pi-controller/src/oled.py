@@ -169,6 +169,26 @@ class DualOledStatus:
             "peak_percent": 0,
         }
         self._mic_wave_mv_history: deque[int] = deque(maxlen=256)
+        self._mic_level_history: deque[int] = deque(maxlen=256)
+        microphone_config = config.get("microphone")
+        if not isinstance(microphone_config, dict):
+            microphone_config = {}
+        runtime_bridge_config = microphone_config.get("runtime_bridge")
+        if not isinstance(runtime_bridge_config, dict):
+            runtime_bridge_config = {}
+        self._mic_trigger_percent = self._clamp_percent(
+            runtime_bridge_config.get("active_threshold", 24),
+            24,
+        )
+        self._mic_release_percent = self._clamp_percent(
+            runtime_bridge_config.get("idle_threshold", 12),
+            12,
+        )
+        self._mic_invert_level = bool(runtime_bridge_config.get("invert_level", False))
+        if self._mic_invert_level and self._mic_release_percent < self._mic_trigger_percent:
+            self._mic_release_percent = self._mic_trigger_percent
+        if not self._mic_invert_level and self._mic_release_percent > self._mic_trigger_percent:
+            self._mic_release_percent = self._mic_trigger_percent
         self._hostname = socket.gethostname()
         self._ip_address = _lan_ip()
         self._page = 0
@@ -256,6 +276,13 @@ class DualOledStatus:
         elif self.preview_enabled:
             print(f"OLED preview mode: {self._preview_mode}.")
 
+    def _clamp_percent(self, value: Any, fallback: int) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            parsed = fallback
+        return max(0, min(100, parsed))
+
     @property
     def preview_mode(self) -> str:
         return self._preview_mode
@@ -305,9 +332,12 @@ class DualOledStatus:
         }
         millivolts = self._mic_state.get("millivolts")
         dc_bias_mv = self._mic_state.get("dc_bias_mv")
+        level_percent = self._mic_state.get("level_percent")
         if isinstance(millivolts, (int, float)) and isinstance(dc_bias_mv, (int, float)):
             sample_mv = int(round(float(millivolts) - float(dc_bias_mv)))
             self._mic_wave_mv_history.append(sample_mv)
+        if isinstance(level_percent, (int, float)):
+            self._mic_level_history.append(self._clamp_percent(level_percent, 0))
         if self.status_device is not None:
             self._render_status()
 
@@ -319,16 +349,19 @@ class DualOledStatus:
         height = int(self.status_device.height)
         mic_available = bool(self._mic_state.get("available", False))
         mic_message = _short(self._mic_state.get("message", "-"), 20)
-        level_percent = int(self._mic_state.get("level_percent", 0))
+        level_percent = self._clamp_percent(self._mic_state.get("level_percent", 0), 0)
         peak_percent = int(self._mic_state.get("peak_percent", 0))
         millivolts = int(self._mic_state.get("millivolts", 0))
         dc_bias_mv = int(self._mic_state.get("dc_bias_mv", 0))
         delta_mv = millivolts - dc_bias_mv
+        trigger_label = "<=" if self._mic_invert_level else ">="
+        trigger_summary = f"talk {trigger_label} {self._mic_trigger_percent}%"
+        armed = level_percent <= self._mic_trigger_percent if self._mic_invert_level else level_percent >= self._mic_trigger_percent
 
         header_lines = [
             f"Mic Test adc:{'ok' if mic_available else 'down'}",
-            f"lvl:{level_percent}% pk:{peak_percent}% d:{delta_mv}mv",
-            _short(mic_message, 21),
+            f"lvl:{level_percent}% pk:{peak_percent}% {'TALK' if armed else 'idle'}",
+            _short(f"{trigger_summary}  d:{delta_mv}mv", 21),
         ]
         for index, line in enumerate(header_lines):
             draw.text((0, index * 9), line, fill="white")
@@ -346,23 +379,21 @@ class DualOledStatus:
         if inner_left >= inner_right or inner_top >= inner_bottom:
             return
 
-        center_y = (inner_top + inner_bottom) // 2
-        draw.line((inner_left, center_y, inner_right, center_y), fill="white")
-
         visible_width = (inner_right - inner_left) + 1
-        history = list(self._mic_wave_mv_history)[-visible_width:]
+        history = list(self._mic_level_history)[-visible_width:]
         if not history:
             return
 
-        peak_abs_mv = max(abs(sample_mv) for sample_mv in history)
-        scale_mv = max(20, peak_abs_mv)
-        half_height = max(1, (inner_bottom - inner_top) // 2)
+        threshold_percent = self._mic_trigger_percent
+        threshold_y = inner_bottom - int((threshold_percent / 100.0) * (inner_bottom - inner_top))
+        threshold_y = max(inner_top, min(inner_bottom, threshold_y))
+        draw.line((inner_left, threshold_y, inner_right, threshold_y), fill="white")
 
         points: list[tuple[int, int]] = []
         start_x = inner_right - (len(history) - 1)
-        for index, sample_mv in enumerate(history):
+        for index, sample_level in enumerate(history):
             x = start_x + index
-            y = center_y - int((sample_mv / scale_mv) * half_height)
+            y = inner_bottom - int((sample_level / 100.0) * (inner_bottom - inner_top))
             y = max(inner_top, min(inner_bottom, y))
             points.append((x, y))
 
@@ -370,6 +401,7 @@ class DualOledStatus:
             draw.point(points[0], fill="white")
             return
         draw.line(points, fill="white")
+        draw.text((inner_left + 1, inner_top), f"{threshold_percent}%", fill="white")
 
     def _build_preview_plan(self, safe_width: int, safe_height: int) -> dict[str, Any]:
         if self.preview_device is None:
