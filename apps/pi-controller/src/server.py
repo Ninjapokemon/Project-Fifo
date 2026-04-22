@@ -619,11 +619,14 @@ async def main() -> None:
     async def run_microphone_loop() -> None:
         while True:
             microphone_state = microphone_monitor.sample_state()
-            oled_display.update_microphone_state(microphone_state)
             bridge_message = await microphone_runtime_bridge.process_microphone_state(
                 runtime,
                 microphone_state,
             )
+            oled_display.update_microphone_bridge_state(
+                microphone_runtime_bridge.get_diagnostics()
+            )
+            oled_display.update_microphone_state(microphone_state)
             if bridge_message:
                 print(bridge_message)
                 refresh_oled()
@@ -645,6 +648,9 @@ async def main() -> None:
             microphone_task = asyncio.create_task(run_microphone_loop())
         else:
             mic_state = microphone_monitor.get_last_state()
+            oled_display.update_microphone_bridge_state(
+                microphone_runtime_bridge.get_diagnostics()
+            )
             oled_display.update_microphone_state(mic_state)
             if mic_state.get("test_mode"):
                 print(f"Microphone test mode requested but monitor unavailable: {mic_state.get('message')}")

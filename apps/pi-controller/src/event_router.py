@@ -56,6 +56,9 @@ class MicrophoneRuntimeBridge:
         self._speech_active = False
         self._last_switch_at = 0.0
         self._last_above_idle_at = 0.0
+        self._last_level_percent = 0
+        self._last_wants_speech_active = False
+        self._last_hold_remaining_seconds = 0.0
         self._last_error: str | None = None
 
     def _resolve_animation_target(
@@ -172,6 +175,31 @@ class MicrophoneRuntimeBridge:
             parsed_ms = fallback_ms
         return max(0.0, parsed_ms / 1000.0)
 
+    def get_diagnostics(self) -> dict[str, Any]:
+        hold_remaining_seconds = self._last_hold_remaining_seconds
+        if (
+            self._speech_active
+            and not self._last_wants_speech_active
+            and self.release_hold_seconds > 0.0
+        ):
+            hold_remaining_seconds = max(
+                0.0,
+                self.release_hold_seconds - (time.monotonic() - self._last_above_idle_at),
+            )
+        hold_remaining_ms = int(round(hold_remaining_seconds * 1000))
+        return {
+            "enabled": self.enabled,
+            "channel_id": self.channel_id,
+            "invert_level": self.invert_level,
+            "active_threshold": self.active_threshold,
+            "idle_threshold": self.idle_threshold,
+            "speech_active": self._speech_active,
+            "wants_speech_active": self._last_wants_speech_active,
+            "level_percent": self._last_level_percent,
+            "hold_active": hold_remaining_ms > 0,
+            "hold_remaining_ms": hold_remaining_ms,
+        }
+
     async def process_microphone_state(
         self,
         runtime: RuntimeBridgeTarget,
@@ -182,8 +210,12 @@ class MicrophoneRuntimeBridge:
         if runtime.runtime_mode != "project" or runtime.active_project is None:
             self._speech_active = False
             self._last_above_idle_at = 0.0
+            self._last_wants_speech_active = False
+            self._last_hold_remaining_seconds = 0.0
             return None
         if microphone_state.get("available") is not True:
+            self._last_wants_speech_active = self._speech_active
+            self._last_hold_remaining_seconds = 0.0
             return None
 
         try:
@@ -191,6 +223,7 @@ class MicrophoneRuntimeBridge:
         except (TypeError, ValueError):
             level_percent = 0
         level_percent = max(0, min(100, level_percent))
+        self._last_level_percent = level_percent
         now_seconds = time.monotonic()
         if (
             (not self.invert_level and level_percent >= self.idle_threshold)
@@ -206,12 +239,20 @@ class MicrophoneRuntimeBridge:
             wants_speech_active = level_percent >= self.active_threshold
             if self._speech_active and level_percent >= self.idle_threshold:
                 wants_speech_active = True
-
+        self._last_wants_speech_active = wants_speech_active
+        hold_remaining_seconds = 0.0
         if (
             self._speech_active
             and not wants_speech_active
-            and (now_seconds - self._last_above_idle_at) < self.release_hold_seconds
+            and self.release_hold_seconds > 0.0
         ):
+            hold_remaining_seconds = max(
+                0.0,
+                self.release_hold_seconds - (now_seconds - self._last_above_idle_at),
+            )
+        self._last_hold_remaining_seconds = hold_remaining_seconds
+
+        if hold_remaining_seconds > 0.0:
             return None
 
         if wants_speech_active == self._speech_active:
@@ -229,6 +270,7 @@ class MicrophoneRuntimeBridge:
                 self._speech_active = True
                 self._last_switch_at = now_seconds
                 self._last_above_idle_at = now_seconds
+                self._last_hold_remaining_seconds = 0.0
                 self._last_error = None
                 return (
                     f'Microphone bridge: channel "{active_channel_id}" -> '
@@ -256,6 +298,7 @@ class MicrophoneRuntimeBridge:
 
             self._speech_active = False
             self._last_switch_at = now_seconds
+            self._last_hold_remaining_seconds = 0.0
             self._last_error = None
             return (
                 f'Microphone bridge: channel "{action_channel_id}" -> '

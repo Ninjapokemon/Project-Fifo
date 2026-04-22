@@ -189,6 +189,16 @@ class DualOledStatus:
             self._mic_release_percent = self._mic_trigger_percent
         if not self._mic_invert_level and self._mic_release_percent > self._mic_trigger_percent:
             self._mic_release_percent = self._mic_trigger_percent
+        self._mic_bridge_state: dict[str, Any] = {
+            "enabled": False,
+            "invert_level": self._mic_invert_level,
+            "active_threshold": self._mic_trigger_percent,
+            "idle_threshold": self._mic_release_percent,
+            "speech_active": False,
+            "wants_speech_active": False,
+            "hold_active": False,
+            "hold_remaining_ms": 0,
+        }
         self._hostname = socket.gethostname()
         self._ip_address = _lan_ip()
         self._page = 0
@@ -341,6 +351,43 @@ class DualOledStatus:
         if self.status_device is not None:
             self._render_status()
 
+    def update_microphone_bridge_state(self, bridge_state: dict[str, Any]) -> None:
+        if not isinstance(bridge_state, dict):
+            return
+        merged_state = {
+            **self._mic_bridge_state,
+            **bridge_state,
+        }
+        invert_level = bool(merged_state.get("invert_level", self._mic_invert_level))
+        trigger_percent = self._clamp_percent(
+            merged_state.get("active_threshold", self._mic_trigger_percent),
+            self._mic_trigger_percent,
+        )
+        release_percent = self._clamp_percent(
+            merged_state.get("idle_threshold", self._mic_release_percent),
+            self._mic_release_percent,
+        )
+        if invert_level and release_percent < trigger_percent:
+            release_percent = trigger_percent
+        if not invert_level and release_percent > trigger_percent:
+            release_percent = trigger_percent
+        hold_remaining_raw = merged_state.get("hold_remaining_ms", 0)
+        try:
+            hold_remaining_ms = max(0, int(hold_remaining_raw))
+        except (TypeError, ValueError):
+            hold_remaining_ms = 0
+
+        self._mic_bridge_state = {
+            "enabled": bool(merged_state.get("enabled", False)),
+            "invert_level": invert_level,
+            "active_threshold": trigger_percent,
+            "idle_threshold": release_percent,
+            "speech_active": bool(merged_state.get("speech_active", False)),
+            "wants_speech_active": bool(merged_state.get("wants_speech_active", False)),
+            "hold_active": bool(merged_state.get("hold_active", False)),
+            "hold_remaining_ms": hold_remaining_ms,
+        }
+
     def _render_mic_test_status(self, draw: Any) -> None:
         if self.status_device is None:
             return
@@ -348,20 +395,50 @@ class DualOledStatus:
         width = int(self.status_device.width)
         height = int(self.status_device.height)
         mic_available = bool(self._mic_state.get("available", False))
-        mic_message = _short(self._mic_state.get("message", "-"), 20)
         level_percent = self._clamp_percent(self._mic_state.get("level_percent", 0), 0)
         peak_percent = int(self._mic_state.get("peak_percent", 0))
         millivolts = int(self._mic_state.get("millivolts", 0))
         dc_bias_mv = int(self._mic_state.get("dc_bias_mv", 0))
         delta_mv = millivolts - dc_bias_mv
-        trigger_label = "<=" if self._mic_invert_level else ">="
-        trigger_summary = f"talk {trigger_label} {self._mic_trigger_percent}%"
-        armed = level_percent <= self._mic_trigger_percent if self._mic_invert_level else level_percent >= self._mic_trigger_percent
+        bridge_invert_level = bool(self._mic_bridge_state.get("invert_level", self._mic_invert_level))
+        trigger_percent = self._clamp_percent(
+            self._mic_bridge_state.get("active_threshold", self._mic_trigger_percent),
+            self._mic_trigger_percent,
+        )
+        release_percent = self._clamp_percent(
+            self._mic_bridge_state.get("idle_threshold", self._mic_release_percent),
+            self._mic_release_percent,
+        )
+        if bridge_invert_level and release_percent < trigger_percent:
+            release_percent = trigger_percent
+        if not bridge_invert_level and release_percent > trigger_percent:
+            release_percent = trigger_percent
+        trigger_label = "<=" if bridge_invert_level else ">="
+        release_label = ">" if bridge_invert_level else "<"
+        armed = (
+            level_percent <= trigger_percent
+            if bridge_invert_level
+            else level_percent >= trigger_percent
+        )
+        speech_active = bool(self._mic_bridge_state.get("speech_active", armed))
+        hold_remaining_ms = 0
+        try:
+            hold_remaining_ms = max(0, int(self._mic_bridge_state.get("hold_remaining_ms", 0)))
+        except (TypeError, ValueError):
+            hold_remaining_ms = 0
+        hold_active = bool(self._mic_bridge_state.get("hold_active", False)) and hold_remaining_ms > 0
+        if speech_active and hold_active and not armed:
+            activity_label = f"HOLD{hold_remaining_ms}ms"
+        elif speech_active:
+            activity_label = "TALK"
+        else:
+            activity_label = "idle"
+        bridge_label = "on" if bool(self._mic_bridge_state.get("enabled", False)) else "off"
 
         header_lines = [
-            f"Mic Test adc:{'ok' if mic_available else 'down'}",
-            f"lvl:{level_percent}% pk:{peak_percent}% {'TALK' if armed else 'idle'}",
-            _short(f"{trigger_summary}  d:{delta_mv}mv", 21),
+            f"Mic Test adc:{'ok' if mic_available else 'down'} br:{bridge_label}",
+            f"lvl:{level_percent}% pk:{peak_percent}% {activity_label}",
+            _short(f"arm {trigger_label}{trigger_percent}% rel {release_label}{release_percent}% d:{delta_mv}mv", 21),
         ]
         for index, line in enumerate(header_lines):
             draw.text((0, index * 9), line, fill="white")
@@ -384,10 +461,14 @@ class DualOledStatus:
         if not history:
             return
 
-        threshold_percent = self._mic_trigger_percent
-        threshold_y = inner_bottom - int((threshold_percent / 100.0) * (inner_bottom - inner_top))
-        threshold_y = max(inner_top, min(inner_bottom, threshold_y))
-        draw.line((inner_left, threshold_y, inner_right, threshold_y), fill="white")
+        trigger_y = inner_bottom - int((trigger_percent / 100.0) * (inner_bottom - inner_top))
+        trigger_y = max(inner_top, min(inner_bottom, trigger_y))
+        draw.line((inner_left, trigger_y, inner_right, trigger_y), fill="white")
+        if release_percent != trigger_percent:
+            release_y = inner_bottom - int((release_percent / 100.0) * (inner_bottom - inner_top))
+            release_y = max(inner_top, min(inner_bottom, release_y))
+            for x in range(inner_left, inner_right + 1, 2):
+                draw.point((x, release_y), fill="white")
 
         points: list[tuple[int, int]] = []
         start_x = inner_right - (len(history) - 1)
@@ -396,12 +477,12 @@ class DualOledStatus:
             y = inner_bottom - int((sample_level / 100.0) * (inner_bottom - inner_top))
             y = max(inner_top, min(inner_bottom, y))
             points.append((x, y))
+        draw.text((inner_left + 1, inner_top), f"A{trigger_percent} R{release_percent}", fill="white")
 
         if len(points) == 1:
             draw.point(points[0], fill="white")
             return
         draw.line(points, fill="white")
-        draw.text((inner_left + 1, inner_top), f"{threshold_percent}%", fill="white")
 
     def _build_preview_plan(self, safe_width: int, safe_height: int) -> dict[str, Any]:
         if self.preview_device is None:
@@ -819,6 +900,8 @@ class DualOledStatus:
             self._last_flip = now
             page_flipped = True
         if (
+            not mic_test_mode
+            and
             self._status_min_interval > 0
             and not page_flipped
             and now - self._last_status_render < self._status_min_interval

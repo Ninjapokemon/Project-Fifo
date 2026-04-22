@@ -262,14 +262,21 @@ class EventRouterTests(unittest.IsolatedAsyncioTestCase):
             runtime,
             {"available": True, "level_percent": 1},
         )
+        hold_diagnostics = bridge.get_diagnostics()
         await asyncio.sleep(0.2)
         delayed_drop = await bridge.process_microphone_state(
             runtime,
             {"available": True, "level_percent": 1},
         )
+        settled_diagnostics = bridge.get_diagnostics()
 
         self.assertIsNone(immediate_drop)
+        self.assertTrue(hold_diagnostics["speech_active"])
+        self.assertTrue(hold_diagnostics["hold_active"])
+        self.assertGreater(hold_diagnostics["hold_remaining_ms"], 0)
         self.assertIsNotNone(delayed_drop)
+        self.assertFalse(settled_diagnostics["speech_active"])
+        self.assertFalse(settled_diagnostics["hold_active"])
         self.assertEqual(
             runtime.calls,
             [
