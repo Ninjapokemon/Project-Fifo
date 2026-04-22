@@ -42,6 +42,60 @@ class MicrophoneRuntimeBridge:
         self._last_switch_at = 0.0
         self._last_error: str | None = None
 
+    def _resolve_animation_target(
+        self,
+        runtime: RuntimeBridgeTarget,
+        animation_ref: str,
+    ) -> tuple[str, str] | None:
+        project = runtime.active_project
+        if not isinstance(project, dict):
+            return None
+        animations = project.get("animations")
+        if not isinstance(animations, list):
+            return None
+
+        def normalize(value: Any) -> str | None:
+            if not isinstance(value, str):
+                return None
+            cleaned = value.strip()
+            return cleaned if cleaned else None
+
+        for animation in animations:
+            if not isinstance(animation, dict):
+                continue
+            animation_id = normalize(animation.get("id"))
+            channel_id = normalize(animation.get("channelId"))
+            if animation_id == animation_ref:
+                return (channel_id or self.channel_id, animation_id)
+
+        needle = animation_ref.casefold()
+        for animation in animations:
+            if not isinstance(animation, dict):
+                continue
+            animation_name = normalize(animation.get("name"))
+            animation_id = normalize(animation.get("id"))
+            if animation_name and animation_id and animation_name.casefold() == needle:
+                channel_id = normalize(animation.get("channelId"))
+                return (channel_id or self.channel_id, animation_id)
+
+        return None
+
+    async def _set_animation(
+        self,
+        runtime: RuntimeBridgeTarget,
+        animation_ref: str,
+    ) -> tuple[str, str]:
+        try:
+            await runtime.set_channel_animation(self.channel_id, animation_ref)
+            return self.channel_id, animation_ref
+        except ValueError as direct_error:
+            resolved = self._resolve_animation_target(runtime, animation_ref)
+            if resolved is None:
+                raise direct_error
+            resolved_channel_id, resolved_animation_id = resolved
+            await runtime.set_channel_animation(resolved_channel_id, resolved_animation_id)
+            return resolved_channel_id, resolved_animation_id
+
     def _clamp_percent(self, value: Any, fallback: int) -> int:
         try:
             parsed = int(value)
@@ -88,27 +142,35 @@ class MicrophoneRuntimeBridge:
 
         try:
             if wants_speech_active:
-                await runtime.set_channel_animation(self.channel_id, self.active_animation_id)
+                active_channel_id, active_animation_id = await self._set_animation(
+                    runtime,
+                    self.active_animation_id,
+                )
                 self._speech_active = True
                 self._last_switch_at = now_seconds
                 self._last_error = None
                 return (
-                    f'Microphone bridge: channel "{self.channel_id}" -> '
-                    f'animation "{self.active_animation_id}" ({level_percent}%).'
+                    f'Microphone bridge: channel "{active_channel_id}" -> '
+                    f'animation "{active_animation_id}" ({level_percent}%).'
                 )
 
             if self.idle_animation_id:
-                await runtime.set_channel_animation(self.channel_id, self.idle_animation_id)
-                action_label = f'animation "{self.idle_animation_id}"'
+                idle_channel_id, idle_animation_id = await self._set_animation(
+                    runtime,
+                    self.idle_animation_id,
+                )
+                action_channel_id = idle_channel_id
+                action_label = f'animation "{idle_animation_id}"'
             else:
                 await runtime.play_channel(self.channel_id)
+                action_channel_id = self.channel_id
                 action_label = "default channel target"
 
             self._speech_active = False
             self._last_switch_at = now_seconds
             self._last_error = None
             return (
-                f'Microphone bridge: channel "{self.channel_id}" -> '
+                f'Microphone bridge: channel "{action_channel_id}" -> '
                 f"{action_label} ({level_percent}%)."
             )
         except ValueError as error:

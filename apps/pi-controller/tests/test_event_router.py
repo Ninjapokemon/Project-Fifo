@@ -18,6 +18,24 @@ class FakeRuntime:
         self.calls: list[tuple[str, str, str | None]] = []
 
     async def set_channel_animation(self, channel_id: str, animation_id: str) -> None:
+        active_project = self.active_project if isinstance(self.active_project, dict) else None
+        animations = active_project.get("animations") if isinstance(active_project, dict) else None
+        if isinstance(animations, list):
+            matching_animation = next(
+                (
+                    animation
+                    for animation in animations
+                    if isinstance(animation, dict) and animation.get("id") == animation_id
+                ),
+                None,
+            )
+            if matching_animation is None:
+                raise ValueError(f'Unknown animation "{animation_id}"')
+            expected_channel_id = matching_animation.get("channelId")
+            if isinstance(expected_channel_id, str) and expected_channel_id != channel_id:
+                raise ValueError(
+                    f'Animation "{animation_id}" does not belong to channel "{channel_id}"'
+                )
         self.calls.append(("set_channel_animation", channel_id, animation_id))
 
     async def play_channel(self, channel_id: str) -> None:
@@ -112,6 +130,42 @@ class EventRouterTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNone(result)
         self.assertEqual(runtime.calls, [])
+
+    async def test_microphone_bridge_resolves_animation_name_to_project_channel(self) -> None:
+        bridge = MicrophoneRuntimeBridge(
+            {
+                "microphone": {
+                    "runtime_bridge": {
+                        "enabled": True,
+                        "channel_id": "mouth",
+                        "active_threshold": 20,
+                        "idle_threshold": 10,
+                        "active_animation_id": "Smile",
+                        "idle_animation_id": "Blink",
+                        "switch_cooldown_ms": 0,
+                    }
+                }
+            }
+        )
+        runtime = FakeRuntime()
+        runtime.active_project = {
+            "name": "Project-Fifo",
+            "animations": [
+                {"id": "blink", "name": "Blink", "channelId": "base"},
+                {"id": "smile", "name": "Smile", "channelId": "mouth"},
+            ],
+        }
+
+        await bridge.process_microphone_state(runtime, {"available": True, "level_percent": 30})
+        await bridge.process_microphone_state(runtime, {"available": True, "level_percent": 2})
+
+        self.assertEqual(
+            runtime.calls,
+            [
+                ("set_channel_animation", "mouth", "smile"),
+                ("set_channel_animation", "base", "blink"),
+            ],
+        )
 
 
 if __name__ == "__main__":

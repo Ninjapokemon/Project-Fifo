@@ -6,7 +6,7 @@
   "rotate": 0,
   "brightness": 3,
   "runtime_tick_hz": 100,
-  "boot_project": null,
+  "boot_project": "Project-Fifo",
   "block_orientation": 90,
   "reverse_order": false,
   "serpentine": false,
@@ -23,8 +23,8 @@
       "channel_id": "mouth",
       "active_threshold": 24,
       "idle_threshold": 12,
-      "active_animation_id": "talk",
-      "idle_animation_id": "idle",
+      "active_animation_id": "smile",
+      "idle_animation_id": "blink",
       "switch_cooldown_ms": 140
     }
   },
