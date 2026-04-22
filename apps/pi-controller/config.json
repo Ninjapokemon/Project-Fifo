@@ -27,7 +27,7 @@
     "port": 1,
     "status_address": 60,
     "preview_address": 61,
-    "status_fps": 2,
+    "status_fps": 8,
     "preview_fps": 10,
     "preview_event_map": {
       "blink": "blink",

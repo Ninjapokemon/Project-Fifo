@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 import socket
 import time
 import zlib
@@ -167,6 +168,7 @@ class DualOledStatus:
             "level_percent": 0,
             "peak_percent": 0,
         }
+        self._mic_wave_mv_history: deque[int] = deque(maxlen=256)
         self._hostname = socket.gethostname()
         self._ip_address = _lan_ip()
         self._page = 0
@@ -301,8 +303,73 @@ class DualOledStatus:
             **self._mic_state,
             **mic_state,
         }
+        millivolts = self._mic_state.get("millivolts")
+        dc_bias_mv = self._mic_state.get("dc_bias_mv")
+        if isinstance(millivolts, (int, float)) and isinstance(dc_bias_mv, (int, float)):
+            sample_mv = int(round(float(millivolts) - float(dc_bias_mv)))
+            self._mic_wave_mv_history.append(sample_mv)
         if self.status_device is not None:
             self._render_status()
+
+    def _render_mic_test_status(self, draw: Any) -> None:
+        if self.status_device is None:
+            return
+
+        width = int(self.status_device.width)
+        height = int(self.status_device.height)
+        mic_available = bool(self._mic_state.get("available", False))
+        mic_message = _short(self._mic_state.get("message", "-"), 20)
+        level_percent = int(self._mic_state.get("level_percent", 0))
+        peak_percent = int(self._mic_state.get("peak_percent", 0))
+        millivolts = int(self._mic_state.get("millivolts", 0))
+        dc_bias_mv = int(self._mic_state.get("dc_bias_mv", 0))
+        delta_mv = millivolts - dc_bias_mv
+
+        header_lines = [
+            f"Mic Test adc:{'ok' if mic_available else 'down'}",
+            f"lvl:{level_percent}% pk:{peak_percent}% d:{delta_mv}mv",
+            _short(mic_message, 21),
+        ]
+        for index, line in enumerate(header_lines):
+            draw.text((0, index * 9), line, fill="white")
+
+        graph_left = 0
+        graph_top = 28
+        graph_right = max(graph_left + 2, width - 1)
+        graph_bottom = max(graph_top + 2, height - 1)
+        draw.rectangle((graph_left, graph_top, graph_right, graph_bottom), outline="white", fill="black")
+
+        inner_left = graph_left + 1
+        inner_right = graph_right - 1
+        inner_top = graph_top + 1
+        inner_bottom = graph_bottom - 1
+        if inner_left >= inner_right or inner_top >= inner_bottom:
+            return
+
+        center_y = (inner_top + inner_bottom) // 2
+        draw.line((inner_left, center_y, inner_right, center_y), fill="white")
+
+        visible_width = (inner_right - inner_left) + 1
+        history = list(self._mic_wave_mv_history)[-visible_width:]
+        if not history:
+            return
+
+        peak_abs_mv = max(abs(sample_mv) for sample_mv in history)
+        scale_mv = max(20, peak_abs_mv)
+        half_height = max(1, (inner_bottom - inner_top) // 2)
+
+        points: list[tuple[int, int]] = []
+        start_x = inner_right - (len(history) - 1)
+        for index, sample_mv in enumerate(history):
+            x = start_x + index
+            y = center_y - int((sample_mv / scale_mv) * half_height)
+            y = max(inner_top, min(inner_bottom, y))
+            points.append((x, y))
+
+        if len(points) == 1:
+            draw.point(points[0], fill="white")
+            return
+        draw.line(points, fill="white")
 
     def _build_preview_plan(self, safe_width: int, safe_height: int) -> dict[str, Any]:
         if self.preview_device is None:
@@ -756,26 +823,25 @@ class DualOledStatus:
                 _short(f"ip:{self._ip_address}", 21),
             ]
         else:
-            mic_message = _short(self._mic_state.get("message", "-"), 21)
-            mic_available = bool(self._mic_state.get("available", False))
             lines = [
-                "Mic Test",
-                f"adc:{'ok' if mic_available else 'down'}",
-                f"raw:{self._mic_state.get('raw', 0)}",
-                f"mv:{self._mic_state.get('millivolts', 0)}",
-                f"bias:{self._mic_state.get('dc_bias_mv', 0)}",
+                "Mic Test Wave",
+                f"adc:{'ok' if bool(self._mic_state.get('available', False)) else 'down'}",
                 f"lvl:{self._mic_state.get('level_percent', 0)}%",
-                f"pk:{self._mic_state.get('peak_percent', 0)}% {mic_message}",
+                f"pk:{self._mic_state.get('peak_percent', 0)}%",
+                _short(self._mic_state.get("message", "-"), 21),
             ]
 
         rendered_lines = tuple(lines)
-        if rendered_lines == self._last_status_lines:
+        if not mic_test_mode and rendered_lines == self._last_status_lines:
             return
         self._last_status_lines = rendered_lines
 
         with canvas(self.status_device) as draw:
-            for index, line in enumerate(lines):
-                draw.text((0, index * 9), line, fill="white")
+            if mic_test_mode:
+                self._render_mic_test_status(draw)
+            else:
+                for index, line in enumerate(lines):
+                    draw.text((0, index * 9), line, fill="white")
 
     def render_preview(self, pixels: list[int], width: int, height: int) -> None:
         if not self.preview_enabled or self.preview_device is None:
