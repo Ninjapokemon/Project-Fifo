@@ -23,9 +23,9 @@
     "runtime_bridge": {
       "enabled": true,
       "channel_id": "mouth",
-      "invert_level": false,
-      "active_threshold": 95,
-      "idle_threshold": 90,
+      "invert_level": true,
+      "active_threshold": 14,
+      "idle_threshold": 24,
       "active_animation_id": "smile",
       "active_restore_channels": [
         "base"
