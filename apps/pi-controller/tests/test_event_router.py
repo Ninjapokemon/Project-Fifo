@@ -38,6 +38,22 @@ class FakeRuntime:
                 )
         self.calls.append(("set_channel_animation", channel_id, animation_id))
 
+    async def set_channel_frame(self, channel_id: str, frame_id: str) -> None:
+        active_project = self.active_project if isinstance(self.active_project, dict) else None
+        frames = active_project.get("frames") if isinstance(active_project, dict) else None
+        if isinstance(frames, list):
+            matching_frame = next(
+                (
+                    frame
+                    for frame in frames
+                    if isinstance(frame, dict) and frame.get("id") == frame_id
+                ),
+                None,
+            )
+            if matching_frame is None:
+                raise ValueError(f'Unknown frame "{frame_id}"')
+        self.calls.append(("set_channel_frame", channel_id, frame_id))
+
     async def play_channel(self, channel_id: str) -> None:
         self.calls.append(("play_channel", channel_id, None))
 
@@ -164,6 +180,46 @@ class EventRouterTests(unittest.IsolatedAsyncioTestCase):
             [
                 ("set_channel_animation", "mouth", "smile"),
                 ("set_channel_animation", "base", "blink"),
+            ],
+        )
+
+    async def test_microphone_bridge_uses_idle_frame_when_configured(self) -> None:
+        bridge = MicrophoneRuntimeBridge(
+            {
+                "microphone": {
+                    "runtime_bridge": {
+                        "enabled": True,
+                        "channel_id": "mouth",
+                        "active_threshold": 20,
+                        "idle_threshold": 10,
+                        "active_animation_id": "smile",
+                        "idle_frame_id": "Mouth Smile Soft",
+                        "idle_animation_id": "blink",
+                        "switch_cooldown_ms": 0,
+                    }
+                }
+            }
+        )
+        runtime = FakeRuntime()
+        runtime.active_project = {
+            "name": "Project-Fifo",
+            "frames": [
+                {"id": "mouth-smile-soft", "name": "Mouth Smile Soft"},
+            ],
+            "animations": [
+                {"id": "smile", "name": "Smile", "channelId": "mouth"},
+                {"id": "blink", "name": "Blink", "channelId": "base"},
+            ],
+        }
+
+        await bridge.process_microphone_state(runtime, {"available": True, "level_percent": 28})
+        await bridge.process_microphone_state(runtime, {"available": True, "level_percent": 2})
+
+        self.assertEqual(
+            runtime.calls,
+            [
+                ("set_channel_animation", "mouth", "smile"),
+                ("set_channel_frame", "mouth", "mouth-smile-soft"),
             ],
         )
 

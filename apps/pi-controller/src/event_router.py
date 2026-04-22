@@ -11,6 +11,9 @@ class RuntimeBridgeTarget(Protocol):
     async def set_channel_animation(self, channel_id: str, animation_id: str) -> None:
         ...
 
+    async def set_channel_frame(self, channel_id: str, frame_id: str) -> None:
+        ...
+
     async def play_channel(self, channel_id: str) -> None:
         ...
 
@@ -31,6 +34,12 @@ class MicrophoneRuntimeBridge:
         if self.idle_threshold > self.active_threshold:
             self.idle_threshold = self.active_threshold
         self.active_animation_id = str(bridge_config.get("active_animation_id", "talk")).strip() or "talk"
+        idle_frame_value = bridge_config.get("idle_frame_id")
+        self.idle_frame_id = (
+            str(idle_frame_value).strip()
+            if isinstance(idle_frame_value, str) and idle_frame_value.strip()
+            else None
+        )
         idle_animation_value = bridge_config.get("idle_animation_id")
         self.idle_animation_id = (
             str(idle_animation_value).strip()
@@ -96,6 +105,52 @@ class MicrophoneRuntimeBridge:
             await runtime.set_channel_animation(resolved_channel_id, resolved_animation_id)
             return resolved_channel_id, resolved_animation_id
 
+    def _resolve_frame_id(
+        self,
+        runtime: RuntimeBridgeTarget,
+        frame_ref: str,
+    ) -> str | None:
+        project = runtime.active_project
+        if not isinstance(project, dict):
+            return None
+        frames = project.get("frames")
+        if not isinstance(frames, list):
+            return None
+
+        needle = frame_ref.casefold()
+        for frame in frames:
+            if not isinstance(frame, dict):
+                continue
+            frame_id = frame.get("id")
+            if isinstance(frame_id, str) and frame_id.strip() == frame_ref:
+                return frame_id.strip()
+            frame_name = frame.get("name")
+            if (
+                isinstance(frame_name, str)
+                and frame_name.strip()
+                and frame_name.strip().casefold() == needle
+                and isinstance(frame_id, str)
+                and frame_id.strip()
+            ):
+                return frame_id.strip()
+
+        return None
+
+    async def _set_frame(
+        self,
+        runtime: RuntimeBridgeTarget,
+        frame_ref: str,
+    ) -> tuple[str, str]:
+        try:
+            await runtime.set_channel_frame(self.channel_id, frame_ref)
+            return self.channel_id, frame_ref
+        except ValueError as direct_error:
+            resolved_frame_id = self._resolve_frame_id(runtime, frame_ref)
+            if resolved_frame_id is None:
+                raise direct_error
+            await runtime.set_channel_frame(self.channel_id, resolved_frame_id)
+            return self.channel_id, resolved_frame_id
+
     def _clamp_percent(self, value: Any, fallback: int) -> int:
         try:
             parsed = int(value)
@@ -154,7 +209,14 @@ class MicrophoneRuntimeBridge:
                     f'animation "{active_animation_id}" ({level_percent}%).'
                 )
 
-            if self.idle_animation_id:
+            if self.idle_frame_id:
+                idle_channel_id, idle_frame_id = await self._set_frame(
+                    runtime,
+                    self.idle_frame_id,
+                )
+                action_channel_id = idle_channel_id
+                action_label = f'frame "{idle_frame_id}"'
+            elif self.idle_animation_id:
                 idle_channel_id, idle_animation_id = await self._set_animation(
                     runtime,
                     self.idle_animation_id,

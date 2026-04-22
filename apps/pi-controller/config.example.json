@@ -21,9 +21,10 @@
     "runtime_bridge": {
       "enabled": false,
       "channel_id": "mouth",
-      "active_threshold": 24,
-      "idle_threshold": 12,
+      "active_threshold": 40,
+      "idle_threshold": 24,
       "active_animation_id": "smile",
+      "idle_frame_id": "mouth-smile-soft",
       "idle_animation_id": "blink",
       "switch_cooldown_ms": 140
     }
