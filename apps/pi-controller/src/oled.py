@@ -900,6 +900,8 @@ class DualOledStatus:
             self._last_flip = now
             page_flipped = True
         if (
+            not mic_test_mode
+            and
             self._status_min_interval > 0
             and not page_flipped
             and now - self._last_status_render < self._status_min_interval
