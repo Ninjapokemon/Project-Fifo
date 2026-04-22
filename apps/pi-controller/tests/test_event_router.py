@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sys
 import unittest
 from pathlib import Path
@@ -71,6 +72,7 @@ class EventRouterTests(unittest.IsolatedAsyncioTestCase):
                         "active_animation_id": "talk",
                         "idle_animation_id": "idle",
                         "switch_cooldown_ms": 0,
+                        "release_hold_ms": 0,
                     }
                 }
             }
@@ -107,6 +109,7 @@ class EventRouterTests(unittest.IsolatedAsyncioTestCase):
                         "idle_threshold": 10,
                         "active_animation_id": "talk",
                         "switch_cooldown_ms": 0,
+                        "release_hold_ms": 0,
                     }
                 }
             }
@@ -132,6 +135,7 @@ class EventRouterTests(unittest.IsolatedAsyncioTestCase):
                         "enabled": True,
                         "channel_id": "mouth",
                         "switch_cooldown_ms": 0,
+                        "release_hold_ms": 0,
                     }
                 }
             }
@@ -159,6 +163,7 @@ class EventRouterTests(unittest.IsolatedAsyncioTestCase):
                         "active_animation_id": "Smile",
                         "idle_animation_id": "Blink",
                         "switch_cooldown_ms": 0,
+                        "release_hold_ms": 0,
                     }
                 }
             }
@@ -196,6 +201,7 @@ class EventRouterTests(unittest.IsolatedAsyncioTestCase):
                         "idle_frame_id": "Mouth Smile Soft",
                         "idle_animation_id": "blink",
                         "switch_cooldown_ms": 0,
+                        "release_hold_ms": 0,
                     }
                 }
             }
@@ -215,6 +221,55 @@ class EventRouterTests(unittest.IsolatedAsyncioTestCase):
         await bridge.process_microphone_state(runtime, {"available": True, "level_percent": 28})
         await bridge.process_microphone_state(runtime, {"available": True, "level_percent": 2})
 
+        self.assertEqual(
+            runtime.calls,
+            [
+                ("set_channel_animation", "mouth", "smile"),
+                ("set_channel_frame", "mouth", "mouth-smile-soft"),
+            ],
+        )
+
+    async def test_microphone_bridge_applies_release_hold_before_idle_switch(self) -> None:
+        bridge = MicrophoneRuntimeBridge(
+            {
+                "microphone": {
+                    "runtime_bridge": {
+                        "enabled": True,
+                        "channel_id": "mouth",
+                        "active_threshold": 20,
+                        "idle_threshold": 10,
+                        "active_animation_id": "smile",
+                        "idle_frame_id": "mouth-smile-soft",
+                        "switch_cooldown_ms": 0,
+                        "release_hold_ms": 180,
+                    }
+                }
+            }
+        )
+        runtime = FakeRuntime()
+        runtime.active_project = {
+            "name": "Project-Fifo",
+            "frames": [
+                {"id": "mouth-smile-soft", "name": "Mouth Smile Soft"},
+            ],
+            "animations": [
+                {"id": "smile", "name": "Smile", "channelId": "mouth"},
+            ],
+        }
+
+        await bridge.process_microphone_state(runtime, {"available": True, "level_percent": 30})
+        immediate_drop = await bridge.process_microphone_state(
+            runtime,
+            {"available": True, "level_percent": 1},
+        )
+        await asyncio.sleep(0.2)
+        delayed_drop = await bridge.process_microphone_state(
+            runtime,
+            {"available": True, "level_percent": 1},
+        )
+
+        self.assertIsNone(immediate_drop)
+        self.assertIsNotNone(delayed_drop)
         self.assertEqual(
             runtime.calls,
             [

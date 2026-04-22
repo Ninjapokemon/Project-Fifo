@@ -26,7 +26,8 @@
       "active_animation_id": "smile",
       "idle_frame_id": "mouth-smile-soft",
       "idle_animation_id": "blink",
-      "switch_cooldown_ms": 140
+      "switch_cooldown_ms": 140,
+      "release_hold_ms": 320
     }
   },
   "oled": {

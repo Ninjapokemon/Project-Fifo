@@ -97,6 +97,7 @@ Config keys:
 - `microphone.runtime_bridge.idle_frame_id`
 - `microphone.runtime_bridge.idle_animation_id`
 - `microphone.runtime_bridge.switch_cooldown_ms`
+- `microphone.runtime_bridge.release_hold_ms`
 
 When `microphone.test_mode` is `true`, the OLED status page stays on a microphone diagnostics view (`raw`, `mV`, bias, level, peak) for bring-up testing.
 
