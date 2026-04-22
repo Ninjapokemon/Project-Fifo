@@ -1,0 +1,44 @@
+{
+  "host": "0.0.0.0",
+  "port": 8765,
+  "matrices_wide": 3,
+  "matrices_high": 1,
+  "rotate": 0,
+  "brightness": 3,
+  "runtime_tick_hz": 100,
+  "boot_project": null,
+  "block_orientation": 90,
+  "reverse_order": false,
+  "serpentine": false,
+  "oled_coalesce_seconds": 0.15,
+  "microphone": {
+    "enabled": true,
+    "test_mode": true,
+    "i2c_bus": 1,
+    "address": 72,
+    "channel": 0,
+    "sample_hz": 20
+  },
+  "oled": {
+    "enabled": true,
+    "status_enabled": true,
+    "preview_enabled": true,
+    "preview_mode": "preset",
+    "port": 1,
+    "status_address": 60,
+    "preview_address": 61,
+    "status_fps": 2,
+    "preview_fps": 10,
+    "preview_event_map": {
+      "blink": "blink",
+      "talk": "talk",
+      "speak": "talk",
+      "live": "live",
+      "default": "idle"
+    }
+  },
+  "panel_order": null,
+  "panel_rotations": null,
+  "panel_mirrors": null
+}
+
