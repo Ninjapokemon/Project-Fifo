@@ -27,6 +27,8 @@
       "active_threshold": 40,
       "idle_threshold": 24,
       "active_animation_id": "smile",
+      "active_restore_channels": [],
+      "idle_clear_channels": [],
       "idle_frame_id": "mouth-smile-soft",
       "idle_animation_id": "blink",
       "switch_cooldown_ms": 140,

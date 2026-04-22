@@ -17,6 +17,9 @@ class RuntimeBridgeTarget(Protocol):
     async def play_channel(self, channel_id: str) -> None:
         ...
 
+    async def clear_channel(self, channel_id: str) -> None:
+        ...
+
 
 class MicrophoneRuntimeBridge:
     def __init__(self, config: dict[str, Any]):
@@ -39,6 +42,12 @@ class MicrophoneRuntimeBridge:
             if self.idle_threshold > self.active_threshold:
                 self.idle_threshold = self.active_threshold
         self.active_animation_id = str(bridge_config.get("active_animation_id", "talk")).strip() or "talk"
+        self.active_restore_channels = self._normalize_channel_id_list(
+            bridge_config.get("active_restore_channels")
+        )
+        self.idle_clear_channels = self._normalize_channel_id_list(
+            bridge_config.get("idle_clear_channels")
+        )
         idle_frame_value = bridge_config.get("idle_frame_id")
         self.idle_frame_id = (
             str(idle_frame_value).strip()
@@ -176,6 +185,19 @@ class MicrophoneRuntimeBridge:
             parsed_ms = fallback_ms
         return max(0.0, parsed_ms / 1000.0)
 
+    def _normalize_channel_id_list(self, value: Any) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        normalized: list[str] = []
+        for item in value:
+            if not isinstance(item, str):
+                continue
+            channel_id = item.strip()
+            if not channel_id or channel_id in normalized:
+                continue
+            normalized.append(channel_id)
+        return normalized
+
     def get_diagnostics(self) -> dict[str, Any]:
         hold_remaining_seconds = self._last_hold_remaining_seconds
         if (
@@ -256,7 +278,11 @@ class MicrophoneRuntimeBridge:
         force_idle_sync = (
             not self._state_initialized
             and not wants_speech_active
-            and (self.idle_frame_id is not None or self.idle_animation_id is not None)
+            and (
+                self.idle_frame_id is not None
+                or self.idle_animation_id is not None
+                or bool(self.idle_clear_channels)
+            )
         )
 
         if hold_remaining_seconds > 0.0 and not force_idle_sync:
@@ -274,6 +300,8 @@ class MicrophoneRuntimeBridge:
 
         try:
             if wants_speech_active and not force_idle_sync:
+                for restore_channel_id in self.active_restore_channels:
+                    await runtime.play_channel(restore_channel_id)
                 active_channel_id, active_animation_id = await self._set_animation(
                     runtime,
                     self.active_animation_id,
@@ -289,7 +317,12 @@ class MicrophoneRuntimeBridge:
                     f'animation "{active_animation_id}" ({level_percent}%).'
                 )
 
-            if self.idle_frame_id:
+            if self.idle_clear_channels:
+                for clear_channel_id in self.idle_clear_channels:
+                    await runtime.clear_channel(clear_channel_id)
+                action_channel_id = ",".join(self.idle_clear_channels)
+                action_label = "cleared"
+            elif self.idle_frame_id:
                 idle_channel_id, idle_frame_id = await self._set_frame(
                     runtime,
                     self.idle_frame_id,

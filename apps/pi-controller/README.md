@@ -97,6 +97,8 @@ Config keys:
 - `microphone.runtime_bridge.active_threshold`
 - `microphone.runtime_bridge.idle_threshold`
 - `microphone.runtime_bridge.active_animation_id`
+- `microphone.runtime_bridge.active_restore_channels`
+- `microphone.runtime_bridge.idle_clear_channels`
 - `microphone.runtime_bridge.idle_frame_id`
 - `microphone.runtime_bridge.idle_animation_id`
 - `microphone.runtime_bridge.switch_cooldown_ms`
@@ -104,7 +106,7 @@ Config keys:
 
 When `microphone.test_mode` is `true`, the OLED status page stays on a microphone diagnostics view with live level waveform, trigger/release threshold lines, and bridge latch state (`idle`, `TALK`, `HOLD`).
 
-When `microphone.runtime_bridge.enabled` is `true`, the Pi can map microphone activity into channel runtime actions. By default it targets the `mouth` channel, switches to animation `smile` when level rises above `active_threshold`, and returns to `idle_frame_id` (or `idle_animation_id`, or default channel playback if unset) after level falls below `idle_threshold`. In inverted mode, the thresholds are reversed (`<=` for trigger, `>=` for release). The bridge uses hysteresis plus `release_hold_ms`, so the OLED `TALK/HOLD` indicator reflects the real runtime latch state instead of only the trigger threshold comparison.
+When `microphone.runtime_bridge.enabled` is `true`, the Pi can map microphone activity into channel runtime actions. By default it targets the `mouth` channel, switches to animation `smile` when level rises above `active_threshold`, and returns to `idle_frame_id` (or `idle_animation_id`, or default channel playback if unset) after level falls below `idle_threshold`. In inverted mode, the thresholds are reversed (`<=` for trigger, `>=` for release). The bridge uses hysteresis plus `release_hold_ms`, so the OLED `TALK/HOLD` indicator reflects the real runtime latch state instead of only the trigger threshold comparison. If `idle_clear_channels` is configured, those channels are cleared when idle (for example turning face LEDs off), and if `active_restore_channels` is configured those channels are resumed before the active animation is applied.
 
 ## Future Runtime Direction
 

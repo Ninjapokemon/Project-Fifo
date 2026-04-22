@@ -58,6 +58,9 @@ class FakeRuntime:
     async def play_channel(self, channel_id: str) -> None:
         self.calls.append(("play_channel", channel_id, None))
 
+    async def clear_channel(self, channel_id: str) -> None:
+        self.calls.append(("clear_channel", channel_id, None))
+
 
 class EventRouterTests(unittest.IsolatedAsyncioTestCase):
     async def test_microphone_bridge_switches_between_active_and_idle_animation(self) -> None:
@@ -369,6 +372,58 @@ class EventRouterTests(unittest.IsolatedAsyncioTestCase):
             runtime.calls,
             [
                 ("set_channel_frame", "mouth", "mouth-smile-soft"),
+            ],
+        )
+
+    async def test_microphone_bridge_can_clear_channels_when_idle(self) -> None:
+        bridge = MicrophoneRuntimeBridge(
+            {
+                "microphone": {
+                    "runtime_bridge": {
+                        "enabled": True,
+                        "channel_id": "mouth",
+                        "invert_level": False,
+                        "active_threshold": 40,
+                        "idle_threshold": 20,
+                        "active_animation_id": "smile",
+                        "active_restore_channels": ["base"],
+                        "idle_clear_channels": ["base", "mouth"],
+                        "switch_cooldown_ms": 0,
+                        "release_hold_ms": 0,
+                    }
+                }
+            }
+        )
+        runtime = FakeRuntime()
+        runtime.active_project = {
+            "name": "Project-Fifo",
+            "frames": [
+                {"id": "mouth-smile-soft", "name": "Mouth Smile Soft"},
+            ],
+            "animations": [
+                {"id": "idle-blink", "name": "Idle Blink", "channelId": "base"},
+                {"id": "smile", "name": "Smile", "channelId": "mouth"},
+            ],
+        }
+
+        first_idle = await bridge.process_microphone_state(
+            runtime,
+            {"available": True, "level_percent": 5},
+        )
+        talk = await bridge.process_microphone_state(
+            runtime,
+            {"available": True, "level_percent": 45},
+        )
+
+        self.assertIsNotNone(first_idle)
+        self.assertIsNotNone(talk)
+        self.assertEqual(
+            runtime.calls,
+            [
+                ("clear_channel", "base", None),
+                ("clear_channel", "mouth", None),
+                ("play_channel", "base", None),
+                ("set_channel_animation", "mouth", "smile"),
             ],
         )
 
