@@ -6,18 +6,27 @@
   "rotate": 0,
   "brightness": 3,
   "runtime_tick_hz": 100,
-  "boot_project": "Project-Fifo",
+  "boot_project": "animated-face",
   "block_orientation": 90,
   "reverse_order": true,
   "serpentine": false,
   "oled_coalesce_seconds": 0.15,
   "microphone": {
     "enabled": true,
-    "test_mode": true,
+    "test_mode": false,
     "i2c_bus": 1,
     "address": 72,
     "channel": 0,
-    "sample_hz": 20
+    "sample_hz": 20,
+    "runtime_bridge": {
+      "enabled": true,
+      "channel_id": "mouth",
+      "active_threshold": 24,
+      "idle_threshold": 12,
+      "active_animation_id": "smile",
+      "idle_animation_id": "mouth-idle",
+      "switch_cooldown_ms": 120
+    }
   },
   "oled": {
     "enabled": true,
@@ -57,4 +66,3 @@
     true
   ]
 }
-
