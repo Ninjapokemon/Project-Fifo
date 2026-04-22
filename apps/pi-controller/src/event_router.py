@@ -29,10 +29,15 @@ class MicrophoneRuntimeBridge:
 
         self.enabled = bool(bridge_config.get("enabled", False))
         self.channel_id = str(bridge_config.get("channel_id", "mouth")).strip() or "mouth"
+        self.invert_level = bool(bridge_config.get("invert_level", False))
         self.active_threshold = self._clamp_percent(bridge_config.get("active_threshold", 24), 24)
         self.idle_threshold = self._clamp_percent(bridge_config.get("idle_threshold", 12), 12)
-        if self.idle_threshold > self.active_threshold:
-            self.idle_threshold = self.active_threshold
+        if self.invert_level:
+            if self.idle_threshold < self.active_threshold:
+                self.idle_threshold = self.active_threshold
+        else:
+            if self.idle_threshold > self.active_threshold:
+                self.idle_threshold = self.active_threshold
         self.active_animation_id = str(bridge_config.get("active_animation_id", "talk")).strip() or "talk"
         idle_frame_value = bridge_config.get("idle_frame_id")
         self.idle_frame_id = (
@@ -187,12 +192,20 @@ class MicrophoneRuntimeBridge:
             level_percent = 0
         level_percent = max(0, min(100, level_percent))
         now_seconds = time.monotonic()
-        if level_percent >= self.idle_threshold:
+        if (
+            (not self.invert_level and level_percent >= self.idle_threshold)
+            or (self.invert_level and level_percent <= self.idle_threshold)
+        ):
             self._last_above_idle_at = now_seconds
 
-        wants_speech_active = level_percent >= self.active_threshold
-        if self._speech_active and level_percent >= self.idle_threshold:
-            wants_speech_active = True
+        if self.invert_level:
+            wants_speech_active = level_percent <= self.active_threshold
+            if self._speech_active and level_percent <= self.idle_threshold:
+                wants_speech_active = True
+        else:
+            wants_speech_active = level_percent >= self.active_threshold
+            if self._speech_active and level_percent >= self.idle_threshold:
+                wants_speech_active = True
 
         if (
             self._speech_active

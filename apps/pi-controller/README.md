@@ -91,6 +91,7 @@ Config keys:
 - `microphone.sample_hz`
 - `microphone.runtime_bridge.enabled`
 - `microphone.runtime_bridge.channel_id`
+- `microphone.runtime_bridge.invert_level`
 - `microphone.runtime_bridge.active_threshold`
 - `microphone.runtime_bridge.idle_threshold`
 - `microphone.runtime_bridge.active_animation_id`

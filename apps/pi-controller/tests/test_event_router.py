@@ -278,6 +278,46 @@ class EventRouterTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    async def test_microphone_bridge_supports_inverted_level_mode(self) -> None:
+        bridge = MicrophoneRuntimeBridge(
+            {
+                "microphone": {
+                    "runtime_bridge": {
+                        "enabled": True,
+                        "channel_id": "mouth",
+                        "invert_level": True,
+                        "active_threshold": 14,
+                        "idle_threshold": 24,
+                        "active_animation_id": "smile",
+                        "idle_frame_id": "mouth-smile-soft",
+                        "switch_cooldown_ms": 0,
+                        "release_hold_ms": 0,
+                    }
+                }
+            }
+        )
+        runtime = FakeRuntime()
+        runtime.active_project = {
+            "name": "Project-Fifo",
+            "frames": [
+                {"id": "mouth-smile-soft", "name": "Mouth Smile Soft"},
+            ],
+            "animations": [
+                {"id": "smile", "name": "Smile", "channelId": "mouth"},
+            ],
+        }
+
+        await bridge.process_microphone_state(runtime, {"available": True, "level_percent": 10})
+        await bridge.process_microphone_state(runtime, {"available": True, "level_percent": 35})
+
+        self.assertEqual(
+            runtime.calls,
+            [
+                ("set_channel_animation", "mouth", "smile"),
+                ("set_channel_frame", "mouth", "mouth-smile-soft"),
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
