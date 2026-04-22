@@ -1,14 +1,14 @@
 {
   "host": "0.0.0.0",
   "port": 8765,
-  "matrices_wide": 3,
+  "matrices_wide": 7,
   "matrices_high": 1,
   "rotate": 0,
   "brightness": 3,
   "runtime_tick_hz": 100,
-  "boot_project": null,
+  "boot_project": "Project-Fifo",
   "block_orientation": 90,
-  "reverse_order": false,
+  "reverse_order": true,
   "serpentine": false,
   "oled_coalesce_seconds": 0.15,
   "microphone": {
@@ -38,7 +38,23 @@
     }
   },
   "panel_order": null,
-  "panel_rotations": null,
-  "panel_mirrors": null
+  "panel_rotations": [
+    0,
+    0,
+    0,
+    180,
+    180,
+    180,
+    180
+  ],
+  "panel_mirrors": [
+    false,
+    false,
+    false,
+    true,
+    true,
+    true,
+    true
+  ]
 }
 
