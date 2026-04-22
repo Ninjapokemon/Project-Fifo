@@ -89,11 +89,11 @@
               </div>
               <div id="workspaceStorageCardBody" class="collapsible-card-body">
                 <p id="saveWorkflowStatus" class="animation-studio-copy">
-                  Save the current drawing or project as JSON, or keep single-frame snapshots on the Pi.
+                  Save to a local JSON file here. Pi frame saves below are a separate single-frame library.
                 </p>
                 <div class="button-row wrap">
-                  <button id="saveButton" type="button" class="secondary">Save JSON</button>
-                  <button id="loadButton" type="button" class="secondary">Load JSON</button>
+                  <button id="saveButton" type="button" class="secondary">Save To File (JSON)</button>
+                  <button id="loadButton" type="button" class="secondary">Load From File (JSON)</button>
                 </div>
                 <div class="animation-studio-divider"></div>
                 <label class="field">
@@ -104,8 +104,8 @@
                 </label>
                 <div class="button-row wrap">
                   <button id="refreshPiDrawingsButton" type="button" class="secondary">Refresh Frames</button>
-                  <button id="saveToPiButton" type="button" class="secondary">Save Current Frame</button>
-                  <button id="loadFromPiButton" type="button" class="secondary">Load Saved Frame</button>
+                  <button id="saveToPiButton" type="button" class="secondary">Save Frame To Pi</button>
+                  <button id="loadFromPiButton" type="button" class="secondary">Load Frame From Pi</button>
                 </div>
               </div>
             </section>
@@ -140,6 +140,7 @@
                 <div class="button-row wrap">
                   <button id="refreshPiProjectsButton" type="button" class="secondary">Refresh Projects</button>
                   <button id="saveProjectToPiButton" type="button" class="secondary">Save Project To Pi</button>
+                  <button id="saveAndRunProjectButton" type="button" class="secondary">Save + Run On Pi</button>
                   <button id="loadProjectFromPiButton" type="button" class="secondary">Load Project To Editor</button>
                 </div>
                 <div class="button-row wrap">
@@ -422,7 +423,11 @@
                         <span class="card-title-main">Clip Timeline</span>
                       </span>
                     </button>
-                    <button id="addAnimationStepButton" type="button" class="secondary">Insert Current Frame</button>
+                    <div class="button-row wrap">
+                      <button id="newFrameButton" type="button" class="secondary">New Frame</button>
+                      <button id="duplicateFrameButton" type="button" class="secondary">Duplicate Frame</button>
+                      <button id="addAnimationStepButton" type="button" class="secondary">Insert Current Frame</button>
+                    </div>
                   </div>
                   <div id="animationStepsCardBody" class="collapsible-card-body">
                     <div id="animationStepList" class="animation-step-list" aria-label="Clip timeline"></div>
@@ -487,11 +492,7 @@
                       </div>
                       <div id="frameStripCardBody" class="collapsible-card-body">
                         <div class="button-row wrap">
-                          <button id="newFrameButton" type="button" class="secondary">New Frame</button>
-                          <button id="duplicateFrameButton" type="button" class="secondary">Duplicate Frame</button>
                           <button id="deleteFrameButton" type="button" class="secondary">Delete Frame</button>
-                        </div>
-                        <div class="button-row wrap">
                           <button id="moveFrameLeftButton" type="button" class="secondary">Move Left</button>
                           <button id="moveFrameRightButton" type="button" class="secondary">Move Right</button>
                         </div>

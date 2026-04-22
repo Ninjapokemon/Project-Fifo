@@ -150,6 +150,7 @@ const state = {
     activeTargetName: null,
     activeProjectPersisted: false,
   },
+  pendingProjectAutoRunName: null,
   connectedDisplayWidth: null,
   connectedDisplayHeight: null,
   pixelColor: DEFAULT_PIXEL_COLOR,
@@ -303,6 +304,7 @@ const elements = {
   loadFromPiButton: document.querySelector("#loadFromPiButton"),
   piRuntimeStatus: document.querySelector("#piRuntimeStatus"),
   saveProjectToPiButton: document.querySelector("#saveProjectToPiButton"),
+  saveAndRunProjectButton: document.querySelector("#saveAndRunProjectButton"),
   piProjectSelect: document.querySelector("#piProjectSelect"),
   refreshPiProjectsButton: document.querySelector("#refreshPiProjectsButton"),
   loadProjectFromPiButton: document.querySelector("#loadProjectFromPiButton"),
@@ -3262,7 +3264,7 @@ function syncAnimationChannelOptions() {
 function syncChannelSectionControls() {
   const previousChannelId = elements.channelSectionChannelSelect.value || state.project.channels[0]?.id || "";
   const previousGroupId = elements.channelSectionGroupSelect.value || state.boardGroups[0] || "";
-  const channelGroupMap = cloneProjectChannelGroupMap();
+  const channelGroupMap = cloneProjectChannelGroupMapLoose();
 
   elements.channelSectionChannelSelect.innerHTML = "";
   state.project.channels.forEach((channel) => {
@@ -3764,17 +3766,18 @@ function renderProjectEditor() {
   const frameCount = state.project.frames.length;
   const animationCount = state.project.animations.length;
   const hasProjectSave = frameCount > 1 || animationCount > 0;
-  elements.saveButton.textContent = hasProjectSave ? "Save Project JSON" : "Save Drawing JSON";
-  elements.loadButton.textContent = "Load JSON";
+  elements.saveButton.textContent = hasProjectSave ? "Save Project To File (JSON)" : "Save Drawing To File (JSON)";
+  elements.loadButton.textContent = "Load From File (JSON)";
   elements.saveWorkflowStatus.textContent = hasProjectSave
-    ? `Saving here exports the full project with ${frameCount} frame${frameCount === 1 ? "" : "s"} and `
-      + `${animationCount} clip${animationCount === 1 ? "" : "s"} as one JSON file.`
-    : "Saving here exports a single drawing JSON. Add more frames or clips and it will switch to a full project save.";
+    ? `Save To File exports the full project with ${frameCount} frame${frameCount === 1 ? "" : "s"} and `
+      + `${animationCount} clip${animationCount === 1 ? "" : "s"} as one JSON file. `
+      + "Use the Pi frame buttons below only for single-frame library saves."
+    : "Save To File exports one drawing JSON. Add more frames or clips and it will switch to full project JSON.";
   elements.projectDeployStatus.textContent = animationCount > 0
-    ? `Save Project To Pi uploads all ${frameCount} frames and ${animationCount} clip${animationCount === 1 ? "" : "s"} together. Then choose that project below to run it or set it as boot.`
+    ? `Save Project To Pi stores all ${frameCount} frames and ${animationCount} clip${animationCount === 1 ? "" : "s"} as one Pi project. Then choose it below to run on Pi or set as boot.`
     : frameCount > 1
-      ? `Save Project To Pi uploads all ${frameCount} frames together as one project. Then choose that project below to run it or set it as boot.`
-      : "Save Project To Pi uploads the current one-frame project. Choose it below to run it or set it as boot.";
+      ? `Save Project To Pi stores all ${frameCount} frames as one Pi project. Then choose it below to run on Pi or set as boot.`
+      : "Save Project To Pi stores the current one-frame project. Choose it below to run on Pi or set as boot.";
 
   if (state.project.previewTimer == null) {
     renderSelectedAnimationPreview();
@@ -4094,6 +4097,11 @@ function syncChannelsFromNamedGroups() {
   }
 
   const existingChannels = cloneProjectChannels();
+  const existingChannelGroupMap = cloneProjectChannelGroupMap(
+    state.project.channelGroupMap,
+    existingChannels,
+    state.boardGroups,
+  );
   const channelsById = new Map(existingChannels.map((channel) => [channel.id, channel]));
   const baseChannel = channelsById.get(DEFAULT_PROJECT_CHANNEL_ID) || createDefaultProjectChannel();
   const nextChannels = [
@@ -4157,6 +4165,30 @@ function syncChannelsFromNamedGroups() {
   });
 
   state.project.channels = nextChannels;
+  const nextChannelIds = new Set(nextChannels.map((channel) => channel.id));
+  const nextGroupIds = new Set(getBoardGroups(state.boardLayout, state.boardGroups));
+  const nextChannelGroupMap = {};
+
+  // Preserve explicit links where both channel and group still exist.
+  Object.entries(existingChannelGroupMap).forEach(([channelId, groupId]) => {
+    if (nextChannelIds.has(channelId) && nextGroupIds.has(groupId)) {
+      nextChannelGroupMap[channelId] = groupId;
+    }
+  });
+
+  // Auto-link channels created from named groups back to the same group.
+  namedGroups.forEach(({ groupId, name }) => {
+    const matchingChannel = nextChannels.find((channel) => (
+      channel.id !== DEFAULT_PROJECT_CHANNEL_ID
+      && typeof channel.name === "string"
+      && channel.name.trim().toLowerCase() === name.toLowerCase()
+    ));
+    if (matchingChannel && nextGroupIds.has(groupId)) {
+      nextChannelGroupMap[matchingChannel.id] = groupId;
+    }
+  });
+
+  state.project.channelGroupMap = nextChannelGroupMap;
   normalizeProjectState();
   renderProjectEditor();
   saveAutosave();
@@ -4185,7 +4217,13 @@ function linkSelectedChannelToGroup() {
     return;
   }
 
-  const currentMap = cloneProjectChannelGroupMap();
+  const currentMap = (
+    state.project.channelGroupMap
+    && typeof state.project.channelGroupMap === "object"
+    && !Array.isArray(state.project.channelGroupMap)
+  )
+    ? { ...state.project.channelGroupMap }
+    : {};
   if (currentMap[channelId] === groupId) {
     return;
   }
@@ -4198,6 +4236,13 @@ function linkSelectedChannelToGroup() {
   saveAutosave();
   pushHistorySnapshot("channel section link");
   log(`Linked channel "${channel.name}" to section "${getBoardGroupLabel(groupId)}".`);
+  const linkedBoardCount = state.boardLayout.filter((board) => board.groupId === groupId).length;
+  if (linkedBoardCount === 0) {
+    log(
+      `Warning: section "${getBoardGroupLabel(groupId)}" currently has no boards assigned. `
+      + `Channel "${channel.name}" will render nothing until at least one board is moved into that section.`,
+    );
+  }
 }
 
 function unlinkSelectedChannelFromGroup() {
@@ -4209,7 +4254,7 @@ function unlinkSelectedChannelFromGroup() {
     return;
   }
 
-  const currentMap = cloneProjectChannelGroupMap();
+  const currentMap = cloneProjectChannelGroupMapLoose();
   if (!currentMap[channelId]) {
     return;
   }
@@ -4488,12 +4533,14 @@ function buildLoadDrawingMessage(name) {
   };
 }
 
-function buildSaveProjectMessage() {
-  const project = buildCurrentProjectPayload();
+function buildSaveProjectMessage(project = null) {
+  const payload = project || buildCurrentProjectPayload();
   return {
     type: "save_project",
     version: 1,
-    ...project,
+    ...payload,
+    // Backward-compat for Pi servers that still use snake_case project metadata keys.
+    channel_group_map: payload.channelGroupMap,
   };
 }
 
@@ -4718,18 +4765,41 @@ function cloneProjectChannelGroupMap(
   channelGroupMap = state.project.channelGroupMap,
   channels = state.project.channels,
   groups = state.boardGroups,
+  layout = state.boardLayout,
 ) {
   if (!channelGroupMap || typeof channelGroupMap !== "object" || Array.isArray(channelGroupMap)) {
     return {};
   }
 
   const channelIds = new Set(cloneProjectChannels(channels).map((channel) => channel.id));
-  const groupIds = new Set(getBoardGroups(state.boardLayout, groups));
+  const groupIds = new Set(getBoardGroups(layout, groups));
   const normalizedMap = {};
   Object.entries(channelGroupMap).forEach(([rawChannelId, rawGroupId]) => {
     const channelId = typeof rawChannelId === "string" ? rawChannelId.trim() : "";
     const groupId = typeof rawGroupId === "string" ? rawGroupId.trim() : "";
     if (!channelId || !groupId || !channelIds.has(channelId) || !groupIds.has(groupId)) {
+      return;
+    }
+    normalizedMap[channelId] = groupId;
+  });
+
+  return normalizedMap;
+}
+
+function cloneProjectChannelGroupMapLoose(
+  channelGroupMap = state.project.channelGroupMap,
+  channels = state.project.channels,
+) {
+  if (!channelGroupMap || typeof channelGroupMap !== "object" || Array.isArray(channelGroupMap)) {
+    return {};
+  }
+
+  const channelIds = new Set(cloneProjectChannels(channels).map((channel) => channel.id));
+  const normalizedMap = {};
+  Object.entries(channelGroupMap).forEach(([rawChannelId, rawGroupId]) => {
+    const channelId = typeof rawChannelId === "string" ? rawChannelId.trim() : "";
+    const groupId = typeof rawGroupId === "string" ? rawGroupId.trim() : "";
+    if (!channelId || !groupId || !channelIds.has(channelId)) {
       return;
     }
     normalizedMap[channelId] = groupId;
@@ -4842,10 +4912,9 @@ function normalizeProjectState(projectState = state.project) {
     channelIds = new Set(projectState.channels.map((channel) => channel.id));
   }
   projectState.channelDefaults = cloneProjectChannelDefaults(projectState.channelDefaults, projectState.channels);
-  projectState.channelGroupMap = cloneProjectChannelGroupMap(
+  projectState.channelGroupMap = cloneProjectChannelGroupMapLoose(
     projectState.channelGroupMap,
     projectState.channels,
-    state.boardGroups,
   );
   projectState.animations = projectState.animations.map((animation) => {
     const nextChannelId = typeof animation.channelId === "string" ? animation.channelId.trim() : "";
@@ -4960,7 +5029,12 @@ function fitProjectToConnectedDisplay(project) {
     animations: cloneProjectAnimations(project.animations),
     channels: cloneProjectChannels(project.channels),
     channelDefaults: cloneProjectChannelDefaults(project.channelDefaults, project.channels),
-    channelGroupMap: cloneProjectChannelGroupMap(project.channelGroupMap, project.channels, project.boardGroups),
+    channelGroupMap: cloneProjectChannelGroupMap(
+      project.channelGroupMap,
+      project.channels,
+      project.boardGroups,
+      project.boardLayout,
+    ),
   };
 
   if (!Number.isInteger(targetWidth) || targetWidth <= 0 || !Number.isInteger(targetHeight) || targetHeight <= 0) {
@@ -4989,24 +5063,71 @@ function fitProjectToConnectedDisplay(project) {
 function buildCurrentProjectPayload(options = {}) {
   normalizeProjectState();
 
+  const boardLayout = serializeBoardLayout();
   const frames = getProjectFramesSnapshot();
   const animations = getProjectAnimationsSnapshot();
   const channels = cloneProjectChannels();
-  const channelDefaults = cloneProjectChannelDefaults(state.project.channelDefaults, channels);
+  const baseChannelDefaults = cloneProjectChannelDefaults(state.project.channelDefaults, channels);
+  const firstAnimationByChannelId = {};
+  animations.forEach((animation) => {
+    const channelId = typeof animation.channelId === "string" && animation.channelId.trim()
+      ? animation.channelId.trim()
+      : DEFAULT_PROJECT_CHANNEL_ID;
+    if (!firstAnimationByChannelId[channelId]) {
+      firstAnimationByChannelId[channelId] = animation.id;
+    }
+  });
+  const normalizedChannelDefaults = {};
+  channels.forEach((channel) => {
+    const existing = baseChannelDefaults?.[channel.id];
+    const nextDefaults = (existing && typeof existing === "object" && !Array.isArray(existing))
+      ? { ...existing }
+      : {};
+    if (
+      !nextDefaults.startupAnimationId
+      && typeof firstAnimationByChannelId[channel.id] === "string"
+      && firstAnimationByChannelId[channel.id].trim()
+    ) {
+      nextDefaults.startupAnimationId = firstAnimationByChannelId[channel.id];
+    }
+    if (Object.keys(nextDefaults).length > 0) {
+      normalizedChannelDefaults[channel.id] = nextDefaults;
+    }
+  });
+  const channelDefaults = Object.keys(normalizedChannelDefaults).length > 0 ? normalizedChannelDefaults : null;
+  const channelGroupMap = cloneProjectChannelGroupMap(
+    state.project.channelGroupMap,
+    channels,
+    state.boardGroups,
+    boardLayout,
+  );
+  // Compatibility fallback for Pi runtimes that may strip channelGroupMap.
+  // We mirror the mapping into channelDefaults so section links can round-trip.
+  Object.entries(channelGroupMap).forEach(([channelId, groupId]) => {
+    const existingDefaults = normalizedChannelDefaults[channelId];
+    const nextDefaults = (existingDefaults && typeof existingDefaults === "object" && !Array.isArray(existingDefaults))
+      ? { ...existingDefaults }
+      : {};
+    nextDefaults.sectionGroupId = groupId;
+    normalizedChannelDefaults[channelId] = nextDefaults;
+  });
+  const normalizedChannelDefaultsOrNull = Object.keys(normalizedChannelDefaults).length > 0
+    ? normalizedChannelDefaults
+    : null;
   const frameIds = new Set(frames.map((frame) => frame.id));
   const animationIds = new Set(animations.map((animation) => animation.id));
   const payload = {
     name: state.drawingName,
     width: state.width,
     height: state.height,
-    boardLayout: serializeBoardLayout(),
+    boardLayout,
     boardGroups: [...state.boardGroups],
     boardGroupNames: cloneBoardGroupNames(),
     frames,
     animations,
     channels,
-    channelDefaults,
-    channelGroupMap: cloneProjectChannelGroupMap(state.project.channelGroupMap, channels, state.boardGroups),
+    channelDefaults: normalizedChannelDefaultsOrNull,
+    channelGroupMap,
     defaultFrameId: frameIds.has(state.project.defaultFrameId) ? state.project.defaultFrameId : null,
     defaultAnimationId: animationIds.has(state.project.defaultAnimationId) ? state.project.defaultAnimationId : null,
   };
@@ -5146,9 +5267,21 @@ function projectChannelGroupMapMatch(
   rightChannels = state.project.channels,
   leftGroups = state.boardGroups,
   rightGroups = state.boardGroups,
+  leftLayout = state.boardLayout,
+  rightLayout = state.boardLayout,
 ) {
-  const leftNormalized = cloneProjectChannelGroupMap(leftMap, leftChannels, leftGroups);
-  const rightNormalized = cloneProjectChannelGroupMap(rightMap, rightChannels, rightGroups);
+  const leftNormalized = cloneProjectChannelGroupMap(
+    leftMap,
+    leftChannels,
+    leftGroups,
+    leftLayout,
+  );
+  const rightNormalized = cloneProjectChannelGroupMap(
+    rightMap,
+    rightChannels,
+    rightGroups,
+    rightLayout,
+  );
   const leftKeys = Object.keys(leftNormalized).sort();
   const rightKeys = Object.keys(rightNormalized).sort();
   if (leftKeys.length !== rightKeys.length) {
@@ -5196,6 +5329,7 @@ function applyProjectToEditor(project, reason, options = {}) {
     fittedProject.channelGroupMap,
     fittedProject.channels,
     normalizedWorkspace.boardGroups,
+    normalizedWorkspace.boardLayout,
   );
   state.project.activeFrameId = activeFrame.id;
   state.project.activeAnimationId = activeAnimationId;
@@ -5251,6 +5385,7 @@ function restoreSnapshot(snapshot, reason, options = {}) {
       snapshot.project.channelGroupMap,
       snapshot.project.channels,
       snapshot.boardGroups,
+      snapshot.boardLayout,
     ),
     defaultFrameId: snapshot.project.defaultFrameId,
     defaultAnimationId: snapshot.project.defaultAnimationId,
@@ -5303,6 +5438,8 @@ function snapshotsMatch(left, right) {
     right.project.channels,
     left.boardGroups,
     right.boardGroups,
+    left.boardLayout,
+    right.boardLayout,
   )) {
     return false;
   }
@@ -6055,8 +6192,9 @@ function saveDrawing() {
   saveAutosave();
 
   const project = buildCurrentProjectPayload({ includeEditorState: true });
+  const hasChannelSectionLinks = Object.keys(project.channelGroupMap || {}).length > 0;
   const safeFilename = state.drawingName.replace(/[^a-z0-9-_]+/gi, "-").replace(/^-+|-+$/g, "") || "fifo-drawing";
-  if (project.frames.length === 1 && project.animations.length === 0) {
+  if (project.frames.length === 1 && project.animations.length === 0 && !hasChannelSectionLinks) {
     const drawing = {
       name: state.drawingName,
       width: project.width,
@@ -6154,8 +6292,10 @@ function updatePiRuntimeStatus() {
   elements.piRuntimeStatus.textContent = getPiRuntimeStatusText();
 }
 
-function syncPiProjectOptions() {
-  const previousValue = elements.piProjectSelect.value;
+function syncPiProjectOptions(preferredValue = null) {
+  const previousValue = typeof preferredValue === "string" && preferredValue.trim()
+    ? preferredValue.trim()
+    : elements.piProjectSelect.value;
   elements.piProjectSelect.innerHTML = "";
 
   if (state.piProjects.length === 0) {
@@ -6232,17 +6372,49 @@ function requestPiProjectList(reason) {
   }
 }
 
-function saveProjectToPi() {
+function saveProjectToPi(options = {}) {
+  const { autoRun = false } = options;
   state.drawingName = sanitizeDrawingName(elements.drawingName.value);
   elements.drawingName.value = state.drawingName;
 
   const project = buildCurrentProjectPayload();
-  const sent = sendMessage(buildSaveProjectMessage());
+  const sent = sendMessage(buildSaveProjectMessage(project));
   if (sent) {
-    log(`Sent "${state.drawingName}" to the Pi as a bootable project with ${project.frames.length} frames and ${project.animations.length} clips.`);
+    const sectionLinkCount = Object.keys(project.channelGroupMap || {}).length;
+    const sectionLinkSummary = Object.entries(project.channelGroupMap || {})
+      .map(([channelId, groupId]) => {
+        const channelName = project.channels.find((channel) => channel.id === channelId)?.name || channelId;
+        const groupLabel = getBoardGroupLabel(groupId);
+        const boardCount = state.boardLayout.filter((board) => board.groupId === groupId).length;
+        return `${channelName} -> ${groupLabel} (${boardCount} board${boardCount === 1 ? "" : "s"})`;
+      })
+      .join(" | ");
+    if (autoRun) {
+      state.pendingProjectAutoRunName = sanitizeDrawingName(state.drawingName);
+      log(
+        `Sent "${state.drawingName}" to the Pi with ${project.frames.length} frames, `
+        + `${project.animations.length} clips, and ${sectionLinkCount} section `
+        + `link${sectionLinkCount === 1 ? "" : "s"}. Waiting for save confirmation, then running on Pi.`,
+      );
+    } else {
+      state.pendingProjectAutoRunName = null;
+      log(
+        `Sent "${state.drawingName}" to the Pi as a bootable project with `
+        + `${project.frames.length} frames, ${project.animations.length} clips, `
+        + `and ${sectionLinkCount} section link${sectionLinkCount === 1 ? "" : "s"}.`,
+      );
+    }
+    if (sectionLinkSummary) {
+      log(`Section link map: ${sectionLinkSummary}.`);
+    }
   } else {
+    state.pendingProjectAutoRunName = null;
     log("Not connected. Could not save a project to the Pi.");
   }
+}
+
+function saveAndRunProjectOnPi() {
+  saveProjectToPi({ autoRun: true });
 }
 
 function loadProjectFromPi() {
@@ -6571,12 +6743,13 @@ function validateLoadedProject(data) {
     data.boardGroups ?? null,
   );
 
+  const rawChannelGroupMap = data.channelGroupMap ?? data.channel_group_map;
   let channelGroupMap = {};
-  if (data.channelGroupMap != null) {
-    if (!data.channelGroupMap || typeof data.channelGroupMap !== "object" || Array.isArray(data.channelGroupMap)) {
+  if (rawChannelGroupMap != null) {
+    if (!rawChannelGroupMap || typeof rawChannelGroupMap !== "object" || Array.isArray(rawChannelGroupMap)) {
       throw new Error("channelGroupMap must be an object when provided.");
     }
-    Object.entries(data.channelGroupMap).forEach(([rawChannelId, rawGroupId]) => {
+    Object.entries(rawChannelGroupMap).forEach(([rawChannelId, rawGroupId]) => {
       const channelId = typeof rawChannelId === "string" ? rawChannelId.trim() : "";
       const groupId = typeof rawGroupId === "string" ? rawGroupId.trim() : "";
       if (!channelId || !channelIds.has(channelId)) {
@@ -6586,6 +6759,21 @@ function validateLoadedProject(data) {
         throw new Error("channelGroupMap values must reference known board groups.");
       }
       channelGroupMap[channelId] = groupId;
+    });
+  }
+  // Compatibility fallback: recover section links from channelDefaults when
+  // channelGroupMap is absent (older Pi runtimes may drop that field).
+  if (Object.keys(channelGroupMap).length === 0 && channelDefaults) {
+    Object.entries(channelDefaults).forEach(([channelId, defaults]) => {
+      if (!channelIds.has(channelId) || !defaults || typeof defaults !== "object" || Array.isArray(defaults)) {
+        return;
+      }
+      const fallbackGroupId = typeof defaults.sectionGroupId === "string"
+        ? defaults.sectionGroupId.trim()
+        : "";
+      if (fallbackGroupId && normalizedWorkspace.boardGroups.includes(fallbackGroupId)) {
+        channelGroupMap[channelId] = fallbackGroupId;
+      }
     });
   }
 
@@ -6609,8 +6797,16 @@ function validateLoadedProject(data) {
 function loadProjectIntoEditor(project, sourceLabel) {
   applyProjectToEditor(project, sourceLabel, { syncFrame: false });
   pushHistorySnapshot(sourceLabel);
-  scheduleFrameSend(sourceLabel);
   log(`Loaded project "${project.name}" into the editor with ${project.frames.length} frames and ${project.animations.length} clips.`);
+  const sectionLinkCount = Object.keys(project.channelGroupMap || {}).length;
+  if (sectionLinkCount > 0) {
+    const sectionLinkSummary = Object.entries(project.channelGroupMap || {})
+      .map(([channelId, groupId]) => `${channelId} -> ${getBoardGroupLabel(groupId)}`)
+      .join(" | ");
+    log(`Loaded section link map: ${sectionLinkSummary}.`);
+  } else {
+    log("Loaded section link map: none.");
+  }
 }
 
 async function loadEditorStateFromFile(file) {
@@ -6637,6 +6833,11 @@ function handleServerMessage(message) {
   }
 
   if (message.type === "error") {
+    if (state.pendingProjectAutoRunName) {
+      const pendingName = state.pendingProjectAutoRunName;
+      state.pendingProjectAutoRunName = null;
+      log(`Save + Run for "${pendingName}" was canceled because Pi returned an error.`);
+    }
     log(`Pi error: ${message.message}`);
     return;
   }
@@ -6791,9 +6992,23 @@ function handleServerMessage(message) {
     const savedName = sanitizeDrawingName(message.name);
     if (!state.piProjects.includes(savedName)) {
       state.piProjects = [...state.piProjects, savedName].sort((left, right) => left.localeCompare(right));
-      syncPiProjectOptions();
     }
+    syncPiProjectOptions(savedName);
+    elements.piProjectSelect.value = savedName;
     log(`Pi saved project "${savedName}".`);
+
+    const pendingAutoRunName = state.pendingProjectAutoRunName
+      ? sanitizeDrawingName(state.pendingProjectAutoRunName)
+      : null;
+    if (pendingAutoRunName && pendingAutoRunName === savedName) {
+      state.pendingProjectAutoRunName = null;
+      const sent = sendMessage(buildActivateProjectMessage(savedName));
+      if (sent) {
+        log(`Save + Run asked the Pi to run project "${savedName}".`);
+      } else {
+        log(`Saved "${savedName}", but could not send run command (not connected).`);
+      }
+    }
     return;
   }
 
@@ -6889,6 +7104,9 @@ function connect() {
     updatePiRuntimeStatus();
     if (state.runtime.mode === "live" && state.runtime.activeProject) {
       log(`Connection closed. The Pi can return to project "${state.runtime.activeProject}" once the live session ends.`);
+    }
+    if (state.pendingProjectAutoRunName) {
+      state.pendingProjectAutoRunName = null;
     }
     log("Connection closed.");
     if (state.socket === socket) {
@@ -7338,6 +7556,7 @@ function bindEvents() {
   });
   elements.loadFromPiButton.addEventListener("click", loadDrawingFromPi);
   elements.saveProjectToPiButton.addEventListener("click", saveProjectToPi);
+  elements.saveAndRunProjectButton.addEventListener("click", saveAndRunProjectOnPi);
   elements.refreshPiProjectsButton.addEventListener("click", () => {
     requestPiProjectList("manual refresh");
   });
