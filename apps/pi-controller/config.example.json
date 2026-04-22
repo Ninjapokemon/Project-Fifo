@@ -18,8 +18,6 @@
     "address": 72,
     "channel": 0,
     "sample_hz": 20,
-    "level_scale_mv": 600,
-    "noise_floor_mv": 0,
     "runtime_bridge": {
       "enabled": false,
       "channel_id": "mouth",

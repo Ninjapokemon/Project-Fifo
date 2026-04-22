@@ -89,8 +89,6 @@ Config keys:
 - `microphone.address`
 - `microphone.channel`
 - `microphone.sample_hz`
-- `microphone.level_scale_mv`
-- `microphone.noise_floor_mv`
 - `microphone.runtime_bridge.enabled`
 - `microphone.runtime_bridge.channel_id`
 - `microphone.runtime_bridge.invert_level`

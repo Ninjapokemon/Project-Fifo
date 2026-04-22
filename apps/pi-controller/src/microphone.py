@@ -24,16 +24,6 @@ class Ads1115MicrophoneMonitor:
         self.address = int(mic_config.get("address", 0x48))
         self.channel = int(mic_config.get("channel", 0))
         self.sample_hz = max(1.0, float(mic_config.get("sample_hz", 20.0)))
-        try:
-            level_scale_mv = float(mic_config.get("level_scale_mv", 600.0))
-        except (TypeError, ValueError):
-            level_scale_mv = 600.0
-        self.level_scale_mv = max(1.0, level_scale_mv)
-        try:
-            noise_floor_mv = float(mic_config.get("noise_floor_mv", 0.0))
-        except (TypeError, ValueError):
-            noise_floor_mv = 0.0
-        self.noise_floor_mv = max(0.0, noise_floor_mv)
         self.sample_interval = 1.0 / self.sample_hz
         self._last_state: dict[str, Any] = {
             "enabled": self.enabled,
@@ -115,13 +105,11 @@ class Ads1115MicrophoneMonitor:
             self._bias_mv = (self._bias_mv * 0.98) + (millivolts * 0.02)
 
         centered_mv = abs(millivolts - self._bias_mv)
-        if self.noise_floor_mv > 0.0:
-            centered_mv = max(0.0, centered_mv - self.noise_floor_mv)
         self._level_ema_mv = (self._level_ema_mv * 0.8) + (centered_mv * 0.2)
         self._peak_hold = max(self._peak_hold * 0.92, centered_mv)
 
         # Scale for voice-like levels from MAX9814 output.
-        scale_mv = self.level_scale_mv
+        scale_mv = 600.0
         level_percent = max(0, min(100, int((self._level_ema_mv / scale_mv) * 100)))
         peak_percent = max(0, min(100, int((self._peak_hold / scale_mv) * 100)))
         bias_mv = int(round(self._bias_mv))

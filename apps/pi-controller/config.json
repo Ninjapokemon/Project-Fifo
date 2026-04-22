@@ -18,14 +18,12 @@
     "address": 72,
     "channel": 0,
     "sample_hz": 20,
-    "level_scale_mv": 3000,
-    "noise_floor_mv": 120,
     "runtime_bridge": {
       "enabled": true,
       "channel_id": "mouth",
       "invert_level": false,
-      "active_threshold": 24,
-      "idle_threshold": 14,
+      "active_threshold": 18,
+      "idle_threshold": 10,
       "active_animation_id": "smile",
       "active_restore_channels": [
         "base"
