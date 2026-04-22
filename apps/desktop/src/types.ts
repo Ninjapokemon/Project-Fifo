@@ -175,6 +175,38 @@ export type DeleteProjectMessage = {
   name: string;
 };
 
+export type PlayChannelMessage = {
+  type: "play_channel";
+  version: 1;
+  channelId: string;
+};
+
+export type StopChannelMessage = {
+  type: "stop_channel";
+  version: 1;
+  channelId: string;
+};
+
+export type SetChannelAnimationMessage = {
+  type: "set_channel_animation";
+  version: 1;
+  channelId: string;
+  animationId: string;
+};
+
+export type SetChannelFrameMessage = {
+  type: "set_channel_frame";
+  version: 1;
+  channelId: string;
+  frameId: string;
+};
+
+export type ClearChannelMessage = {
+  type: "clear_channel";
+  version: 1;
+  channelId: string;
+};
+
 export type ClientMessage =
   | FrameMessage
   | ClearMessage
@@ -193,4 +225,9 @@ export type ClientMessage =
   | SetBootProjectMessage
   | ClearBootProjectMessage
   | ResumeProjectMessage
-  | DeleteProjectMessage;
+  | DeleteProjectMessage
+  | PlayChannelMessage
+  | StopChannelMessage
+  | SetChannelAnimationMessage
+  | SetChannelFrameMessage
+  | ClearChannelMessage;

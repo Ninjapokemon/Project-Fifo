@@ -148,6 +148,7 @@ const state = {
     bootProject: null,
     activeTargetType: null,
     activeTargetName: null,
+    channels: [],
     activeProjectPersisted: false,
   },
   pendingProjectAutoRunName: null,
@@ -265,6 +266,15 @@ const elements = {
   linkChannelSectionButton: document.querySelector("#linkChannelSectionButton"),
   unlinkChannelSectionButton: document.querySelector("#unlinkChannelSectionButton"),
   channelSectionStatus: document.querySelector("#channelSectionStatus"),
+  channelRuntimeChannelSelect: document.querySelector("#channelRuntimeChannelSelect"),
+  channelRuntimeAnimationSelect: document.querySelector("#channelRuntimeAnimationSelect"),
+  channelRuntimeFrameSelect: document.querySelector("#channelRuntimeFrameSelect"),
+  playChannelButton: document.querySelector("#playChannelButton"),
+  stopChannelButton: document.querySelector("#stopChannelButton"),
+  clearChannelButton: document.querySelector("#clearChannelButton"),
+  setChannelAnimationButton: document.querySelector("#setChannelAnimationButton"),
+  setChannelFrameButton: document.querySelector("#setChannelFrameButton"),
+  channelRuntimeStatus: document.querySelector("#channelRuntimeStatus"),
   previewAnimationButton: document.querySelector("#previewAnimationButton"),
   stopAnimationPreviewButton: document.querySelector("#stopAnimationPreviewButton"),
   animationName: document.querySelector("#animationName"),
@@ -3319,6 +3329,115 @@ function syncChannelSectionControls() {
   elements.unlinkChannelSectionButton.disabled = !hasChannels;
 }
 
+function getRuntimeChannelsForControls() {
+  if (Array.isArray(state.runtime.channels) && state.runtime.channels.length > 0) {
+    return state.runtime.channels.map((channel) => ({
+      id: channel.channelId,
+      name: channel.channelName || channel.channelId,
+      targetType: channel.targetType,
+      targetName: channel.targetName,
+    }));
+  }
+
+  return state.project.channels.map((channel) => ({
+    id: channel.id,
+    name: channel.name,
+    targetType: null,
+    targetName: null,
+  }));
+}
+
+function syncChannelRuntimeControls() {
+  const runtimeChannels = getRuntimeChannelsForControls();
+  const previousChannelId = elements.channelRuntimeChannelSelect.value;
+  const previousAnimationId = elements.channelRuntimeAnimationSelect.value;
+  const previousFrameId = elements.channelRuntimeFrameSelect.value;
+
+  elements.channelRuntimeChannelSelect.innerHTML = "";
+  if (runtimeChannels.length === 0) {
+    const placeholderOption = document.createElement("option");
+    placeholderOption.value = "";
+    placeholderOption.textContent = "No channels available";
+    elements.channelRuntimeChannelSelect.appendChild(placeholderOption);
+  } else {
+    runtimeChannels.forEach((channel) => {
+      const option = document.createElement("option");
+      option.value = channel.id;
+      option.textContent = channel.name;
+      elements.channelRuntimeChannelSelect.appendChild(option);
+    });
+  }
+
+  if (runtimeChannels.some((channel) => channel.id === previousChannelId)) {
+    elements.channelRuntimeChannelSelect.value = previousChannelId;
+  } else if (runtimeChannels.length > 0) {
+    elements.channelRuntimeChannelSelect.value = runtimeChannels[0].id;
+  } else {
+    elements.channelRuntimeChannelSelect.value = "";
+  }
+
+  const selectedChannelId = elements.channelRuntimeChannelSelect.value;
+  const channelAnimations = state.project.animations.filter((animation) => animation.channelId === selectedChannelId);
+  elements.channelRuntimeAnimationSelect.innerHTML = "";
+  if (channelAnimations.length === 0) {
+    const placeholderOption = document.createElement("option");
+    placeholderOption.value = "";
+    placeholderOption.textContent = "No clips for this channel";
+    elements.channelRuntimeAnimationSelect.appendChild(placeholderOption);
+  } else {
+    channelAnimations.forEach((animation) => {
+      const option = document.createElement("option");
+      option.value = animation.id;
+      option.textContent = animation.name;
+      elements.channelRuntimeAnimationSelect.appendChild(option);
+    });
+  }
+  if (channelAnimations.some((animation) => animation.id === previousAnimationId)) {
+    elements.channelRuntimeAnimationSelect.value = previousAnimationId;
+  } else if (channelAnimations.length > 0) {
+    elements.channelRuntimeAnimationSelect.value = channelAnimations[0].id;
+  } else {
+    elements.channelRuntimeAnimationSelect.value = "";
+  }
+
+  elements.channelRuntimeFrameSelect.innerHTML = "";
+  if (state.project.frames.length === 0) {
+    const placeholderOption = document.createElement("option");
+    placeholderOption.value = "";
+    placeholderOption.textContent = "No frames in project";
+    elements.channelRuntimeFrameSelect.appendChild(placeholderOption);
+  } else {
+    state.project.frames.forEach((frame) => {
+      const option = document.createElement("option");
+      option.value = frame.id;
+      option.textContent = frame.name;
+      elements.channelRuntimeFrameSelect.appendChild(option);
+    });
+  }
+  if (state.project.frames.some((frame) => frame.id === previousFrameId)) {
+    elements.channelRuntimeFrameSelect.value = previousFrameId;
+  } else if (state.project.activeFrameId && state.project.frames.some((frame) => frame.id === state.project.activeFrameId)) {
+    elements.channelRuntimeFrameSelect.value = state.project.activeFrameId;
+  } else if (state.project.frames.length > 0) {
+    elements.channelRuntimeFrameSelect.value = state.project.frames[0].id;
+  } else {
+    elements.channelRuntimeFrameSelect.value = "";
+  }
+
+  const runtimeChannel = runtimeChannels.find((channel) => channel.id === selectedChannelId) || null;
+  if (!runtimeChannel) {
+    elements.channelRuntimeStatus.textContent = "No channel data available.";
+    return;
+  }
+
+  if (runtimeChannel.targetType && runtimeChannel.targetName) {
+    elements.channelRuntimeStatus.textContent = `${runtimeChannel.name} is running ${runtimeChannel.targetType} "${runtimeChannel.targetName}".`;
+    return;
+  }
+
+  elements.channelRuntimeStatus.textContent = `${runtimeChannel.name} is currently idle.`;
+}
+
 function formatTimelineDuration(durationMs) {
   if (!Number.isFinite(durationMs) || durationMs <= 0) {
     return "0 ms";
@@ -3742,6 +3861,28 @@ function updateProjectEditorControls() {
   elements.addAnimationStepButton.disabled = !activeAnimation;
   elements.previewAnimationButton.disabled = !activeAnimation || state.project.previewTimer != null;
   elements.stopAnimationPreviewButton.disabled = state.project.previewTimer == null;
+
+  const isConnected = Boolean(state.socket && state.socket.readyState === WebSocket.OPEN);
+  const hasRuntimeProject = state.runtime.mode === "project" && Boolean(state.runtime.activeProject);
+  const canControlRuntimeChannels = isConnected && hasRuntimeProject;
+  const hasRuntimeChannel = Boolean(elements.channelRuntimeChannelSelect.value);
+  const hasChannelAnimation = Boolean(elements.channelRuntimeAnimationSelect.value);
+  const hasFrame = Boolean(elements.channelRuntimeFrameSelect.value);
+
+  elements.channelRuntimeChannelSelect.disabled = !canControlRuntimeChannels || elements.channelRuntimeChannelSelect.options.length === 0;
+  elements.channelRuntimeAnimationSelect.disabled = !canControlRuntimeChannels || elements.channelRuntimeAnimationSelect.options.length === 0;
+  elements.channelRuntimeFrameSelect.disabled = !canControlRuntimeChannels || elements.channelRuntimeFrameSelect.options.length === 0;
+  elements.playChannelButton.disabled = !canControlRuntimeChannels || !hasRuntimeChannel;
+  elements.stopChannelButton.disabled = !canControlRuntimeChannels || !hasRuntimeChannel;
+  elements.clearChannelButton.disabled = !canControlRuntimeChannels || !hasRuntimeChannel;
+  elements.setChannelAnimationButton.disabled = !canControlRuntimeChannels || !hasRuntimeChannel || !hasChannelAnimation;
+  elements.setChannelFrameButton.disabled = !canControlRuntimeChannels || !hasRuntimeChannel || !hasFrame;
+
+  if (!isConnected) {
+    elements.channelRuntimeStatus.textContent = "Connect and run a Pi project to control channels live.";
+  } else if (!hasRuntimeProject) {
+    elements.channelRuntimeStatus.textContent = "Run a Pi project first, then adjust channel targets live.";
+  }
 }
 
 function renderProjectEditor() {
@@ -3752,6 +3893,7 @@ function renderProjectEditor() {
   syncAnimationOptions();
   syncAnimationChannelOptions();
   syncChannelSectionControls();
+  syncChannelRuntimeControls();
   renderAnimationStepList();
   updateProjectEditorControls();
 
@@ -4594,6 +4736,48 @@ function buildDeleteProjectMessage(name) {
     type: "delete_project",
     version: 1,
     name,
+  };
+}
+
+function buildPlayChannelMessage(channelId) {
+  return {
+    type: "play_channel",
+    version: 1,
+    channelId,
+  };
+}
+
+function buildStopChannelMessage(channelId) {
+  return {
+    type: "stop_channel",
+    version: 1,
+    channelId,
+  };
+}
+
+function buildSetChannelAnimationMessage(channelId, animationId) {
+  return {
+    type: "set_channel_animation",
+    version: 1,
+    channelId,
+    animationId,
+  };
+}
+
+function buildSetChannelFrameMessage(channelId, frameId) {
+  return {
+    type: "set_channel_frame",
+    version: 1,
+    channelId,
+    frameId,
+  };
+}
+
+function buildClearChannelMessage(channelId) {
+  return {
+    type: "clear_channel",
+    version: 1,
+    channelId,
   };
 }
 
@@ -6246,6 +6430,18 @@ function syncPiDrawingOptions() {
 }
 
 function applyPiRuntimeState(data) {
+  const runtimeChannels = Array.isArray(data.channels)
+    ? data.channels
+      .filter((channel) => channel && typeof channel === "object")
+      .map((channel) => ({
+        channelId: typeof channel.channel_id === "string" ? channel.channel_id.trim() : "",
+        channelName: typeof channel.channel_name === "string" ? channel.channel_name.trim() : "",
+        targetType: typeof channel.target_type === "string" ? channel.target_type.trim() : "",
+        targetName: typeof channel.target_name === "string" ? channel.target_name.trim() : "",
+      }))
+      .filter((channel) => channel.channelId)
+    : [];
+
   state.runtime = {
     mode: typeof data.runtime_mode === "string" ? data.runtime_mode : "idle",
     liveOverrideActive: data.live_override_active === true,
@@ -6253,9 +6449,12 @@ function applyPiRuntimeState(data) {
     bootProject: typeof data.boot_project === "string" ? sanitizeDrawingName(data.boot_project) : null,
     activeTargetType: typeof data.active_target_type === "string" ? data.active_target_type : null,
     activeTargetName: typeof data.active_target_name === "string" ? data.active_target_name : null,
+    channels: runtimeChannels,
     activeProjectPersisted: data.active_project_persisted === true,
   };
   updatePiRuntimeStatus();
+  syncChannelRuntimeControls();
+  updateProjectEditorControls();
 }
 
 function getPiRuntimeStatusText() {
@@ -6494,6 +6693,93 @@ function deleteProjectFromPi() {
     log(`Asked the Pi to delete project "${projectName}".`);
   } else {
     log("Not connected. Could not delete the Pi project.");
+  }
+}
+
+function playSelectedRuntimeChannel() {
+  const channelId = elements.channelRuntimeChannelSelect.value;
+  if (!channelId) {
+    log("Pick a runtime channel first.");
+    return;
+  }
+
+  const sent = sendMessage(buildPlayChannelMessage(channelId));
+  if (sent) {
+    log(`Asked the Pi to play channel "${channelId}".`);
+  } else {
+    log("Not connected. Could not send play channel command.");
+  }
+}
+
+function stopSelectedRuntimeChannel() {
+  const channelId = elements.channelRuntimeChannelSelect.value;
+  if (!channelId) {
+    log("Pick a runtime channel first.");
+    return;
+  }
+
+  const sent = sendMessage(buildStopChannelMessage(channelId));
+  if (sent) {
+    log(`Asked the Pi to stop channel "${channelId}".`);
+  } else {
+    log("Not connected. Could not send stop channel command.");
+  }
+}
+
+function clearSelectedRuntimeChannel() {
+  const channelId = elements.channelRuntimeChannelSelect.value;
+  if (!channelId) {
+    log("Pick a runtime channel first.");
+    return;
+  }
+
+  const sent = sendMessage(buildClearChannelMessage(channelId));
+  if (sent) {
+    log(`Asked the Pi to clear channel "${channelId}".`);
+  } else {
+    log("Not connected. Could not send clear channel command.");
+  }
+}
+
+function setSelectedRuntimeChannelAnimation() {
+  const channelId = elements.channelRuntimeChannelSelect.value;
+  const animationId = elements.channelRuntimeAnimationSelect.value;
+  if (!channelId) {
+    log("Pick a runtime channel first.");
+    return;
+  }
+  if (!animationId) {
+    log("Pick a runtime clip target first.");
+    return;
+  }
+
+  const sent = sendMessage(buildSetChannelAnimationMessage(channelId, animationId));
+  if (sent) {
+    const animation = state.project.animations.find((candidate) => candidate.id === animationId);
+    log(`Asked the Pi to set channel "${channelId}" to clip "${animation?.name || animationId}".`);
+  } else {
+    log("Not connected. Could not send set channel clip command.");
+  }
+}
+
+function setSelectedRuntimeChannelFrame() {
+  const channelId = elements.channelRuntimeChannelSelect.value;
+  const frameId = elements.channelRuntimeFrameSelect.value;
+  if (!channelId) {
+    log("Pick a runtime channel first.");
+    return;
+  }
+  if (!frameId) {
+    log("Pick a runtime frame target first.");
+    return;
+  }
+
+  const sent = sendMessage(buildSetChannelFrameMessage(channelId, frameId));
+  if (sent) {
+    const frame = state.project.frames.find((candidate) => candidate.id === frameId);
+    log(`Asked the Pi to set channel "${channelId}" to frame "${frame?.name || frameId}".`);
+  } else {
+    log("Not connected. Could not send set channel frame command.");
   }
 }
 
@@ -7065,6 +7351,33 @@ function handleServerMessage(message) {
     return;
   }
 
+  if (message.type === "channel_updated" && typeof message.action === "string" && typeof message.channelId === "string") {
+    const channelId = message.channelId.trim();
+    const action = message.action.trim();
+    if (action === "set_channel_animation" && typeof message.animationId === "string") {
+      const animation = state.project.animations.find((candidate) => candidate.id === message.animationId);
+      log(`Pi updated channel "${channelId}" to clip "${animation?.name || message.animationId}".`);
+      return;
+    }
+    if (action === "set_channel_frame" && typeof message.frameId === "string") {
+      const frame = state.project.frames.find((candidate) => candidate.id === message.frameId);
+      log(`Pi updated channel "${channelId}" to frame "${frame?.name || message.frameId}".`);
+      return;
+    }
+    if (action === "play_channel") {
+      log(`Pi started channel "${channelId}".`);
+      return;
+    }
+    if (action === "stop_channel") {
+      log(`Pi stopped channel "${channelId}".`);
+      return;
+    }
+    if (action === "clear_channel") {
+      log(`Pi cleared channel "${channelId}".`);
+      return;
+    }
+  }
+
   log(`Pi says: ${JSON.stringify(message)}`);
 }
 
@@ -7102,6 +7415,7 @@ function connect() {
     clearConnectedDisplaySize();
     syncLayoutInputs();
     updatePiRuntimeStatus();
+    updateProjectEditorControls();
     if (state.runtime.mode === "live" && state.runtime.activeProject) {
       log(`Connection closed. The Pi can return to project "${state.runtime.activeProject}" once the live session ends.`);
     }
@@ -7357,6 +7671,15 @@ function bindEvents() {
   });
   elements.linkChannelSectionButton.addEventListener("click", linkSelectedChannelToGroup);
   elements.unlinkChannelSectionButton.addEventListener("click", unlinkSelectedChannelFromGroup);
+  elements.channelRuntimeChannelSelect.addEventListener("change", () => {
+    syncChannelRuntimeControls();
+    updateProjectEditorControls();
+  });
+  elements.playChannelButton.addEventListener("click", playSelectedRuntimeChannel);
+  elements.stopChannelButton.addEventListener("click", stopSelectedRuntimeChannel);
+  elements.clearChannelButton.addEventListener("click", clearSelectedRuntimeChannel);
+  elements.setChannelAnimationButton.addEventListener("click", setSelectedRuntimeChannelAnimation);
+  elements.setChannelFrameButton.addEventListener("click", setSelectedRuntimeChannelFrame);
   elements.previewAnimationButton.addEventListener("click", startAnimationPreview);
   elements.stopAnimationPreviewButton.addEventListener("click", () => {
     if (state.project.previewTimer == null) {

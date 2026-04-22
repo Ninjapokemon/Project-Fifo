@@ -608,3 +608,39 @@ def validate_project_name_message(message: dict[str, Any], expected_type: str) -
         "version": 1,
         "name": name.strip(),
     }
+
+
+def _validate_channel_id(message: dict[str, Any]) -> str:
+    channel_id = message.get("channelId")
+    if not isinstance(channel_id, str) or not channel_id.strip():
+        raise ProtocolError("channelId must be a non-empty string")
+    return channel_id.strip()
+
+
+def validate_channel_request_message(message: dict[str, Any], expected_type: str) -> dict[str, Any]:
+    if message.get("type") != expected_type:
+        raise ProtocolError("Unsupported message type")
+
+    return {
+        "type": expected_type,
+        "version": 1,
+        "channelId": _validate_channel_id(message),
+    }
+
+
+def validate_set_channel_animation_message(message: dict[str, Any]) -> dict[str, Any]:
+    request = validate_channel_request_message(message, "set_channel_animation")
+    animation_id = message.get("animationId")
+    if not isinstance(animation_id, str) or not animation_id.strip():
+        raise ProtocolError("animationId must be a non-empty string")
+    request["animationId"] = animation_id.strip()
+    return request
+
+
+def validate_set_channel_frame_message(message: dict[str, Any]) -> dict[str, Any]:
+    request = validate_channel_request_message(message, "set_channel_frame")
+    frame_id = message.get("frameId")
+    if not isinstance(frame_id, str) or not frame_id.strip():
+        raise ProtocolError("frameId must be a non-empty string")
+    request["frameId"] = frame_id.strip()
+    return request

@@ -559,6 +559,35 @@
                           <button id="unlinkChannelSectionButton" type="button" class="secondary">Unlink Section</button>
                         </div>
                         <p id="channelSectionStatus" class="field-hint">No section links yet.</p>
+                        <div class="animation-studio-divider"></div>
+                        <label class="field">
+                          <span>Pi Runtime Channel</span>
+                          <select id="channelRuntimeChannelSelect">
+                            <option value="">Select runtime channel</option>
+                          </select>
+                        </label>
+                        <label class="field">
+                          <span>Runtime Clip Target</span>
+                          <select id="channelRuntimeAnimationSelect">
+                            <option value="">Select clip</option>
+                          </select>
+                        </label>
+                        <label class="field">
+                          <span>Runtime Frame Target</span>
+                          <select id="channelRuntimeFrameSelect">
+                            <option value="">Select frame</option>
+                          </select>
+                        </label>
+                        <div class="button-row wrap">
+                          <button id="playChannelButton" type="button" class="secondary">Play Channel</button>
+                          <button id="stopChannelButton" type="button" class="secondary">Stop Channel</button>
+                          <button id="clearChannelButton" type="button" class="secondary">Clear Channel</button>
+                        </div>
+                        <div class="button-row wrap">
+                          <button id="setChannelAnimationButton" type="button" class="secondary">Set Clip On Channel</button>
+                          <button id="setChannelFrameButton" type="button" class="secondary">Set Frame On Channel</button>
+                        </div>
+                        <p id="channelRuntimeStatus" class="field-hint">Connect and run a Pi project to control channels live.</p>
                         <label class="toggle-field" for="animationLoopInput">
                           <div>
                             <span>Loop Clip</span>

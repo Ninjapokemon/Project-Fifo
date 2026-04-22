@@ -10,18 +10,22 @@ import websockets
 
 from config import load_config, save_config
 from display import MatrixDisplay
+from event_router import MicrophoneRuntimeBridge
 from microphone import Ads1115MicrophoneMonitor
 from oled import DualOledStatus
 from project_store import ProjectStore
 from protocol import (
     ProtocolError,
     validate_brightness_message,
+    validate_channel_request_message,
     validate_drawing_name_message,
     validate_frame_message,
     validate_layout_message,
     validate_named_drawing,
     validate_project_message,
     validate_project_name_message,
+    validate_set_channel_animation_message,
+    validate_set_channel_frame_message,
     validate_simple_request_message,
 )
 from runtime import ProjectRuntime
@@ -333,6 +337,119 @@ async def handle_connection(
                         config,
                     )
                     continue
+                if message.get("type") == "play_channel":
+                    channel_request = validate_channel_request_message(message, "play_channel")
+                    await runtime.play_channel(channel_request["channelId"])
+                    await websocket.send(
+                        json.dumps(
+                            {
+                                "type": "channel_updated",
+                                "action": "play_channel",
+                                "channelId": channel_request["channelId"],
+                            }
+                        )
+                    )
+                    await send_state_message(
+                        websocket,
+                        display,
+                        drawing_store,
+                        project_store,
+                        runtime,
+                        config,
+                    )
+                    continue
+                if message.get("type") == "stop_channel":
+                    channel_request = validate_channel_request_message(message, "stop_channel")
+                    await runtime.stop_channel(channel_request["channelId"])
+                    await websocket.send(
+                        json.dumps(
+                            {
+                                "type": "channel_updated",
+                                "action": "stop_channel",
+                                "channelId": channel_request["channelId"],
+                            }
+                        )
+                    )
+                    await send_state_message(
+                        websocket,
+                        display,
+                        drawing_store,
+                        project_store,
+                        runtime,
+                        config,
+                    )
+                    continue
+                if message.get("type") == "set_channel_animation":
+                    channel_request = validate_set_channel_animation_message(message)
+                    await runtime.set_channel_animation(
+                        channel_request["channelId"],
+                        channel_request["animationId"],
+                    )
+                    await websocket.send(
+                        json.dumps(
+                            {
+                                "type": "channel_updated",
+                                "action": "set_channel_animation",
+                                "channelId": channel_request["channelId"],
+                                "animationId": channel_request["animationId"],
+                            }
+                        )
+                    )
+                    await send_state_message(
+                        websocket,
+                        display,
+                        drawing_store,
+                        project_store,
+                        runtime,
+                        config,
+                    )
+                    continue
+                if message.get("type") == "set_channel_frame":
+                    channel_request = validate_set_channel_frame_message(message)
+                    await runtime.set_channel_frame(
+                        channel_request["channelId"],
+                        channel_request["frameId"],
+                    )
+                    await websocket.send(
+                        json.dumps(
+                            {
+                                "type": "channel_updated",
+                                "action": "set_channel_frame",
+                                "channelId": channel_request["channelId"],
+                                "frameId": channel_request["frameId"],
+                            }
+                        )
+                    )
+                    await send_state_message(
+                        websocket,
+                        display,
+                        drawing_store,
+                        project_store,
+                        runtime,
+                        config,
+                    )
+                    continue
+                if message.get("type") == "clear_channel":
+                    channel_request = validate_channel_request_message(message, "clear_channel")
+                    await runtime.clear_channel(channel_request["channelId"])
+                    await websocket.send(
+                        json.dumps(
+                            {
+                                "type": "channel_updated",
+                                "action": "clear_channel",
+                                "channelId": channel_request["channelId"],
+                            }
+                        )
+                    )
+                    await send_state_message(
+                        websocket,
+                        display,
+                        drawing_store,
+                        project_store,
+                        runtime,
+                        config,
+                    )
+                    continue
                 if message.get("type") == "brightness":
                     brightness = validate_brightness_message(message)
                     applied_value = display.set_brightness(brightness["value"])
@@ -492,6 +609,7 @@ async def main() -> None:
         on_frame_render=oled_display.render_preview if use_mirror_callbacks else None,
         on_clear_render=oled_display.clear_preview if use_mirror_callbacks else None,
     )
+    microphone_runtime_bridge = MicrophoneRuntimeBridge(config)
 
     async def run_preset_preview_loop() -> None:
         while True:
@@ -500,7 +618,15 @@ async def main() -> None:
 
     async def run_microphone_loop() -> None:
         while True:
-            oled_display.update_microphone_state(microphone_monitor.sample_state())
+            microphone_state = microphone_monitor.sample_state()
+            oled_display.update_microphone_state(microphone_state)
+            bridge_message = await microphone_runtime_bridge.process_microphone_state(
+                runtime,
+                microphone_state,
+            )
+            if bridge_message:
+                print(bridge_message)
+                refresh_oled()
             await asyncio.sleep(microphone_monitor.sample_interval)
 
     try:

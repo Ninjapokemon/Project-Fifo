@@ -481,6 +481,148 @@ class ProjectRuntime:
         self._playback_task = asyncio.create_task(self._run_project_channels(project))
         await asyncio.sleep(0)
 
+    async def _ensure_project_channel_runtime(self) -> dict[str, Any]:
+        if self.active_project is None:
+            raise ValueError("No active project is loaded on the Pi")
+
+        if (
+            self.live_override_active
+            or self.runtime_mode != "project"
+            or self._playback_task is None
+            or not self._channel_states
+        ):
+            await self.resume_active_project()
+
+        return self.active_project
+
+    def _find_channel_state(self, channel_id: str) -> dict[str, Any]:
+        for channel_state in self._channel_states:
+            if channel_state["channel_id"] == channel_id:
+                return channel_state
+        raise ValueError(f'Unknown channel "{channel_id}" for the active project')
+
+    def _clear_channel_state_target(self, channel_state: dict[str, Any]) -> None:
+        channel_state["target_type"] = "none"
+        channel_state["target_id"] = ""
+        channel_state["target_name"] = ""
+        channel_state.pop("steps", None)
+        channel_state.pop("cumulative_limits", None)
+        channel_state.pop("total_ms", None)
+        channel_state.pop("loop", None)
+        channel_state.pop("started_at", None)
+
+    def _set_channel_animation_target(
+        self,
+        channel_state: dict[str, Any],
+        animation: dict[str, Any],
+    ) -> None:
+        self._clear_channel_state_target(channel_state)
+        loop = asyncio.get_running_loop()
+        normalized_steps = [
+            {
+                "frameId": step["frameId"],
+                "durationMs": max(1, int(step["durationMs"])),
+            }
+            for step in animation["steps"]
+        ]
+        cumulative_limits: list[int] = []
+        total_ms = 0
+        for step in normalized_steps:
+            total_ms += step["durationMs"]
+            cumulative_limits.append(total_ms)
+
+        channel_state["target_type"] = "animation"
+        channel_state["target_id"] = animation["id"]
+        channel_state["target_name"] = animation["name"]
+        channel_state["steps"] = normalized_steps
+        channel_state["cumulative_limits"] = cumulative_limits
+        channel_state["total_ms"] = max(1, total_ms)
+        channel_state["loop"] = bool(animation.get("loop", True))
+        channel_state["started_at"] = loop.time()
+
+    def _set_channel_frame_target(
+        self,
+        channel_state: dict[str, Any],
+        frame: dict[str, Any],
+    ) -> None:
+        self._clear_channel_state_target(channel_state)
+        channel_state["target_type"] = "frame"
+        channel_state["target_id"] = frame["id"]
+        channel_state["target_name"] = frame["name"]
+
+    def _commit_channel_state_change(self) -> None:
+        if self.active_project is None:
+            return
+
+        self._runtime_channels_state = self._get_runtime_channels_state()
+        self._set_active_target_from_channels()
+        pixels = self._compose_project_frame(self.active_project)
+        if any(pixel == 1 for pixel in pixels):
+            self._render_to_outputs(pixels, self.active_project["width"], self.active_project["height"])
+        else:
+            self._clear_outputs()
+        self.runtime_mode = "project"
+        self.live_override_active = False
+        self._emit_state_change()
+
+    async def play_channel(self, channel_id: str) -> None:
+        project = await self._ensure_project_channel_runtime()
+        normalized_channel_id = channel_id.strip()
+        channel_state = self._find_channel_state(normalized_channel_id)
+        target_type, target_id, _ = self._resolve_project_target(
+            project,
+            preferred_channel_id=normalized_channel_id,
+        )
+        if target_type == "none":
+            raise ValueError(f'Channel "{normalized_channel_id}" has no playable target')
+
+        if target_type == "animation":
+            animation = self._build_animations_by_id(project).get(target_id)
+            if animation is None:
+                raise ValueError(f'Animation "{target_id}" is not available in the active project')
+            self._set_channel_animation_target(channel_state, animation)
+        else:
+            frame = self._build_frames_by_id(project).get(target_id)
+            if frame is None:
+                raise ValueError(f'Frame "{target_id}" is not available in the active project')
+            self._set_channel_frame_target(channel_state, frame)
+
+        self._commit_channel_state_change()
+
+    async def stop_channel(self, channel_id: str) -> None:
+        await self._ensure_project_channel_runtime()
+        channel_state = self._find_channel_state(channel_id.strip())
+        self._clear_channel_state_target(channel_state)
+        self._commit_channel_state_change()
+
+    async def set_channel_animation(self, channel_id: str, animation_id: str) -> None:
+        project = await self._ensure_project_channel_runtime()
+        normalized_channel_id = channel_id.strip()
+        channel_state = self._find_channel_state(normalized_channel_id)
+        animation = self._build_animations_by_id(project).get(animation_id.strip())
+        if animation is None:
+            raise ValueError(f'Unknown animation "{animation_id.strip()}" for the active project')
+        if animation.get("channelId") != normalized_channel_id:
+            raise ValueError(
+                f'Animation "{animation["id"]}" does not belong to channel "{normalized_channel_id}"'
+            )
+
+        self._set_channel_animation_target(channel_state, animation)
+        self._commit_channel_state_change()
+
+    async def set_channel_frame(self, channel_id: str, frame_id: str) -> None:
+        project = await self._ensure_project_channel_runtime()
+        channel_state = self._find_channel_state(channel_id.strip())
+        frame = self._build_frames_by_id(project).get(frame_id.strip())
+        if frame is None:
+            raise ValueError(f'Unknown frame "{frame_id.strip()}" for the active project')
+
+        self._set_channel_frame_target(channel_state, frame)
+        self._commit_channel_state_change()
+
+    async def clear_channel(self, channel_id: str) -> None:
+        await self.stop_channel(channel_id)
+
     def register_client(self) -> None:
         self._connected_clients += 1
 

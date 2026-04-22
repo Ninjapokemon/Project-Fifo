@@ -17,7 +17,16 @@
     "i2c_bus": 1,
     "address": 72,
     "channel": 0,
-    "sample_hz": 20
+    "sample_hz": 20,
+    "runtime_bridge": {
+      "enabled": false,
+      "channel_id": "mouth",
+      "active_threshold": 24,
+      "idle_threshold": 12,
+      "active_animation_id": "talk",
+      "idle_animation_id": "idle",
+      "switch_cooldown_ms": 140
+    }
   },
   "oled": {
     "enabled": true,

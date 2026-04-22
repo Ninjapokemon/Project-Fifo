@@ -417,6 +417,201 @@ class RuntimeTests(unittest.IsolatedAsyncioTestCase):
                     else:
                         self.assertEqual(last_frame[index], 0)
 
+    async def test_runtime_channel_commands_update_active_targets(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_store = ProjectStore(Path(temp_dir))
+            project_store.save(
+                {
+                    "name": "Command Face",
+                    "width": 16,
+                    "height": 8,
+                    "frames": [
+                        {
+                            "id": "base-open",
+                            "name": "Base Open",
+                            "pixels": build_pixels(16, 8, [(0, 0)]),
+                        },
+                        {
+                            "id": "eyes-open",
+                            "name": "Eyes Open",
+                            "pixels": build_pixels(16, 8, [(1, 0)]),
+                        },
+                        {
+                            "id": "eyes-tight",
+                            "name": "Eyes Tight",
+                            "pixels": build_pixels(16, 8, [(2, 0)]),
+                        },
+                    ],
+                    "animations": [
+                        {
+                            "id": "idle",
+                            "name": "Idle",
+                            "loop": True,
+                            "channelId": "base",
+                            "steps": [
+                                {"frameId": "base-open", "durationMs": 120},
+                            ],
+                        },
+                        {
+                            "id": "blink",
+                            "name": "Blink",
+                            "loop": True,
+                            "channelId": "eyes",
+                            "steps": [
+                                {"frameId": "eyes-open", "durationMs": 120},
+                            ],
+                        },
+                        {
+                            "id": "squint",
+                            "name": "Squint",
+                            "loop": True,
+                            "channelId": "eyes",
+                            "steps": [
+                                {"frameId": "eyes-tight", "durationMs": 120},
+                            ],
+                        },
+                    ],
+                    "channels": [
+                        {
+                            "id": "base",
+                            "name": "Base",
+                            "priority": 100,
+                            "blendMode": "overwrite",
+                            "mask": None,
+                        },
+                        {
+                            "id": "eyes",
+                            "name": "Eyes",
+                            "priority": 200,
+                            "blendMode": "overwrite",
+                            "mask": None,
+                        },
+                    ],
+                    "channelDefaults": {
+                        "base": {"startupAnimationId": "idle"},
+                        "eyes": {"startupAnimationId": "blink"},
+                    },
+                    "defaultFrameId": None,
+                    "defaultAnimationId": "idle",
+                }
+            )
+
+            config = {"boot_project": None}
+            display = FakeDisplay()
+            runtime = ProjectRuntime(display, project_store, config, lambda updated_config: updated_config)
+            await runtime.activate_project("Command Face")
+
+            await runtime.stop_channel("eyes")
+            state_after_stop = runtime.get_runtime_state()
+            eyes_after_stop = next(
+                channel for channel in state_after_stop["channels"] if channel["channel_id"] == "eyes"
+            )
+            self.assertEqual(eyes_after_stop["target_type"], "none")
+
+            await runtime.set_channel_animation("eyes", "squint")
+            state_after_animation = runtime.get_runtime_state()
+            eyes_after_animation = next(
+                channel for channel in state_after_animation["channels"] if channel["channel_id"] == "eyes"
+            )
+            self.assertEqual(eyes_after_animation["target_type"], "animation")
+            self.assertEqual(eyes_after_animation["target_id"], "squint")
+
+            await runtime.set_channel_frame("base", "base-open")
+            state_after_frame = runtime.get_runtime_state()
+            base_after_frame = next(
+                channel for channel in state_after_frame["channels"] if channel["channel_id"] == "base"
+            )
+            self.assertEqual(base_after_frame["target_type"], "frame")
+            self.assertEqual(base_after_frame["target_id"], "base-open")
+
+            await runtime.clear_channel("base")
+            state_after_clear = runtime.get_runtime_state()
+            base_after_clear = next(
+                channel for channel in state_after_clear["channels"] if channel["channel_id"] == "base"
+            )
+            self.assertEqual(base_after_clear["target_type"], "none")
+
+            await runtime.play_channel("base")
+            state_after_play = runtime.get_runtime_state()
+            base_after_play = next(
+                channel for channel in state_after_play["channels"] if channel["channel_id"] == "base"
+            )
+            self.assertEqual(base_after_play["target_type"], "animation")
+            self.assertEqual(base_after_play["target_id"], "idle")
+
+    async def test_runtime_set_channel_animation_rejects_cross_channel_animation(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_store = ProjectStore(Path(temp_dir))
+            project_store.save(
+                {
+                    "name": "Invalid Command Face",
+                    "width": 16,
+                    "height": 8,
+                    "frames": [
+                        {
+                            "id": "base-open",
+                            "name": "Base Open",
+                            "pixels": build_pixels(16, 8, [(0, 0)]),
+                        },
+                        {
+                            "id": "eyes-open",
+                            "name": "Eyes Open",
+                            "pixels": build_pixels(16, 8, [(1, 0)]),
+                        },
+                    ],
+                    "animations": [
+                        {
+                            "id": "idle",
+                            "name": "Idle",
+                            "loop": True,
+                            "channelId": "base",
+                            "steps": [
+                                {"frameId": "base-open", "durationMs": 120},
+                            ],
+                        },
+                        {
+                            "id": "blink",
+                            "name": "Blink",
+                            "loop": True,
+                            "channelId": "eyes",
+                            "steps": [
+                                {"frameId": "eyes-open", "durationMs": 120},
+                            ],
+                        },
+                    ],
+                    "channels": [
+                        {
+                            "id": "base",
+                            "name": "Base",
+                            "priority": 100,
+                            "blendMode": "overwrite",
+                            "mask": None,
+                        },
+                        {
+                            "id": "eyes",
+                            "name": "Eyes",
+                            "priority": 200,
+                            "blendMode": "overwrite",
+                            "mask": None,
+                        },
+                    ],
+                    "channelDefaults": {
+                        "base": {"startupAnimationId": "idle"},
+                        "eyes": {"startupAnimationId": "blink"},
+                    },
+                    "defaultFrameId": None,
+                    "defaultAnimationId": "idle",
+                }
+            )
+
+            config = {"boot_project": None}
+            display = FakeDisplay()
+            runtime = ProjectRuntime(display, project_store, config, lambda updated_config: updated_config)
+            await runtime.activate_project("Invalid Command Face")
+
+            with self.assertRaises(ValueError):
+                await runtime.set_channel_animation("base", "blink")
+
 
 if __name__ == "__main__":
     unittest.main()

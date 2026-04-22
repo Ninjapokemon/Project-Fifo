@@ -8,7 +8,14 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
-from protocol import ProtocolError, validate_named_drawing, validate_project_payload  # noqa: E402
+from protocol import (  # noqa: E402
+    ProtocolError,
+    validate_channel_request_message,
+    validate_named_drawing,
+    validate_project_payload,
+    validate_set_channel_animation_message,
+    validate_set_channel_frame_message,
+)
 
 
 class ProtocolTests(unittest.TestCase):
@@ -277,6 +284,39 @@ class ProtocolTests(unittest.TestCase):
                     "channelGroupMap": {
                         "base": "mouth",
                     },
+                }
+            )
+
+    def test_validate_channel_request_message(self) -> None:
+        message = validate_channel_request_message(
+            {
+                "type": "play_channel",
+                "channelId": " eyes ",
+            },
+            "play_channel",
+        )
+        self.assertEqual(message["type"], "play_channel")
+        self.assertEqual(message["channelId"], "eyes")
+
+    def test_validate_set_channel_animation_message(self) -> None:
+        message = validate_set_channel_animation_message(
+            {
+                "type": "set_channel_animation",
+                "channelId": "mouth",
+                "animationId": " talk ",
+            }
+        )
+        self.assertEqual(message["type"], "set_channel_animation")
+        self.assertEqual(message["channelId"], "mouth")
+        self.assertEqual(message["animationId"], "talk")
+
+    def test_validate_set_channel_frame_message_requires_frame_id(self) -> None:
+        with self.assertRaises(ProtocolError):
+            validate_set_channel_frame_message(
+                {
+                    "type": "set_channel_frame",
+                    "channelId": "base",
+                    "frameId": "",
                 }
             )
 

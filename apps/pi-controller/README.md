@@ -89,8 +89,17 @@ Config keys:
 - `microphone.address`
 - `microphone.channel`
 - `microphone.sample_hz`
+- `microphone.runtime_bridge.enabled`
+- `microphone.runtime_bridge.channel_id`
+- `microphone.runtime_bridge.active_threshold`
+- `microphone.runtime_bridge.idle_threshold`
+- `microphone.runtime_bridge.active_animation_id`
+- `microphone.runtime_bridge.idle_animation_id`
+- `microphone.runtime_bridge.switch_cooldown_ms`
 
 When `microphone.test_mode` is `true`, the OLED status page stays on a microphone diagnostics view (`raw`, `mV`, bias, level, peak) for bring-up testing.
+
+When `microphone.runtime_bridge.enabled` is `true`, the Pi can map microphone activity into channel runtime actions. By default it targets the `mouth` channel, switches to animation `talk` when level rises above `active_threshold`, and returns to `idle_animation_id` (or default channel playback if unset) after level falls below `idle_threshold`.
 
 ## Future Runtime Direction
 
