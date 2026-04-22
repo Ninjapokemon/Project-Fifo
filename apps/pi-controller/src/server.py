@@ -618,7 +618,9 @@ async def main() -> None:
 
     async def run_microphone_loop() -> None:
         while True:
-            microphone_state = microphone_monitor.sample_state()
+            # ADS1115 sampling performs blocking I2C reads, so keep it off the
+            # main asyncio loop to avoid stalling animation playback timing.
+            microphone_state = await asyncio.to_thread(microphone_monitor.sample_state)
             bridge_message = await microphone_runtime_bridge.process_microphone_state(
                 runtime,
                 microphone_state,
