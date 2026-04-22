@@ -54,6 +54,7 @@ class MicrophoneRuntimeBridge:
         self.switch_cooldown_seconds = self._clamp_seconds(bridge_config.get("switch_cooldown_ms", 140), 140)
         self.release_hold_seconds = self._clamp_seconds(bridge_config.get("release_hold_ms", 260), 260)
         self._speech_active = False
+        self._state_initialized = False
         self._last_switch_at = 0.0
         self._last_above_idle_at = 0.0
         self._last_level_percent = 0
@@ -209,6 +210,7 @@ class MicrophoneRuntimeBridge:
             return None
         if runtime.runtime_mode != "project" or runtime.active_project is None:
             self._speech_active = False
+            self._state_initialized = False
             self._last_above_idle_at = 0.0
             self._last_wants_speech_active = False
             self._last_hold_remaining_seconds = 0.0
@@ -251,23 +253,33 @@ class MicrophoneRuntimeBridge:
                 self.release_hold_seconds - (now_seconds - self._last_above_idle_at),
             )
         self._last_hold_remaining_seconds = hold_remaining_seconds
+        force_idle_sync = (
+            not self._state_initialized
+            and not wants_speech_active
+            and (self.idle_frame_id is not None or self.idle_animation_id is not None)
+        )
 
-        if hold_remaining_seconds > 0.0:
+        if hold_remaining_seconds > 0.0 and not force_idle_sync:
             return None
 
-        if wants_speech_active == self._speech_active:
+        if not force_idle_sync and wants_speech_active == self._speech_active:
+            self._state_initialized = True
             return None
 
-        if (now_seconds - self._last_switch_at) < self.switch_cooldown_seconds:
+        if (
+            not force_idle_sync
+            and (now_seconds - self._last_switch_at) < self.switch_cooldown_seconds
+        ):
             return None
 
         try:
-            if wants_speech_active:
+            if wants_speech_active and not force_idle_sync:
                 active_channel_id, active_animation_id = await self._set_animation(
                     runtime,
                     self.active_animation_id,
                 )
                 self._speech_active = True
+                self._state_initialized = True
                 self._last_switch_at = now_seconds
                 self._last_above_idle_at = now_seconds
                 self._last_hold_remaining_seconds = 0.0
@@ -297,6 +309,7 @@ class MicrophoneRuntimeBridge:
                 action_label = "default channel target"
 
             self._speech_active = False
+            self._state_initialized = True
             self._last_switch_at = now_seconds
             self._last_hold_remaining_seconds = 0.0
             self._last_error = None

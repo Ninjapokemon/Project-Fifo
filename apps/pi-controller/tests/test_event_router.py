@@ -325,6 +325,53 @@ class EventRouterTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    async def test_microphone_bridge_applies_idle_frame_on_first_idle_sample(self) -> None:
+        bridge = MicrophoneRuntimeBridge(
+            {
+                "microphone": {
+                    "runtime_bridge": {
+                        "enabled": True,
+                        "channel_id": "mouth",
+                        "invert_level": False,
+                        "active_threshold": 40,
+                        "idle_threshold": 20,
+                        "active_animation_id": "smile",
+                        "idle_frame_id": "mouth-smile-soft",
+                        "switch_cooldown_ms": 0,
+                        "release_hold_ms": 0,
+                    }
+                }
+            }
+        )
+        runtime = FakeRuntime()
+        runtime.active_project = {
+            "name": "Project-Fifo",
+            "frames": [
+                {"id": "mouth-smile-soft", "name": "Mouth Smile Soft"},
+            ],
+            "animations": [
+                {"id": "smile", "name": "Smile", "channelId": "mouth"},
+            ],
+        }
+
+        first_idle = await bridge.process_microphone_state(
+            runtime,
+            {"available": True, "level_percent": 5},
+        )
+        second_idle = await bridge.process_microphone_state(
+            runtime,
+            {"available": True, "level_percent": 6},
+        )
+
+        self.assertIsNotNone(first_idle)
+        self.assertIsNone(second_idle)
+        self.assertEqual(
+            runtime.calls,
+            [
+                ("set_channel_frame", "mouth", "mouth-smile-soft"),
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
